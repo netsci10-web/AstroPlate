@@ -1,0 +1,6 @@
+{
+  "name": "AstroPlate - Astrometry & Constellation Matcher",
+  "description": "천체 사진을 입력하면 nova.astrometry.net API를 통해 좌표를 정밀 추출하고, 성도 및 별자리와 실시간으로 자동 매칭 및 오버레이하는 천문 분석 플랫폼",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
