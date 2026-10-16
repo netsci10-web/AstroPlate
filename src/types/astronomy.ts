@@ -92,5 +92,6 @@ export interface AnalysisHistoryItem {
   primaryConstellationCode: string;
   starsCount: number;
   dsosCount: number;
+  solvedData?: SolvedAstroData;
 }
 

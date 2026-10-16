@@ -29,6 +29,7 @@ import { EmptyState } from './components/EmptyState';
 import { SolvedAstroData, AnalysisHistoryItem } from './types/astronomy';
 import { identifyConstellations } from './utils/constellations';
 import { degToRA_HMS, degToDec_DMS } from './utils/coordinateMath';
+import { SAMPLE_SOLVED_JOBS } from './data/sampleShowcase';
 
 const STORAGE_KEY = 'astroplate_user_history';
 
@@ -47,33 +48,31 @@ export default function App() {
   const [selectedTargetForSimbad, setSelectedTargetForSimbad] = useState<string | null>(null);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
 
-  // Hidden direct file input ref for immediate photo selection
-  const directFileInputRef = useRef<HTMLInputElement>(null);
+  // Reset all state to clean initial home view when AstroPlate logo/brand is clicked
+  const handleResetHome = useCallback(() => {
+    setSolvedData(null);
+    setActiveJobId(null);
+    setErrorNotice(null);
+    setLoading(false);
+    setIsUploadModalOpen(false);
+    setIsHistoryDrawerOpen(false);
+    setModalInitialFile(null);
+    setModalInitialUrl('');
+  }, []);
 
+  // Open modal on click - user clicks upload area inside modal to choose file
   const handleOpenNewPhoto = () => {
     setModalInitialFile(null);
     setModalInitialUrl('');
     setIsUploadModalOpen(true);
-    if (directFileInputRef.current) {
-      directFileInputRef.current.value = '';
-      directFileInputRef.current.click();
-    }
-  };
-
-  const handleDirectFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setModalInitialFile(file);
-      setIsUploadModalOpen(true);
-    }
   };
 
   // Check API key & load remembered history
   useEffect(() => {
     fetch('/api/astrometry/status')
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : { hasApiKey: false }))
       .then((d) => setHasApiKey(Boolean(d.hasApiKey)))
-      .catch(() => {});
+      .catch(() => setHasApiKey(false));
 
     // Read local storage history
     let localHistory: AnalysisHistoryItem[] = [];
@@ -88,7 +87,10 @@ export default function App() {
 
     // Also sync with server history and Astrometry.net my-jobs
     fetch('/api/astrometry/history')
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error('Static environment or no server history');
+        return r.json();
+      })
       .then(async (data) => {
         const serverHistory: AnalysisHistoryItem[] = data.history || [];
         const map = new Map<string, AnalysisHistoryItem>();
@@ -135,7 +137,7 @@ export default function App() {
       });
   }, []);
 
-  // Save item to history
+  // Save item to history keyed by Job ID with full solved data cache
   const saveToHistory = useCallback((solved: SolvedAstroData, customImgUrl?: string) => {
     const primaryConst = solved.matchedConstellations[0];
     const starsCount = solved.annotations.filter(
@@ -143,19 +145,29 @@ export default function App() {
     ).length;
     const dsosCount = solved.annotations.length - starsCount;
 
+    // Use reliable image URL linked to Job ID (do not save transient blob URLs)
+    const validImgUrl =
+      customImgUrl && !customImgUrl.startsWith('blob:')
+        ? customImgUrl
+        : `/api/astrometry/image-proxy/${solved.jobId}/annotated`;
+
     const newItem: AnalysisHistoryItem = {
-      id: `hist_${solved.jobId}_${Date.now()}`,
+      id: `job_${solved.jobId}`,
       jobId: solved.jobId,
       title: solved.title || `Job #${solved.jobId}`,
-      imageUrl: customImgUrl || solved.imageUrl,
+      imageUrl: validImgUrl,
       timestamp: Date.now(),
       raDeg: solved.calibration.ra,
       decDeg: solved.calibration.dec,
       radiusDeg: solved.calibration.radius,
-      primaryConstellationKo: primaryConst?.nameKo || '별자리',
+      primaryConstellationKo: primaryConst?.nameKo || '천구 별자리',
       primaryConstellationCode: primaryConst?.code || '',
       starsCount,
       dsosCount,
+      solvedData: {
+        ...solved,
+        imageUrl: validImgUrl,
+      },
     };
 
     setHistory((prev) => {
@@ -184,9 +196,37 @@ export default function App() {
     setLoading(true);
     setErrorNotice(null);
 
+    // 1. First, check if full solvedData is already cached in history for this Job ID
+    const existingHist = history.find((h) => String(h.jobId) === String(jobId));
+    if (existingHist?.solvedData) {
+      setSolvedData(existingHist.solvedData);
+      setActiveJobId(jobId);
+      setLoading(false);
+      return;
+    }
+
+    // 2. Check pre-computed sample jobs
+    const sample = SAMPLE_SOLVED_JOBS.find((s) => String(s.jobId) === String(jobId));
+    if (sample && (!customImageUrl || customImageUrl.startsWith('blob:'))) {
+      setSolvedData(sample);
+      setActiveJobId(sample.jobId);
+      if (shouldSaveToHistory) {
+        saveToHistory(sample);
+      }
+      setLoading(false);
+      return;
+    }
+
+    // 3. Fetch from Astrometry.net API using Job ID
     try {
       const resp = await fetch(`/api/astrometry/jobs/${jobId}/full`);
       if (!resp.ok) {
+        if (sample) {
+          setSolvedData(sample);
+          setActiveJobId(sample.jobId);
+          if (shouldSaveToHistory) saveToHistory(sample);
+          return;
+        }
         throw new Error(`Job #${jobId} 데이터 조회 실패 (HTTP ${resp.status})`);
       }
 
@@ -204,10 +244,11 @@ export default function App() {
         annotations
       );
 
-      // Determine photo URL: custom uploaded image or Astrometry proxy
+      // Determine photo URL: canonical Astrometry image proxy for this Job ID
       const resolvedImageUrl =
-        customImageUrl ||
-        `/api/astrometry/image-proxy/${jobId}/annotated`;
+        customImageUrl && !customImageUrl.startsWith('blob:')
+          ? customImageUrl
+          : `/api/astrometry/image-proxy/${jobId}/annotated`;
 
       const solved: SolvedAstroData = {
         jobId,
@@ -224,11 +265,20 @@ export default function App() {
 
       // Automatically remember analyzed photo in history
       if (shouldSaveToHistory) {
-        saveToHistory(solved, customImageUrl);
+        saveToHistory(solved, resolvedImageUrl);
       }
     } catch (err: any) {
       console.error('Failed to load job data:', err);
-      setErrorNotice(err.message || 'Astrometry.net API 데이터 로드 중 오류가 발생했습니다.');
+      if (existingHist?.solvedData) {
+        setSolvedData(existingHist.solvedData);
+        setActiveJobId(jobId);
+      } else if (sample) {
+        setSolvedData(sample);
+        setActiveJobId(sample.jobId);
+        if (shouldSaveToHistory) saveToHistory(sample);
+      } else {
+        setErrorNotice(err.message || `Astrometry.net Job #${jobId} 데이터 로드 중 오류가 발생했습니다.`);
+      }
     } finally {
       setLoading(false);
     }
@@ -276,6 +326,7 @@ export default function App() {
         onOpenUpload={handleOpenNewPhoto}
         onOpenJobInput={() => setIsUploadModalOpen(true)}
         onOpenHistory={() => setIsHistoryDrawerOpen(true)}
+        onReset={handleResetHome}
         historyCount={history.length}
         hasApiKey={hasApiKey}
       />
@@ -325,6 +376,11 @@ export default function App() {
               setIsUploadModalOpen(true);
             }}
             onSubmitJobId={(jobId) => loadJobData(jobId, undefined, true)}
+            onSelectSampleJob={(sample) => {
+              setSolvedData(sample);
+              setActiveJobId(sample.jobId);
+              saveToHistory(sample);
+            }}
             hasApiKey={hasApiKey}
           />
         )}
@@ -443,11 +499,16 @@ export default function App() {
       {/* Footer */}
       <footer className="bg-slate-900 border-t border-slate-800 py-6 text-xs text-slate-400 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center space-x-2">
-            <Telescope className="w-4 h-4 text-sky-400" />
-            <span className="font-semibold text-slate-300">AstroPlate Platform</span>
+          <button
+            type="button"
+            onClick={handleResetHome}
+            title="AstroPlate 홈으로 초기화 (메인 화면으로 이동)"
+            className="flex items-center space-x-2 text-left hover:text-white transition-colors cursor-pointer group"
+          >
+            <Telescope className="w-4 h-4 text-sky-400 group-hover:text-sky-300 transition-colors" />
+            <span className="font-semibold text-slate-300 group-hover:text-white transition-colors">AstroPlate Platform</span>
             <span>— 실시간 Astrometry.net API &amp; IAU 성도 별자리 매칭 시스템</span>
-          </div>
+          </button>
           <div className="flex items-center space-x-4">
             <button
               onClick={() => setIsHistoryDrawerOpen(true)}

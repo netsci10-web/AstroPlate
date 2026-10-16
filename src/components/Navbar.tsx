@@ -5,6 +5,7 @@ interface NavbarProps {
   onOpenUpload: () => void;
   onOpenJobInput: () => void;
   onOpenHistory: () => void;
+  onReset?: () => void;
   historyCount: number;
   hasApiKey: boolean;
 }
@@ -13,6 +14,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenUpload,
   onOpenJobInput,
   onOpenHistory,
+  onReset,
   historyCount,
   hasApiKey,
 }) => {
@@ -20,25 +22,30 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-30 shadow-lg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Brand */}
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-sky-500 to-teal-400 p-0.5 flex items-center justify-center shadow-md shadow-sky-500/20">
-              <div className="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
-                <Telescope className="w-5 h-5 text-sky-400" />
+          {/* Brand Logo & Title: Clicking resets/initializes the app */}
+          <button
+            type="button"
+            onClick={onReset}
+            title="AstroPlate 홈으로 초기화 (메인 화면으로 이동)"
+            className="flex items-center space-x-3 text-left group cursor-pointer focus:outline-none rounded-xl p-1 -m-1 hover:bg-slate-800/60 transition-all active:scale-95"
+          >
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-sky-500 to-teal-400 p-0.5 flex items-center justify-center shadow-md shadow-sky-500/20 group-hover:shadow-sky-500/40 transition-shadow">
+              <div className="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center group-hover:bg-slate-800 transition-colors">
+                <Telescope className="w-5 h-5 text-sky-400 group-hover:text-sky-300 transition-colors" />
               </div>
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-sky-400 via-indigo-300 to-purple-300 bg-clip-text text-transparent">
+                <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-sky-400 via-indigo-300 to-purple-300 bg-clip-text text-transparent group-hover:from-sky-300 group-hover:to-purple-200">
                   AstroPlate
                 </span>
                 <span className="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-sky-950/80 text-sky-300 border border-sky-800/60">
                   Astrometry.net API
                 </span>
               </div>
-              <p className="text-xs text-slate-400">성도 및 별자리 자동 매칭 &amp; 정밀 좌표 오버레이</p>
+              <p className="text-xs text-slate-400 group-hover:text-slate-300 transition-colors">성도 및 별자리 자동 매칭 &amp; 정밀 좌표 오버레이</p>
             </div>
-          </div>
+          </button>
 
           {/* Action Buttons */}
           <div className="flex items-center space-x-2 sm:space-x-3">

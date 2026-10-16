@@ -1,0 +1,100 @@
+import { SolvedAstroData } from '../types/astronomy';
+
+export const SAMPLE_SOLVED_JOBS: SolvedAstroData[] = [
+  {
+    jobId: 17097621,
+    title: '세페우스자리 석류석 별 (μ Cep / The Garnet Star)',
+    imageUrl: '/api/astrometry/image-proxy/17097621/annotated',
+    calibration: {
+      ra: 326.118,
+      dec: 58.895,
+      radius: 1.227,
+      pixscale: 4.01,
+      orientation: 211.96,
+      parity: 1,
+      width_arcsec: 7698.55,
+      height_arcsec: 4330.44,
+    },
+    annotations: [
+      {
+        type: 'bright',
+        names: ['μ Cep (석류석 별 / Garnet Star)', 'The Garnet Star', 'Erakis'],
+        pixelx: 810.8,
+        pixely: 511.6,
+        radius: 14,
+        vmag: 4.23,
+      },
+    ],
+    info: {
+      status: 'success',
+      original_filename: 'stacked.jpg',
+      machine_tags: ['The star The Garnet Star', 'Erakis (μ Cep)'],
+      tags: ['The star The Garnet Star', 'Erakis (μ Cep)', 'Cepheus'],
+      objects_in_field: ['The star The Garnet Star', 'Erakis (μ Cep)'],
+    },
+    matchedConstellations: [
+      {
+        code: 'Cep',
+        nameKo: '세페우스자리',
+        nameEn: 'Cepheus',
+        genitive: 'Cephei',
+        family: 'Perseus family',
+        brightestStar: 'Alderamin (α Cep)',
+        isPrimary: true,
+        starsCountInField: 1,
+      },
+    ],
+  },
+  {
+    jobId: 17100843,
+    title: '백조자리 알비레오 이중성 (Albireo / β Cyg)',
+    imageUrl: '/api/astrometry/image-proxy/17100843/annotated',
+    calibration: {
+      ra: 292.699,
+      dec: 27.976,
+      radius: 1.226,
+      pixscale: 4.006,
+      orientation: 354.18,
+      parity: 1,
+      width_arcsec: 7691.6,
+      height_arcsec: 4326.52,
+    },
+    annotations: [
+      {
+        type: 'bright',
+        names: ['β1 Cyg (알비레오 / Albireo)', '6 Cyg A'],
+        pixelx: 973.5,
+        pixely: 556.6,
+        radius: 14,
+        vmag: 3.05,
+      },
+      {
+        type: 'bright',
+        names: ['β2 Cyg', '6 Cyg B'],
+        pixelx: 967.1,
+        pixely: 550.8,
+        radius: 10,
+        vmag: 5.12,
+      },
+    ],
+    info: {
+      status: 'success',
+      original_filename: 'stacked.jpg',
+      machine_tags: ['Albireo', 'β1 Cyg', 'β2 Cyg'],
+      tags: ['Albireo', 'β1 Cyg', 'Cygnus'],
+      objects_in_field: ['The star Albireo (β1 Cyg)', 'β2 Cyg'],
+    },
+    matchedConstellations: [
+      {
+        code: 'Cyg',
+        nameKo: '백조자리',
+        nameEn: 'Cygnus',
+        genitive: 'Cygni',
+        family: 'Hercules family',
+        brightestStar: 'Deneb (α Cyg)',
+        isPrimary: true,
+        starsCountInField: 2,
+      },
+    ],
+  },
+];
