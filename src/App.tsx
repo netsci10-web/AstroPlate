@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Telescope,
   Sparkles,
@@ -46,6 +46,27 @@ export default function App() {
   const [modalInitialUrl, setModalInitialUrl] = useState<string>('');
   const [selectedTargetForSimbad, setSelectedTargetForSimbad] = useState<string | null>(null);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
+
+  // Hidden direct file input ref for immediate photo selection
+  const directFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleOpenNewPhoto = () => {
+    setModalInitialFile(null);
+    setModalInitialUrl('');
+    setIsUploadModalOpen(true);
+    if (directFileInputRef.current) {
+      directFileInputRef.current.value = '';
+      directFileInputRef.current.click();
+    }
+  };
+
+  const handleDirectFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setModalInitialFile(file);
+      setIsUploadModalOpen(true);
+    }
+  };
 
   // Check API key & load remembered history
   useEffect(() => {
@@ -252,7 +273,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-sky-500 selection:text-white">
       {/* Navigation Header */}
       <Navbar
-        onOpenUpload={() => setIsUploadModalOpen(true)}
+        onOpenUpload={handleOpenNewPhoto}
         onOpenJobInput={() => setIsUploadModalOpen(true)}
         onOpenHistory={() => setIsHistoryDrawerOpen(true)}
         historyCount={history.length}
@@ -363,11 +384,12 @@ export default function App() {
               </button>
 
               <button
-                onClick={() => setIsUploadModalOpen(true)}
-                className="text-xs px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-medium shadow-md shadow-sky-500/20 flex items-center space-x-1.5 transition-all"
+                onClick={handleOpenNewPhoto}
+                title="새로운 사진 분석하기 (새 사진 파일 선택)"
+                className="text-xs px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-medium shadow-md shadow-sky-500/20 flex items-center space-x-1.5 transition-all active:scale-95"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>새 사진 분석</span>
+                <span>새 사진분석</span>
               </button>
             </div>
           </div>
@@ -381,6 +403,7 @@ export default function App() {
               <StarPhotoViewer
                 data={solvedData}
                 onSelectObject={(obj) => setSelectedTargetForSimbad(obj)}
+                onNewPhoto={handleOpenNewPhoto}
               />
             </section>
 
@@ -403,6 +426,18 @@ export default function App() {
             </section>
           </div>
         )}
+
+        {/* Hidden File Input for Direct '새 사진분석' Click */}
+        <input
+          ref={directFileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/tiff,.fits,.fit"
+          className="hidden"
+          onClick={(e) => {
+            (e.target as HTMLInputElement).value = '';
+          }}
+          onChange={handleDirectFileSelected}
+        />
       </main>
 
       {/* Footer */}

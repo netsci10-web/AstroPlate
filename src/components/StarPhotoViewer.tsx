@@ -14,19 +14,99 @@ import {
   Info,
   Sliders,
   ExternalLink,
+  Upload,
 } from 'lucide-react';
 import { SolvedAstroData, AstrometryAnnotationItem } from '../types/astronomy';
 import { degToRA_HMS, degToDec_DMS } from '../utils/coordinateMath';
 import { getConstellationLinesForImage } from '../utils/constellations';
 
+export type OverlayColor = 'red' | 'yellow' | 'green' | 'white';
+
+export const STORAGE_OVERLAY_COLOR_KEY = 'astro_overlay_color';
+
+export interface OverlayColorConfig {
+  id: OverlayColor;
+  label: string;
+  dotColor: string;
+  glowColor: string;
+  primary: string;
+  halo: string;
+  badgeBg: string;
+  badgeBorder: string;
+  badgeText: string;
+  starReticle: string;
+  starText: string;
+  activeClass: string;
+}
+
+export const OVERLAY_COLORS: Record<OverlayColor, OverlayColorConfig> = {
+  red: {
+    id: 'red',
+    label: '빨강',
+    dotColor: '#ef4444',
+    glowColor: '#ef4444',
+    primary: '#ff4d4d',
+    halo: '#f87171',
+    badgeBg: '#450a0acc',
+    badgeBorder: '#ef4444',
+    badgeText: '#fecaca',
+    starReticle: '#ef4444',
+    starText: '#fca5a5',
+    activeClass: 'ring-2 ring-red-400 bg-red-500/25 text-red-200 border-red-500 font-bold',
+  },
+  yellow: {
+    id: 'yellow',
+    label: '노랑',
+    dotColor: '#eab308',
+    glowColor: '#eab308',
+    primary: '#facc15',
+    halo: '#fde047',
+    badgeBg: '#422006cc',
+    badgeBorder: '#eab308',
+    badgeText: '#fef08a',
+    starReticle: '#eab308',
+    starText: '#fef08a',
+    activeClass: 'ring-2 ring-amber-400 bg-amber-500/25 text-amber-200 border-amber-500 font-bold',
+  },
+  green: {
+    id: 'green',
+    label: '녹색',
+    dotColor: '#22c55e',
+    glowColor: '#22c55e',
+    primary: '#4ade80',
+    halo: '#86efac',
+    badgeBg: '#052e16cc',
+    badgeBorder: '#22c55e',
+    badgeText: '#bbf7d0',
+    starReticle: '#22c55e',
+    starText: '#86efac',
+    activeClass: 'ring-2 ring-green-400 bg-green-500/25 text-green-200 border-green-500 font-bold',
+  },
+  white: {
+    id: 'white',
+    label: '흰색',
+    dotColor: '#ffffff',
+    glowColor: '#ffffff',
+    primary: '#ffffff',
+    halo: '#e2e8f0',
+    badgeBg: '#1e293bcc',
+    badgeBorder: '#ffffff',
+    badgeText: '#ffffff',
+    starReticle: '#ffffff',
+    starText: '#f8fafc',
+    activeClass: 'ring-2 ring-white bg-white/20 text-white border-white font-bold',
+  },
+};
+
 interface StarPhotoViewerProps {
   data: SolvedAstroData;
   onSelectObject: (objectName: string) => void;
+  onNewPhoto?: () => void;
 }
 
 type ViewMode = 'vector' | 'annotated' | 'red_green' | 'raw';
 
-export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelectObject }) => {
+export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelectObject, onNewPhoto }) => {
   const [scale, setScale] = useState(1);
   const [translate, setTranslate] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -41,6 +121,26 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
   const [showGrid, setShowGrid] = useState(true);
   const [showCenterFov, setShowCenterFov] = useState(true);
   const [overlayOpacity, setOverlayOpacity] = useState(0.9);
+
+  // Overlay color: red, yellow, green, white (stored in localStorage, default: red)
+  const [overlayColor, setOverlayColor] = useState<OverlayColor>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_OVERLAY_COLOR_KEY);
+      if (saved && (saved === 'red' || saved === 'yellow' || saved === 'green' || saved === 'white')) {
+        return saved as OverlayColor;
+      }
+    } catch (e) {}
+    return 'red';
+  });
+
+  const handleSelectOverlayColor = (color: OverlayColor) => {
+    setOverlayColor(color);
+    try {
+      localStorage.setItem(STORAGE_OVERLAY_COLOR_KEY, color);
+    } catch (e) {}
+  };
+
+  const currentColorConfig = OVERLAY_COLORS[overlayColor] || OVERLAY_COLORS.red;
 
   // Hovered item for tooltip
   const [hoveredAnnotation, setHoveredAnnotation] = useState<AstrometryAnnotationItem | null>(null);
@@ -237,6 +337,19 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
 
         {/* Right: Quick Action Controls */}
         <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl p-1 flex items-center space-x-1 shadow-lg pointer-events-auto">
+          {onNewPhoto && (
+            <>
+              <button
+                onClick={onNewPhoto}
+                title="새로운 천체 사진 분석하기 (새 사진 파일 선택)"
+                className="text-xs px-2.5 py-1 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-medium shadow-sm flex items-center space-x-1 transition-all mr-0.5 active:scale-95"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>새 사진분석</span>
+              </button>
+              <div className="w-px h-4 bg-slate-700 mx-0.5" />
+            </>
+          )}
           <button
             onClick={() => handleZoom(0.25)}
             title="확대 (Zoom In)"
@@ -310,10 +423,9 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                 style={{ opacity: overlayOpacity }}
               >
                 <defs>
-                  {/* Glow filter for constellation lines & stars */}
+                  {/* Dynamic glow filter based on selected overlay color */}
                   <filter id="celestial-glow" x="-20%" y="-20%" width="140%" height="140%">
-                    <feGaussianBlur stdDeviation="3.5" result="blur" />
-                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                    <feDropShadow dx="0" dy="0" stdDeviation="3.5" floodColor={currentColorConfig.glowColor} floodOpacity="0.85" />
                   </filter>
                   <filter id="dso-glow" x="-30%" y="-30%" width="160%" height="160%">
                     <feGaussianBlur stdDeviation="4" result="blur" />
@@ -332,9 +444,9 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                           y1={line.y1}
                           x2={line.x2}
                           y2={line.y2}
-                          stroke="#38bdf8"
-                          strokeWidth="5"
-                          strokeOpacity="0.4"
+                          stroke={currentColorConfig.halo}
+                          strokeWidth="5.5"
+                          strokeOpacity="0.45"
                           strokeLinecap="round"
                         />
                         {/* Core sharp line */}
@@ -343,8 +455,8 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                           y1={line.y1}
                           x2={line.x2}
                           y2={line.y2}
-                          stroke="#7dd3fc"
-                          strokeWidth="2"
+                          stroke={currentColorConfig.primary}
+                          strokeWidth="2.2"
                           strokeDasharray="4 2"
                           strokeLinecap="round"
                         />
@@ -360,14 +472,14 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                           width={240}
                           height={28}
                           rx={6}
-                          fill="#0f172ae0"
-                          stroke="#38bdf8"
-                          strokeWidth="1"
+                          fill={currentColorConfig.badgeBg}
+                          stroke={currentColorConfig.badgeBorder}
+                          strokeWidth="1.2"
                         />
                         <text
                           x={naturalSize.width * 0.05 + 12}
                           y={naturalSize.height * 0.06 + i * 36 + 18}
-                          fill="#7dd3fc"
+                          fill={currentColorConfig.badgeText}
                           fontSize="13"
                           fontWeight="bold"
                           fontFamily="sans-serif"
@@ -473,9 +585,9 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                             cx={star.pixelx}
                             cy={star.pixely}
                             r={isBright ? 9 : 6}
-                            fill="#38bdf820"
-                            stroke="#38bdf8"
-                            strokeWidth={isBright ? '2' : '1.2'}
+                            fill={`${currentColorConfig.dotColor}25`}
+                            stroke={currentColorConfig.starReticle}
+                            strokeWidth={isBright ? '2.2' : '1.3'}
                             filter="url(#celestial-glow)"
                           />
                           {/* Star center dot */}
@@ -483,20 +595,20 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                             cx={star.pixelx}
                             cy={star.pixely}
                             r={isBright ? 2.5 : 1.5}
-                            fill="#ffffff"
+                            fill={currentColorConfig.primary}
                           />
                           {/* Name Text */}
                           <text
                             x={star.pixelx + 10}
                             y={star.pixely - 6}
-                            fill="#ffffff"
+                            fill={currentColorConfig.starText}
                             fontSize={isBright ? '12' : '10'}
                             fontWeight={isBright ? 'bold' : 'normal'}
-                            filter="drop-shadow(0 2px 4px rgba(0,0,0,0.9))"
+                            filter="drop-shadow(0 2px 4px rgba(0,0,0,0.95))"
                           >
                             {name}
                             {star.vmag !== undefined && (
-                              <tspan fill="#94a3b8" fontSize="9" dx="4">
+                              <tspan fill="#cbd5e1" fontSize="9" dx="4">
                                 {star.vmag.toFixed(1)}m
                               </tspan>
                             )}
@@ -626,21 +738,59 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
             </button>
           </div>
 
-          {/* Opacity slider */}
-          <div className="flex items-center space-x-2">
-            <span className="text-[11px] text-slate-400">오버레이 투명도:</span>
-            <input
-              type="range"
-              min="0.1"
-              max="1"
-              step="0.05"
-              value={overlayOpacity}
-              onChange={(e) => setOverlayOpacity(parseFloat(e.target.value))}
-              className="w-20 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-400"
-            />
-            <span className="font-mono text-[11px] text-slate-300 w-8">
-              {(overlayOpacity * 100).toFixed(0)}%
-            </span>
+          {/* Right Group: Overlay Color Selector (Left of Opacity) + Opacity slider */}
+          <div className="flex items-center space-x-3">
+            {/* Overlay Color Selector (Left of Opacity) */}
+            <div className="flex items-center space-x-1.5">
+              <span className="text-[11px] text-slate-400 font-medium whitespace-nowrap">오버레이 색:</span>
+              <div className="flex items-center space-x-1 bg-slate-950/80 p-0.5 rounded-lg border border-slate-700/80">
+                {(['red', 'yellow', 'green', 'white'] as OverlayColor[]).map((cKey) => {
+                  const c = OVERLAY_COLORS[cKey];
+                  const isSelected = overlayColor === cKey;
+                  return (
+                    <button
+                      key={cKey}
+                      type="button"
+                      onClick={() => handleSelectOverlayColor(cKey)}
+                      title={`오버레이 색상: ${c.label} (${isSelected ? '현재 선택됨' : '선택'})`}
+                      className={`px-2 py-0.5 rounded-md text-[11px] flex items-center space-x-1 transition-all border ${
+                        isSelected
+                          ? `${c.activeClass} shadow-sm`
+                          : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                      }`}
+                    >
+                      <span
+                        className="w-2.5 h-2.5 rounded-full inline-block shadow-sm"
+                        style={{
+                          backgroundColor: c.dotColor,
+                          boxShadow: isSelected ? `0 0 6px ${c.dotColor}` : 'none',
+                        }}
+                      />
+                      <span>{c.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="w-px h-4 bg-slate-700 hidden sm:block" />
+
+            {/* Opacity slider */}
+            <div className="flex items-center space-x-2">
+              <span className="text-[11px] text-slate-400 whitespace-nowrap">투명도:</span>
+              <input
+                type="range"
+                min="0.1"
+                max="1"
+                step="0.05"
+                value={overlayOpacity}
+                onChange={(e) => setOverlayOpacity(parseFloat(e.target.value))}
+                className="w-20 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-400"
+              />
+              <span className="font-mono text-[11px] text-slate-300 w-8">
+                {(overlayOpacity * 100).toFixed(0)}%
+              </span>
+            </div>
           </div>
         </div>
       )}

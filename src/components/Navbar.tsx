@@ -70,10 +70,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Analyze New Photo */}
             <button
               onClick={onOpenUpload}
+              title="새로운 천체 사진 선택 및 플레이트 솔빙 분석"
               className="text-xs px-3.5 py-2 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-medium shadow-md shadow-sky-500/25 flex items-center space-x-1.5 transition-all transform active:scale-95"
             >
               <Upload className="w-3.5 h-3.5" />
-              <span>새 천체 사진 분석</span>
+              <span>새 사진분석</span>
             </button>
           </div>
         </div>

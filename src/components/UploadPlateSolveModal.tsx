@@ -72,6 +72,16 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
       } else if (initialJobId) {
         setJobIdInput(initialJobId);
         setActiveTab('jobId');
+      } else {
+        // Reset state so user can immediately accept and analyze a new photo
+        setSelectedFile(null);
+        setPreviewUrl(null);
+        setErrorMessage(null);
+        setIsProcessing(false);
+        setActiveTab('upload');
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
       }
     }
   }, [isOpen, initialFile, initialUrl, initialJobId]);
@@ -430,6 +440,9 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/tiff,.fits,.fit"
                   className="hidden"
+                  onClick={(e) => {
+                    (e.target as HTMLInputElement).value = '';
+                  }}
                   onChange={handleFileChange}
                 />
 
@@ -438,13 +451,40 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
                     <img
                       src={previewUrl}
                       alt="Preview"
-                      className="max-h-36 object-contain rounded-lg shadow-lg border border-slate-700"
+                      className="max-h-40 object-contain rounded-lg shadow-lg border border-slate-700"
                     />
                     <p className="text-xs text-sky-400 font-medium mt-3 flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       {selectedFile?.name} ({((selectedFile?.size || 0) / 1024 / 1024).toFixed(2)} MB)
                     </p>
-                    <p className="text-[11px] text-slate-500 mt-1">다른 사진을 선택하려면 클릭하거나 드래그하세요</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (fileInputRef.current) {
+                            fileInputRef.current.value = '';
+                            fileInputRef.current.click();
+                          }
+                        }}
+                        className="text-xs px-3 py-1 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-medium shadow-sm transition-colors"
+                      >
+                        다른 사진으로 변경
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedFile(null);
+                          setPreviewUrl(null);
+                          if (fileInputRef.current) fileInputRef.current.value = '';
+                        }}
+                        className="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                      >
+                        사진 지우기
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1">또는 다른 사진 파일을 여기에 드래그하여 놓으세요</p>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center py-4">
