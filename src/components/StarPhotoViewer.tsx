@@ -422,7 +422,6 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                 }
               }}
               className="max-h-[580px] w-auto object-contain block pointer-events-none rounded shadow-2xl"
-              crossOrigin="anonymous"
             />
 
             {/* SVG Interactive Overlay Layer (When viewMode === 'vector') */}

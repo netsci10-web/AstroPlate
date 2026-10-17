@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AstroPlate - Astrometry &amp; Constellation Matcher</title>
+    <script>
+      // Single Page Application redirect for GitHub Pages
+      // Stores requested path in sessionStorage and redirects to index.html
+      sessionStorage.redirect = location.href;
+      var pathSegmentsToKeep = 1;
+      var l = window.location;
+      var repoName = l.pathname.split('/')[1] || '';
+      var target = l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + (repoName ? '/' + repoName + '/' : '/');
+      window.location.replace(target);
+    </script>
+  </head>
+  <body>
+    <p>Redirecting to AstroPlate...</p>
+  </body>
+</html>
