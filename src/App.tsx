@@ -17,6 +17,8 @@ import {
   Layers,
   Clock,
   Plus,
+  Camera,
+  Activity,
 } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { StarPhotoViewer } from './components/StarPhotoViewer';
@@ -33,10 +35,13 @@ import { SAMPLE_SOLVED_JOBS } from './data/sampleShowcase';
 
 const STORAGE_KEY = 'astroplate_user_history';
 
+export type MainTab = 'photo' | 'chart' | 'telemetry';
+
 export default function App() {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [solvedData, setSolvedData] = useState<SolvedAstroData | null>(null);
   const [activeJobId, setActiveJobId] = useState<number | string | null>(null);
+  const [activeMainTab, setActiveMainTab] = useState<MainTab>('photo');
   const [hasApiKey, setHasApiKey] = useState(false);
   const [history, setHistory] = useState<AnalysisHistoryItem[]>([]);
 
@@ -52,6 +57,7 @@ export default function App() {
   const handleResetHome = useCallback(() => {
     setSolvedData(null);
     setActiveJobId(null);
+    setActiveMainTab('photo');
     setErrorNotice(null);
     setLoading(false);
     setIsUploadModalOpen(false);
@@ -89,7 +95,7 @@ export default function App() {
       console.error('Failed to parse localStorage history:', e);
     }
 
-    // Also sync with server history and Astrometry.net my-jobs
+    // Also sync with server history in background
     fetch('/api/astrometry/history')
       .then((r) => {
         if (!r.ok) throw new Error('Static environment or no server history');
@@ -97,7 +103,7 @@ export default function App() {
         if (!ct.includes('application/json')) throw new Error('Not JSON response');
         return r.json();
       })
-      .then(async (data) => {
+      .then((data) => {
         const serverHistory: AnalysisHistoryItem[] = data?.history || [];
         const map = new Map<string, AnalysisHistoryItem>();
 
@@ -110,44 +116,18 @@ export default function App() {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(combined));
         } catch (e) {}
 
-        // If user has analyzed photos in history, restore the most recent one
-        if (combined.length > 0) {
-          loadJobData(combined[0].jobId, combined[0].imageUrl, false);
-        } else {
-          // If local history is empty, try auto-sync from user's Astrometry.net account
-          try {
-            const myJobsResp = await fetch('/api/astrometry/my-jobs');
-            if (myJobsResp.ok) {
-              const ct = myJobsResp.headers.get('content-type') || '';
-              if (ct.includes('application/json')) {
-                const myJobsData = await myJobsResp.json();
-                const myJobs = myJobsData.detailed || [];
-                const solvedJobs = myJobs.filter((j: any) => j.status === 'success' && j.jobId);
-                if (solvedJobs.length > 0) {
-                  loadJobData(solvedJobs[0].jobId, undefined, true);
-                  return;
-                }
-              }
-            }
-          } catch (e) {
-            console.error('Failed to auto-sync my-jobs on mount:', e);
-          }
-          // Default to sample showcase so page is immediately rich and visible
-          setSolvedData(SAMPLE_SOLVED_JOBS[0]);
-          setActiveJobId(SAMPLE_SOLVED_JOBS[0].jobId);
-          setLoading(false);
-        }
+        // Keep clean empty state before user starts analyzing a photo
+        setSolvedData(null);
+        setActiveJobId(null);
+        setLoading(false);
       })
       .catch(() => {
         if (localHistory.length > 0) {
           setHistory(localHistory);
-          loadJobData(localHistory[0].jobId, localHistory[0].imageUrl, false);
-        } else {
-          // In static GitHub pages deployment without backend, show rich sample showcase immediately
-          setSolvedData(SAMPLE_SOLVED_JOBS[0]);
-          setActiveJobId(SAMPLE_SOLVED_JOBS[0].jobId);
-          setLoading(false);
         }
+        setSolvedData(null);
+        setActiveJobId(null);
+        setLoading(false);
       });
   }, []);
 
@@ -213,6 +193,7 @@ export default function App() {
   ) => {
     setLoading(true);
     setErrorNotice(null);
+    setActiveMainTab('photo');
 
     // 1. First, check if full solvedData is already cached in history for this Job ID
     const existingHist = history.find((h) => String(h.jobId) === String(jobId));
@@ -362,6 +343,67 @@ export default function App() {
         hasApiKey={hasApiKey}
       />
 
+      {/* Top Sub-Navigation Tabs (Shown only when a photo is analyzed) */}
+      {!loading && solvedData && (
+        <div className="bg-slate-900/95 backdrop-blur-md border-b border-slate-800 sticky top-16 z-20 shadow-md">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between overflow-x-auto scrollbar-none py-2 gap-2">
+              <nav className="flex items-center space-x-1 sm:space-x-2" aria-label="천체 관측 분석 탭">
+                <button
+                  type="button"
+                  onClick={() => setActiveMainTab('photo')}
+                  className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+                    activeMainTab === 'photo'
+                      ? 'bg-sky-500 text-white shadow-md shadow-sky-500/25 ring-1 ring-sky-400/50'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>천체사진 분석</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveMainTab('chart')}
+                  className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+                    activeMainTab === 'chart'
+                      ? 'bg-sky-500 text-white shadow-md shadow-sky-500/25 ring-1 ring-sky-400/50'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Compass className="w-4 h-4" />
+                  <span>실시간 전천성도</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveMainTab('telemetry')}
+                  className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+                    activeMainTab === 'telemetry'
+                      ? 'bg-sky-500 text-white shadow-md shadow-sky-500/25 ring-1 ring-sky-400/50'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Activity className="w-4 h-4" />
+                  <span>천체좌표 및 WCS 관측 원격 측정</span>
+                </button>
+              </nav>
+
+              {/* Target Quick Info Chip */}
+              <div className="hidden lg:flex items-center space-x-3 text-xs text-slate-400 pl-4 border-l border-slate-800 shrink-0">
+                <span className="font-mono text-sky-400 font-semibold">Job #{solvedData.jobId}</span>
+                <span>•</span>
+                <span className="text-white font-medium truncate max-w-xs">{solvedData.title}</span>
+                <span>•</span>
+                <span className="text-indigo-300 font-medium">
+                  {solvedData.matchedConstellations[0]?.nameKo || '천구 별자리'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Error Notification */}
@@ -410,6 +452,7 @@ export default function App() {
             onSelectSampleJob={(sample) => {
               setSolvedData(sample);
               setActiveJobId(sample.jobId);
+              setActiveMainTab('photo');
               saveToHistory(sample);
             }}
             hasApiKey={hasApiKey}
@@ -473,35 +516,36 @@ export default function App() {
           </div>
         )}
 
-        {/* Main Presentation Panels */}
-        {!loading && solvedData && (
-          <div className="space-y-6">
-            {/* 1. Main Photograph Viewer with Constellation & Star Overlays */}
-            <section aria-label="천체 사진 별자리 오버레이 뷰어">
-              <StarPhotoViewer
-                data={solvedData}
-                onSelectObject={(obj) => setSelectedTargetForSimbad(obj)}
-              />
-            </section>
+        {/* Tab 1: 천체사진 분석 */}
+        {!loading && solvedData && activeMainTab === 'photo' && (
+          <section aria-label="천체사진 분석">
+            <StarPhotoViewer
+              data={solvedData}
+              onSelectObject={(obj) => setSelectedTargetForSimbad(obj)}
+            />
+          </section>
+        )}
 
-            {/* 2. Interactive Celestial Star Chart (성도 연동) */}
-            <section aria-label="실시간 성도 연동 및 별자리 매칭">
-              <CelestialStarChart
-                data={solvedData}
-                onSelectConstellation={(code) => {
-                  console.log('Selected constellation:', code);
-                }}
-              />
-            </section>
+        {/* Tab 2: 실시간 전천성도 */}
+        {!loading && solvedData && activeMainTab === 'chart' && (
+          <section aria-label="실시간 전천성도">
+            <CelestialStarChart
+              data={solvedData}
+              onSelectConstellation={(code) => {
+                console.log('Selected constellation:', code);
+              }}
+            />
+          </section>
+        )}
 
-            {/* 3. WCS Calibration Telemetry & Catalog Table */}
-            <section aria-label="천체 좌표 및 원격 측정 카탈로그">
-              <AstroTelemetryPanel
-                data={solvedData}
-                onSelectObject={(obj) => setSelectedTargetForSimbad(obj)}
-              />
-            </section>
-          </div>
+        {/* Tab 3: 천체좌표 및 WCS 관측 원격 측정 */}
+        {!loading && solvedData && activeMainTab === 'telemetry' && (
+          <section aria-label="천체좌표 및 WCS 관측 원격 측정">
+            <AstroTelemetryPanel
+              data={solvedData}
+              onSelectObject={(obj) => setSelectedTargetForSimbad(obj)}
+            />
+          </section>
         )}
       </main>
 

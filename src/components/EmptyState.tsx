@@ -163,15 +163,18 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
             <div className="w-14 h-14 rounded-2xl bg-slate-800 group-hover:bg-sky-500/10 flex items-center justify-center text-slate-400 group-hover:text-sky-400 transition-colors mx-auto mb-4">
               <FileImage className="w-7 h-7" />
             </div>
-            <h3 className="text-base font-bold text-white group-hover:text-sky-300 transition-colors">
-              분석할 천체 사진을 이곳에 드래그하거나 클릭하여 선택
+            <h3 className="text-lg font-bold text-white group-hover:text-sky-300 transition-colors">
+              새 사진 분석: 천체 사진을 이곳에 드래그하거나 클릭하세요
             </h3>
             <p className="text-xs text-slate-400 mt-1.5">
-              JPEG, PNG, WebP, TIFF, FITS 포맷 지원 (최대 150MB 직접 업로드 가능)
+              JPEG, PNG, WebP, TIFF, FITS 포맷 지원 (직접 업로드 및 Astrometry.net 정밀 플레이트 솔빙 분석)
             </p>
-            <span className="inline-block mt-4 text-xs font-semibold px-4 py-2 rounded-xl bg-slate-800 group-hover:bg-sky-600 text-slate-300 group-hover:text-white transition-all shadow-sm">
-              내 컴퓨터에서 사진 파일 찾아보기
-            </span>
+            <div className="mt-5 flex items-center justify-center">
+              <span className="inline-flex items-center space-x-2 text-sm font-bold px-5 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white shadow-lg shadow-sky-500/25 transition-all">
+                <Upload className="w-4 h-4" />
+                <span>새 사진 분석 파일 가져오기</span>
+              </span>
+            </div>
           </div>
         )}
 
