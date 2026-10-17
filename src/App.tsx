@@ -70,8 +70,12 @@ export default function App() {
   // Check API key & load remembered history
   useEffect(() => {
     fetch('/api/astrometry/status')
-      .then((r) => (r.ok ? r.json() : { hasApiKey: false }))
-      .then((d) => setHasApiKey(Boolean(d.hasApiKey)))
+      .then((r) => {
+        if (!r.ok) return { hasApiKey: false };
+        const ct = r.headers.get('content-type') || '';
+        return ct.includes('application/json') ? r.json() : { hasApiKey: false };
+      })
+      .then((d) => setHasApiKey(Boolean(d?.hasApiKey)))
       .catch(() => setHasApiKey(false));
 
     // Read local storage history
@@ -89,10 +93,12 @@ export default function App() {
     fetch('/api/astrometry/history')
       .then((r) => {
         if (!r.ok) throw new Error('Static environment or no server history');
+        const ct = r.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) throw new Error('Not JSON response');
         return r.json();
       })
       .then(async (data) => {
-        const serverHistory: AnalysisHistoryItem[] = data.history || [];
+        const serverHistory: AnalysisHistoryItem[] = data?.history || [];
         const map = new Map<string, AnalysisHistoryItem>();
 
         serverHistory.forEach((item) => map.set(String(item.jobId), item));
@@ -108,22 +114,27 @@ export default function App() {
         if (combined.length > 0) {
           loadJobData(combined[0].jobId, combined[0].imageUrl, false);
         } else {
-          // If local history is empty, auto-sync from user's Astrometry.net account
+          // If local history is empty, try auto-sync from user's Astrometry.net account
           try {
             const myJobsResp = await fetch('/api/astrometry/my-jobs');
             if (myJobsResp.ok) {
-              const myJobsData = await myJobsResp.json();
-              const myJobs = myJobsData.detailed || [];
-              const solvedJobs = myJobs.filter((j: any) => j.status === 'success' && j.jobId);
-              if (solvedJobs.length > 0) {
-                // Auto-load latest solved job from user's Astrometry.net account
-                loadJobData(solvedJobs[0].jobId, undefined, true);
-                return;
+              const ct = myJobsResp.headers.get('content-type') || '';
+              if (ct.includes('application/json')) {
+                const myJobsData = await myJobsResp.json();
+                const myJobs = myJobsData.detailed || [];
+                const solvedJobs = myJobs.filter((j: any) => j.status === 'success' && j.jobId);
+                if (solvedJobs.length > 0) {
+                  loadJobData(solvedJobs[0].jobId, undefined, true);
+                  return;
+                }
               }
             }
           } catch (e) {
             console.error('Failed to auto-sync my-jobs on mount:', e);
           }
+          // Default to sample showcase so page is immediately rich and visible
+          setSolvedData(SAMPLE_SOLVED_JOBS[0]);
+          setActiveJobId(SAMPLE_SOLVED_JOBS[0].jobId);
           setLoading(false);
         }
       })
@@ -132,6 +143,9 @@ export default function App() {
           setHistory(localHistory);
           loadJobData(localHistory[0].jobId, localHistory[0].imageUrl, false);
         } else {
+          // In static GitHub pages deployment without backend, show rich sample showcase immediately
+          setSolvedData(SAMPLE_SOLVED_JOBS[0]);
+          setActiveJobId(SAMPLE_SOLVED_JOBS[0].jobId);
           setLoading(false);
         }
       });
@@ -145,17 +159,20 @@ export default function App() {
     ).length;
     const dsosCount = solved.annotations.length - starsCount;
 
-    // Use reliable image URL linked to Job ID (do not save transient blob URLs)
-    const validImgUrl =
-      customImgUrl && !customImgUrl.startsWith('blob:')
+    // Use reliable image URLs linked to Job ID
+    const validImgUrl = `/api/astrometry/image-proxy/${solved.jobId}/annotated`;
+    const validRawImgUrl =
+      solved.rawImageUrl ||
+      (customImgUrl && !customImgUrl.startsWith('blob:')
         ? customImgUrl
-        : `/api/astrometry/image-proxy/${solved.jobId}/annotated`;
+        : `/api/astrometry/image-proxy/${solved.jobId}/original`);
 
     const newItem: AnalysisHistoryItem = {
       id: `job_${solved.jobId}`,
       jobId: solved.jobId,
       title: solved.title || `Job #${solved.jobId}`,
       imageUrl: validImgUrl,
+      rawImageUrl: validRawImgUrl,
       timestamp: Date.now(),
       raDeg: solved.calibration.ra,
       decDeg: solved.calibration.dec,
@@ -167,6 +184,7 @@ export default function App() {
       solvedData: {
         ...solved,
         imageUrl: validImgUrl,
+        rawImageUrl: validRawImgUrl,
       },
     };
 
@@ -198,7 +216,7 @@ export default function App() {
 
     // 1. First, check if full solvedData is already cached in history for this Job ID
     const existingHist = history.find((h) => String(h.jobId) === String(jobId));
-    if (existingHist?.solvedData) {
+    if (existingHist?.solvedData && String(existingHist.solvedData.jobId) === String(jobId)) {
       setSolvedData(existingHist.solvedData);
       setActiveJobId(jobId);
       setLoading(false);
@@ -244,16 +262,29 @@ export default function App() {
         annotations
       );
 
-      // Determine photo URL: canonical Astrometry image proxy for this Job ID
-      const resolvedImageUrl =
+      // Determine photo URLs: canonical Astrometry image proxies for this specific Job ID
+      const resolvedImageUrl = `/api/astrometry/image-proxy/${jobId}/annotated`;
+      const resolvedRawImageUrl =
         customImageUrl && !customImageUrl.startsWith('blob:')
           ? customImageUrl
-          : `/api/astrometry/image-proxy/${jobId}/annotated`;
+          : `/api/astrometry/image-proxy/${jobId}/original`;
+
+      const calW =
+        calibration?.width_arcsec && calibration?.pixscale && calibration.pixscale > 0
+          ? Math.round(calibration.width_arcsec / calibration.pixscale)
+          : 1920;
+      const calH =
+        calibration?.height_arcsec && calibration?.pixscale && calibration.pixscale > 0
+          ? Math.round(calibration.height_arcsec / calibration.pixscale)
+          : 1080;
 
       const solved: SolvedAstroData = {
         jobId,
         title: info.original_filename || `Astrometry Plate Solve #${jobId}`,
         imageUrl: resolvedImageUrl,
+        rawImageUrl: resolvedRawImageUrl,
+        imageWidth: calW,
+        imageHeight: calH,
         calibration,
         annotations,
         info,
@@ -265,7 +296,7 @@ export default function App() {
 
       // Automatically remember analyzed photo in history
       if (shouldSaveToHistory) {
-        saveToHistory(solved, resolvedImageUrl);
+        saveToHistory(solved, resolvedRawImageUrl);
       }
     } catch (err: any) {
       console.error('Failed to load job data:', err);
@@ -433,19 +464,10 @@ export default function App() {
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => setIsHistoryDrawerOpen(true)}
-                className="text-xs px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center space-x-1.5 transition-colors"
+                className="text-xs px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center space-x-1.5 transition-colors shadow-sm"
               >
                 <Clock className="w-3.5 h-3.5 text-sky-400" />
                 <span>분석 기록 ({history.length})</span>
-              </button>
-
-              <button
-                onClick={handleOpenNewPhoto}
-                title="새로운 사진 분석하기 (새 사진 파일 선택)"
-                className="text-xs px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-medium shadow-md shadow-sky-500/20 flex items-center space-x-1.5 transition-all active:scale-95"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>새 사진분석</span>
               </button>
             </div>
           </div>
@@ -459,7 +481,6 @@ export default function App() {
               <StarPhotoViewer
                 data={solvedData}
                 onSelectObject={(obj) => setSelectedTargetForSimbad(obj)}
-                onNewPhoto={handleOpenNewPhoto}
               />
             </section>
 
@@ -482,18 +503,6 @@ export default function App() {
             </section>
           </div>
         )}
-
-        {/* Hidden File Input for Direct '새 사진분석' Click */}
-        <input
-          ref={directFileInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/tiff,.fits,.fit"
-          className="hidden"
-          onClick={(e) => {
-            (e.target as HTMLInputElement).value = '';
-          }}
-          onChange={handleDirectFileSelected}
-        />
       </main>
 
       {/* Footer */}
@@ -557,7 +566,7 @@ export default function App() {
         onClose={() => setIsHistoryDrawerOpen(false)}
         history={history}
         activeJobId={activeJobId}
-        onSelectJob={(jobId, customImgUrl) => loadJobData(jobId, customImgUrl, false)}
+        onSelectJob={(jobId) => loadJobData(jobId, undefined, false)}
         onDeleteItem={handleDeleteHistoryItem}
         onClearAll={handleClearAllHistory}
         onSyncMyJobs={async () => {

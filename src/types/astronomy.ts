@@ -31,6 +31,7 @@ export interface SolvedAstroData {
   jobId: number | string;
   title?: string;
   imageUrl: string;
+  rawImageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
   calibration: AstrometryCalibration;
@@ -84,6 +85,7 @@ export interface AnalysisHistoryItem {
   jobId: number | string;
   title: string;
   imageUrl: string;
+  rawImageUrl?: string;
   timestamp: number;
   raDeg: number;
   decDeg: number;

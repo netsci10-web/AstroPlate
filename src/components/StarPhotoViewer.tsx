@@ -101,12 +101,11 @@ export const OVERLAY_COLORS: Record<OverlayColor, OverlayColorConfig> = {
 interface StarPhotoViewerProps {
   data: SolvedAstroData;
   onSelectObject: (objectName: string) => void;
-  onNewPhoto?: () => void;
 }
 
 type ViewMode = 'vector' | 'annotated' | 'red_green' | 'raw';
 
-export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelectObject, onNewPhoto }) => {
+export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelectObject }) => {
   const [scale, setScale] = useState(1);
   const [translate, setTranslate] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -151,9 +150,31 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
   const [naturalSize, setNaturalSize] = useState({ width: 1920, height: 1080 });
   const [imgLoadError, setImgLoadError] = useState(false);
 
-  // Reset imgLoadError when job changes
+  const cal = data.calibration;
+  const calWidth =
+    cal?.width_arcsec && cal?.pixscale && cal.pixscale > 0
+      ? Math.round(cal.width_arcsec / cal.pixscale)
+      : data.imageWidth || naturalSize.width || 1920;
+  const calHeight =
+    cal?.height_arcsec && cal?.pixscale && cal.pixscale > 0
+      ? Math.round(cal.height_arcsec / cal.pixscale)
+      : data.imageHeight || naturalSize.height || 1080;
+  const orientation = cal?.orientation || 0;
+
+  // Reset imgLoadError, zoom/pan and synchronize coordinates when job changes
   useEffect(() => {
     setImgLoadError(false);
+    setScale(1);
+    setTranslate({ x: 0, y: 0 });
+    setIsDragging(false);
+    if (cal?.width_arcsec && cal?.height_arcsec && cal?.pixscale && cal.pixscale > 0) {
+      setNaturalSize({
+        width: Math.round(cal.width_arcsec / cal.pixscale),
+        height: Math.round(cal.height_arcsec / cal.pixscale),
+      });
+    } else if (data.imageWidth && data.imageHeight) {
+      setNaturalSize({ width: data.imageWidth, height: data.imageHeight });
+    }
   }, [data.jobId]);
 
   // On image load, get natural dimensions
@@ -171,16 +192,9 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
     setTranslate({ x: 0, y: 0 });
   };
 
-  // Zoom handlers
+  // Zoom handlers (+ / - buttons only, no wheel)
   const handleZoom = (delta: number) => {
     setScale((prev) => Math.max(0.4, Math.min(6, prev + delta)));
-  };
-
-  // Mouse wheel zoom
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const zoomFactor = e.deltaY < 0 ? 1.15 : 0.88;
-    setScale((prev) => Math.max(0.4, Math.min(6, prev * zoomFactor)));
   };
 
   // Drag pan handlers
@@ -200,8 +214,8 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
 
     if (containerRef.current && imgRef.current) {
       const rect = imgRef.current.getBoundingClientRect();
-      const relX = ((e.clientX - rect.left) / rect.width) * naturalSize.width;
-      const relY = ((e.clientY - rect.top) / rect.height) * naturalSize.height;
+      const relX = ((e.clientX - rect.left) / rect.width) * calWidth;
+      const relY = ((e.clientY - rect.top) / rect.height) * calHeight;
       setMousePos({ x: Math.round(relX), y: Math.round(relY) });
     }
   };
@@ -265,19 +279,27 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
   // Current image source based on viewMode
   const getImageSource = () => {
     if (imgLoadError) {
-      return `/api/astrometry/sky-image/${data.jobId}`;
+      if (viewMode === 'raw') {
+        return data.rawImageUrl || `https://nova.astrometry.net/image/${data.jobId}`;
+      }
+      return `https://nova.astrometry.net/annotated_display/${data.jobId}`;
+    }
+    if (viewMode === 'raw') {
+      // Pure original unannotated photo without Astrometry labels
+      return data.rawImageUrl || `/api/astrometry/image-proxy/${data.jobId}/original`;
     }
     if (viewMode === 'annotated') {
+      // Official Astrometry labels overlay rendering
       return `/api/astrometry/image-proxy/${data.jobId}/annotated`;
     }
     if (viewMode === 'red_green') {
+      // Catalog star detection match rendering (red/green)
       return `/api/astrometry/image-proxy/${data.jobId}/red_green`;
     }
-    return data.imageUrl || `/api/astrometry/sky-image/${data.jobId}`;
+    // 'vector' mode (별자리 정밀 오버레이):
+    // Clean unannotated photo in background, so our custom overlay shines cleanly
+    return data.rawImageUrl || `/api/astrometry/image-proxy/${data.jobId}/original`;
   };
-
-  const cal = data.calibration;
-  const orientation = cal?.orientation || 0;
 
   return (
     <div
@@ -330,36 +352,24 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                 ? 'bg-sky-500 text-white shadow-sm'
                 : 'text-slate-300 hover:text-white hover:bg-slate-800'
             }`}
+            title="Astrometry 라벨 없는 순수 원본 사진"
           >
             원본 사진
           </button>
         </div>
 
-        {/* Right: Quick Action Controls */}
+        {/* Right: Quick Action Controls (+/- Zoom only, Reset, Fullscreen) */}
         <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl p-1 flex items-center space-x-1 shadow-lg pointer-events-auto">
-          {onNewPhoto && (
-            <>
-              <button
-                onClick={onNewPhoto}
-                title="새로운 천체 사진 분석하기 (새 사진 파일 선택)"
-                className="text-xs px-2.5 py-1 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-medium shadow-sm flex items-center space-x-1 transition-all mr-0.5 active:scale-95"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                <span>새 사진분석</span>
-              </button>
-              <div className="w-px h-4 bg-slate-700 mx-0.5" />
-            </>
-          )}
           <button
             onClick={() => handleZoom(0.25)}
-            title="확대 (Zoom In)"
+            title="확대 (Zoom In) - 버튼 클릭으로만 조절"
             className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
           >
             <ZoomIn className="w-4 h-4" />
           </button>
           <button
             onClick={() => handleZoom(-0.25)}
-            title="축소 (Zoom Out)"
+            title="축소 (Zoom Out) - 버튼 클릭으로만 조절"
             className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
           >
             <ZoomOut className="w-4 h-4" />
@@ -382,14 +392,13 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
         </div>
       </div>
 
-      {/* Main Interactive Canvas Area */}
+      {/* Main Interactive Canvas Area (Zoom via +/- buttons only, no wheel) */}
       <div
         className="relative flex-1 w-full h-full overflow-hidden cursor-grab active:cursor-grabbing select-none"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
       >
         <div
           style={{
@@ -402,6 +411,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
           {/* Base Photograph */}
           <div className="relative inline-block">
             <img
+              key={`${data.jobId}_${viewMode}`}
               ref={imgRef}
               src={getImageSource()}
               alt="Astrometry Astronomical Target"
@@ -419,7 +429,8 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
             {viewMode === 'vector' && (
               <svg
                 className="absolute inset-0 w-full h-full pointer-events-auto"
-                viewBox={`0 0 ${naturalSize.width} ${naturalSize.height}`}
+                viewBox={`0 0 ${calWidth} ${calHeight}`}
+                preserveAspectRatio="none"
                 style={{ opacity: overlayOpacity }}
               >
                 <defs>
@@ -463,12 +474,12 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                       </g>
                     ))}
 
-                    {/* Constellation Name Badges at center of photo / matched constellation */}
+                    {/* Constellation Name Badges at top-left of photo */}
                     {data.matchedConstellations.map((c, i) => (
                       <g key={`cname-${c.code}-${i}`}>
                         <rect
-                          x={naturalSize.width * 0.05}
-                          y={naturalSize.height * 0.06 + i * 36}
+                          x={calWidth * 0.04}
+                          y={calHeight * 0.05 + i * 36}
                           width={240}
                           height={28}
                           rx={6}
@@ -477,8 +488,8 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                           strokeWidth="1.2"
                         />
                         <text
-                          x={naturalSize.width * 0.05 + 12}
-                          y={naturalSize.height * 0.06 + i * 36 + 18}
+                          x={calWidth * 0.04 + 12}
+                          y={calHeight * 0.05 + i * 36 + 18}
                           fill={currentColorConfig.badgeText}
                           fontSize="13"
                           fontWeight="bold"
@@ -623,7 +634,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                 {showCenterFov && cal && (
                   <g className="center-fov">
                     {/* Image center crosshair */}
-                    <g transform={`translate(${naturalSize.width / 2}, ${naturalSize.height / 2})`}>
+                    <g transform={`translate(${calWidth / 2}, ${calHeight / 2})`}>
                       <circle r="16" fill="none" stroke="#e0e7ff" strokeWidth="1.2" strokeDasharray="3 3" />
                       <line x1="-24" y1="0" x2="-6" y2="0" stroke="#e0e7ff" strokeWidth="1.5" />
                       <line x1="6" y1="0" x2="24" y2="0" stroke="#e0e7ff" strokeWidth="1.5" />
@@ -636,7 +647,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
 
                     {/* Celestial North / East Compass Reticle */}
                     <g
-                      transform={`translate(${naturalSize.width - 70}, 70) rotate(${orientation})`}
+                      transform={`translate(${calWidth - 70}, 70) rotate(${orientation})`}
                       className="cursor-default"
                     >
                       <circle r="36" fill="#0f172acc" stroke="#6366f1" strokeWidth="1.5" />

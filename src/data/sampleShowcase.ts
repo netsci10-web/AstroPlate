@@ -5,6 +5,9 @@ export const SAMPLE_SOLVED_JOBS: SolvedAstroData[] = [
     jobId: 17097621,
     title: '세페우스자리 석류석 별 (μ Cep / The Garnet Star)',
     imageUrl: '/api/astrometry/image-proxy/17097621/annotated',
+    rawImageUrl: '/api/astrometry/image-proxy/17097621/original',
+    imageWidth: 1920,
+    imageHeight: 1080,
     calibration: {
       ra: 326.118,
       dec: 58.895,
@@ -49,6 +52,9 @@ export const SAMPLE_SOLVED_JOBS: SolvedAstroData[] = [
     jobId: 17100843,
     title: '백조자리 알비레오 이중성 (Albireo / β Cyg)',
     imageUrl: '/api/astrometry/image-proxy/17100843/annotated',
+    rawImageUrl: '/api/astrometry/image-proxy/17100843/original',
+    imageWidth: 1920,
+    imageHeight: 1080,
     calibration: {
       ra: 292.699,
       dec: 27.976,

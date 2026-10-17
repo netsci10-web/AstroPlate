@@ -18,7 +18,7 @@ interface AnalysisHistoryDrawerProps {
   onClose: () => void;
   history: AnalysisHistoryItem[];
   activeJobId: number | string | null;
-  onSelectJob: (jobId: number | string, customImageUrl?: string) => void;
+  onSelectJob: (jobId: number | string) => void;
   onDeleteItem: (id: string) => void;
   onClearAll: () => void;
   onSyncMyJobs?: () => void;
@@ -82,22 +82,28 @@ export const AnalysisHistoryDrawer: React.FC<AnalysisHistoryDrawerProps> = ({
               return (
                 <div
                   key={item.id}
-                  className={`p-3 rounded-xl border transition-all ${
+                  onClick={() => {
+                    onSelectJob(item.jobId);
+                    onClose();
+                  }}
+                  className={`p-3 rounded-xl border transition-all cursor-pointer ${
                     isActive
                       ? 'bg-sky-950/40 border-sky-500/50 shadow-md ring-1 ring-sky-500/30'
-                      : 'bg-slate-800/40 border-slate-800 hover:border-slate-700 hover:bg-slate-800/70'
+                      : 'bg-slate-800/40 border-slate-800 hover:border-sky-600/50 hover:bg-slate-800/70'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    {/* Thumbnail preview */}
+                    {/* Thumbnail preview - always tied to Job ID */}
                     <div className="w-16 h-16 rounded-lg bg-slate-950 overflow-hidden shrink-0 border border-slate-700/60 relative">
                       <img
-                        src={item.imageUrl}
+                        src={item.imageUrl || `/api/astrometry/image-proxy/${item.jobId}/annotated`}
                         alt={item.title}
                         className="w-full h-full object-cover"
                         onError={(e) => {
-                          // Fallback to proxy
-                          (e.target as HTMLElement).style.display = 'none';
+                          const target = e.currentTarget as HTMLImageElement;
+                          if (!target.src.includes('nova.astrometry.net')) {
+                            target.src = `https://nova.astrometry.net/annotated_display/${item.jobId}`;
+                          }
                         }}
                       />
                       <span className="absolute bottom-0 right-0 bg-slate-950/80 text-[9px] px-1 font-mono text-slate-300">
@@ -139,7 +145,10 @@ export const AnalysisHistoryDrawer: React.FC<AnalysisHistoryDrawerProps> = ({
                   {/* Actions */}
                   <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between">
                     <button
-                      onClick={() => onDeleteItem(item.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteItem(item.id);
+                      }}
                       className="text-slate-400 hover:text-rose-400 p-1 rounded transition-colors text-xs flex items-center space-x-1"
                       title="기록에서 삭제"
                     >
@@ -149,7 +158,7 @@ export const AnalysisHistoryDrawer: React.FC<AnalysisHistoryDrawerProps> = ({
 
                     <button
                       onClick={() => {
-                        onSelectJob(item.jobId, item.imageUrl);
+                        onSelectJob(item.jobId);
                         onClose();
                       }}
                       className={`text-xs px-3 py-1.5 rounded-lg font-medium flex items-center space-x-1 transition-all ${

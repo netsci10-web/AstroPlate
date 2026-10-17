@@ -130,6 +130,7 @@ interface SavedAnalysisItem {
   jobId: number | string;
   title: string;
   imageUrl: string;
+  rawImageUrl?: string;
   timestamp: number;
   raDeg: number;
   decDeg: number;
@@ -138,9 +139,13 @@ interface SavedAnalysisItem {
   primaryConstellationCode: string;
   starsCount: number;
   dsosCount: number;
+  solvedData?: any;
 }
 
 let userHistory: SavedAnalysisItem[] = [];
+
+// In-memory cache for original uploaded photo files (keyed by subid and jobid)
+const originalPhotoCache = new Map<string, { buffer: Buffer; mimetype: string }>();
 
 // Analysis history endpoints
 app.get('/api/astrometry/history', (_req: Request, res: Response) => {
@@ -294,6 +299,12 @@ app.post('/api/astrometry/upload-file', upload.single('file'), async (req: Reque
     }
 
     console.log(`[Astrometry Upload] Success. SubID: ${uploadData.subid}, file: ${file.originalname}`);
+    if (uploadData.subid) {
+      originalPhotoCache.set(String(uploadData.subid), {
+        buffer: Buffer.from(file.buffer),
+        mimetype: file.mimetype || 'image/jpeg',
+      });
+    }
     return res.json({ status: 'success', subid: uploadData.subid });
   } catch (error: any) {
     console.error('File upload error:', error);
@@ -397,6 +408,14 @@ app.get('/api/astrometry/submissions/:subid', async (req: Request, res: Response
       return res.status(resp.status).json({ error: `Submission check failed: ${resp.statusText}` });
     }
     const data = await resp.json();
+    if (data && Array.isArray(data.jobs)) {
+      const cached = originalPhotoCache.get(String(subid));
+      if (cached) {
+        for (const jId of data.jobs) {
+          if (jId) originalPhotoCache.set(String(jId), cached);
+        }
+      }
+    }
     res.json(data);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -590,6 +609,7 @@ app.get('/api/astrometry/image-proxy/:jobId/:type', async (req: Request, res: Re
   try {
     const { jobId, type } = req.params;
 
+    // Dedicated optical survey mode
     if (type === 'survey') {
       const surveyBuf = await getCdsSkyImage(jobId);
       if (surveyBuf) {
@@ -597,81 +617,96 @@ app.get('/api/astrometry/image-proxy/:jobId/:type', async (req: Request, res: Re
         res.setHeader('Cache-Control', 'public, max-age=86400');
         return res.send(surveyBuf);
       }
+      return res.status(404).send('Survey image unavailable');
     }
 
-    // Determine target URL based on Astrometry.net Django urlpatterns
-    let targetUrl = '';
-    if (type === 'annotated') {
-      targetUrl = `https://nova.astrometry.net/annotated_display/${jobId}`;
-    } else if (type === 'annotated_full') {
-      targetUrl = `https://nova.astrometry.net/annotated_full/${jobId}`;
-    } else if (type === 'grid') {
-      targetUrl = `https://nova.astrometry.net/grid_display/${jobId}`;
+    // 1. If original/raw image requested, first check in-memory cache of user's uploaded photo
+    if (type === 'original' || type === 'raw' || type === 'image') {
+      const cached = originalPhotoCache.get(String(jobId));
+      if (cached) {
+        res.setHeader('Content-Type', cached.mimetype);
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.send(cached.buffer);
+      }
+    }
+
+    // 2. Candidate upstream Astrometry URLs in order of preference (full resolution first)
+    let candidateUrls: string[] = [];
+    if (type === 'annotated' || type === 'annotated_full') {
+      candidateUrls = [
+        `https://nova.astrometry.net/annotated_full/${jobId}`,
+        `https://nova.astrometry.net/annotated_display/${jobId}`,
+      ];
     } else if (type === 'red_green') {
-      targetUrl = `https://nova.astrometry.net/red_green_image_display/${jobId}`;
+      candidateUrls = [
+        `https://nova.astrometry.net/red_green_image_full/${jobId}`,
+        `https://nova.astrometry.net/red_green_image_display/${jobId}`,
+      ];
     } else if (type === 'extraction') {
-      targetUrl = `https://nova.astrometry.net/extraction_image_display/${jobId}`;
-    } else if (type === 'sky_plot0') {
-      targetUrl = `https://nova.astrometry.net/sky_plot/zoom0/${jobId}`;
-    } else if (type === 'sky_plot1') {
-      targetUrl = `https://nova.astrometry.net/sky_plot/zoom1/${jobId}`;
-    } else if (type === 'sdss') {
-      targetUrl = `https://nova.astrometry.net/sdss_image_display/${jobId}`;
-    } else if (type === 'image' || type === 'original') {
-      targetUrl = `https://nova.astrometry.net/image/${jobId}`;
-    } else if (type === 'thumbnail') {
-      targetUrl = `https://nova.astrometry.net/thumbnail_of_image/${jobId}`;
+      candidateUrls = [
+        `https://nova.astrometry.net/extraction_image_full/${jobId}`,
+        `https://nova.astrometry.net/extraction_image_display/${jobId}`,
+      ];
+    } else if (type === 'grid') {
+      candidateUrls = [
+        `https://nova.astrometry.net/grid_full/${jobId}`,
+        `https://nova.astrometry.net/grid_display/${jobId}`,
+      ];
+    } else if (type === 'original' || type === 'raw' || type === 'image') {
+      // For jobs without cached local original, fetch clean unannotated photo from Astrometry first
+      candidateUrls = [
+        `https://nova.astrometry.net/image/${jobId}`,
+        `https://nova.astrometry.net/annotated_full/${jobId}`,
+        `https://nova.astrometry.net/annotated_display/${jobId}`,
+      ];
     } else {
-      return res.status(400).send('Unknown image type');
+      candidateUrls = [
+        `https://nova.astrometry.net/annotated_full/${jobId}`,
+        `https://nova.astrometry.net/annotated_display/${jobId}`,
+      ];
     }
 
-    // Attempt retrieval with human session cookie to bypass ask_human bot barrier
-    try {
-      let cookie = await getHumanSessionCookie();
-      let upstream = await fetch(targetUrl, {
-        headers: {
-          'Cookie': cookie,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-        },
-        redirect: 'manual',
-      });
-
-      // If ask_human redirect occurred, refresh human session and retry once
-      if (upstream.status === 302 || upstream.headers.get('content-type')?.includes('text/html')) {
-        cookie = await getHumanSessionCookie(true);
-        upstream = await fetch(targetUrl, {
+    // 3. Attempt retrieval with human session cookie to bypass ask_human bot barrier
+    let cookie = await getHumanSessionCookie();
+    for (const targetUrl of candidateUrls) {
+      try {
+        let upstream = await fetch(targetUrl, {
           headers: {
             'Cookie': cookie,
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
           },
           redirect: 'manual',
         });
-      }
 
-      const contentType = upstream.headers.get('content-type') || '';
+        // If ask_human redirect occurred, refresh human session and retry once
+        if (upstream.status === 302 || upstream.headers.get('content-type')?.includes('text/html')) {
+          cookie = await getHumanSessionCookie(true);
+          upstream = await fetch(targetUrl, {
+            headers: {
+              'Cookie': cookie,
+              'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+            },
+            redirect: 'manual',
+          });
+        }
 
-      // If upstream returned a real image file, proxy it
-      if (upstream.ok && contentType.startsWith('image/')) {
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Cache-Control', 'public, max-age=86400');
-        const arrayBuf = await upstream.arrayBuffer();
-        return res.send(Buffer.from(arrayBuf));
+        const contentType = upstream.headers.get('content-type') || '';
+        if (upstream.ok && contentType.startsWith('image/')) {
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          const arrayBuf = await upstream.arrayBuffer();
+          return res.send(Buffer.from(arrayBuf));
+        }
+      } catch (e) {
+        console.warn(`Astrometry proxy error for ${targetUrl}:`, e);
       }
-    } catch (e) {
-      console.warn('Astrometry proxy error:', e);
     }
 
-    // Fallback: If Astrometry image is unavailable, serve the CDS color survey image
-    const fallbackBuf = await getCdsSkyImage(jobId);
-    if (fallbackBuf) {
-      res.setHeader('Content-Type', 'image/jpeg');
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      return res.send(fallbackBuf);
-    }
-
-    res.status(404).send('Image could not be retrieved');
+    res.status(404).send('Astronomical plate image could not be retrieved');
   } catch (error: any) {
     res.status(500).send(error.message);
   }
