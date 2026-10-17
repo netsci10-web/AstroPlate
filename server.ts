@@ -22,11 +22,21 @@ const upload = multer({
   storage: multer.memoryStorage(),
 });
 
+// Helper for Astrometry.net API key retrieval (with ASTROMETRY_API_KE fallback)
+function getAstrometryApiKey(explicitKey?: string): string {
+  return (
+    explicitKey ||
+    process.env.ASTROMETRY_API_KEY ||
+    process.env.ASTROMETRY_API_KE ||
+    ''
+  ).trim();
+}
+
 // Helper for Astrometry.net session management
 let cachedSession: { session: string; expiresAt: number } | null = null;
 
 async function getAstrometrySession(apiKey?: string): Promise<string> {
-  const key = apiKey || process.env.ASTROMETRY_API_KEY;
+  const key = getAstrometryApiKey(apiKey);
   if (!key || key.trim() === '') {
     throw new Error('ASTROMETRY_API_KEY is not configured in environment variables.');
   }
@@ -117,7 +127,8 @@ async function getHumanSessionCookie(forceRefresh = false): Promise<string> {
 
 // Status check endpoint
 app.get('/api/astrometry/status', (_req: Request, res: Response) => {
-  const hasKey = Boolean(process.env.ASTROMETRY_API_KEY && process.env.ASTROMETRY_API_KEY.trim() !== '');
+  const key = getAstrometryApiKey();
+  const hasKey = Boolean(key && key !== '');
   res.json({
     hasApiKey: hasKey,
     service: 'nova.astrometry.net',

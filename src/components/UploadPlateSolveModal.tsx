@@ -313,6 +313,16 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
           body: formData,
         });
 
+        const contentType = uploadResp.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          if (uploadResp.status === 404 && window.location.hostname.endsWith('github.io')) {
+            throw new Error(
+              'GitHub Pages는 정적 호스팅(HTML/JS) 전용이므로 백엔드 업로드 API를 실행할 수 없습니다. 상단 메뉴바의 [Job ID 직접 입력] 또는 [샘플 성도]를 이용하시거나, 풀스택 백엔드가 작동하는 AI Studio 배포 URL을 이용해주세요.'
+            );
+          }
+          throw new Error(`서버 응답 오류 (HTTP ${uploadResp.status})`);
+        }
+
         const uploadData = await uploadResp.json();
         if (!uploadResp.ok || uploadData.error) {
           throw new Error(uploadData.error || uploadData.message || '파일 업로드 실패');
@@ -337,6 +347,16 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
+
+        const contentType = solveResp.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          if (solveResp.status === 404 && window.location.hostname.endsWith('github.io')) {
+            throw new Error(
+              'GitHub Pages는 정적 호스팅 전용이므로 백엔드 분석 API를 지원하지 않습니다. [Job ID 직접 입력] 또는 AI Studio 배포 URL을 이용해주세요.'
+            );
+          }
+          throw new Error(`서버 응답 오류 (HTTP ${solveResp.status})`);
+        }
 
         const solveData = await solveResp.json();
         if (!solveResp.ok || solveData.error) {
