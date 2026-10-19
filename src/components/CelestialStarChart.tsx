@@ -22,6 +22,7 @@ import {
 import { SolvedAstroData } from '../types/astronomy';
 import { degToRA_HMS, degToDec_DMS, computeFieldCorners } from '../utils/coordinateMath';
 import { IAU_CONSTELLATIONS } from '../utils/constellations';
+import { AladinSurveyModal } from './AladinSurveyModal';
 import {
   BRIGHT_STARS,
   CONSTELLATION_FIGURES,
@@ -61,7 +62,7 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
 
   // Display & Visibility Controls
   const [lineStyle, setLineStyle] = useState<LineBrightness>('glow');
-  const [lineWidth, setLineWidth] = useState<'thin' | 'normal' | 'thick'>('thick');
+  const [lineWidth, setLineWidth] = useState<'thin' | 'normal' | 'thick'>('thin');
   const [showConstellationNames, setShowConstellationNames] = useState(true);
   const [constellationFilter, setConstellationFilter] = useState<ConstellationFilter>('all');
   const [showStarNames, setShowStarNames] = useState(true);
@@ -249,10 +250,13 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
   // SVG points string for photo FOV polygon
   const fovPolygonPoints = fovCorners.map((c) => `${raToX(c.ra)},${decToY(c.dec)}`).join(' ');
 
-  // Direct external URL to CDS Aladin Lite
-  const aladinUrl = `https://aladin.cds.unistra.fr/AladinLite/?target=${encodeURIComponent(
-    `${degToRA_HMS(centerRa)} ${degToDec_DMS(centerDec)}`
-  )}&fov=${(cal?.radius ? cal.radius * 2 : 1).toFixed(2)}&survey=P%2FDSS2%2Fcolor`;
+  const [isAladinOpen, setIsAladinOpen] = useState(false);
+
+  // Direct external URL to CDS Aladin Lite with explicit ra & dec parameters for exact celestial targeting
+  const aladinFov = Math.max(0.1, Math.min(60, cal?.radius ? cal.radius * 2 : 1.5)).toFixed(2);
+  const aladinUrl = `https://aladin.cds.unistra.fr/AladinLite/?ra=${centerRa.toFixed(
+    5
+  )}&dec=${centerDec.toFixed(5)}&fov=${aladinFov}&survey=P%2FDSS2%2Fcolor`;
 
   // Line stroke width based on setting
   const strokeWidthPx = lineWidth === 'thick' ? 2.6 : lineWidth === 'normal' ? 1.8 : 1.2;
@@ -498,7 +502,7 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
                   <label className="text-slate-300 font-medium block">별자리 선 굵기</label>
                   <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800">
                     {[
-                      { id: 'thin', label: '보통 (1.2px)' },
+                      { id: 'thin', label: '보통 (기본 1.2px)' },
                       { id: 'normal', label: '선명 (1.8px)' },
                       { id: 'thick', label: '굵게 (2.6px)' },
                     ].map((opt) => (
@@ -632,17 +636,17 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
             {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
           </button>
 
-          {/* External Survey Link */}
-          <a
-            href={aladinUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="CDS Aladin Lite 실시간 위성/망원경 서베이 열기"
-            className="text-xs px-3 py-1.5 rounded-xl bg-indigo-950/70 hover:bg-indigo-900 text-indigo-300 border border-indigo-800 flex items-center space-x-1.5 transition-colors"
+          {/* External Survey / Aladin Modal Button */}
+          <button
+            type="button"
+            onClick={() => setIsAladinOpen(true)}
+            title="CDS Aladin Lite 실시간 위성/망원경 서베이 열기 (정밀 조준)"
+            className="text-xs px-3 py-1.5 rounded-xl bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 hover:text-white border border-indigo-800 flex items-center space-x-1.5 transition-colors cursor-pointer shadow-sm"
           >
+            <Compass className="w-3.5 h-3.5 text-indigo-400" />
             <span>Aladin 서베이</span>
-            <ExternalLink className="w-3 h-3" />
-          </a>
+            <ExternalLink className="w-3 h-3 text-indigo-400" />
+          </button>
         </div>
       </div>
 
@@ -1223,6 +1227,13 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
           );
         })}
       </div>
+
+      {/* CDS Aladin Lite Real-time Survey Inspector Modal */}
+      <AladinSurveyModal
+        isOpen={isAladinOpen}
+        onClose={() => setIsAladinOpen(false)}
+        data={data}
+      />
     </div>
   );
 };

@@ -108,3 +108,42 @@ export function computeFieldCorners(
     return { ra: cornerRa, dec: cornerDec };
   });
 }
+
+// Convert 2D image pixel coordinates (X, Y) to celestial coordinates (RA, Dec in degrees)
+export function pixelToSkyCoords(
+  pixelX: number,
+  pixelY: number,
+  imageWidth: number,
+  imageHeight: number,
+  centerRaDeg: number,
+  centerDecDeg: number,
+  pixscaleArcsec: number,
+  orientationDeg: number,
+  parity: number = 1.0
+): { ra: number; dec: number } {
+  const deg2rad = Math.PI / 180;
+  const rotRad = orientationDeg * deg2rad;
+
+  // Tangent plane displacement from center in degrees
+  const dxDeg = ((pixelX - imageWidth / 2) * pixscaleArcsec) / 3600;
+  const dyDeg = -((pixelY - imageHeight / 2) * pixscaleArcsec) / 3600; // Inverted image Y
+
+  const localX = dxDeg * parity;
+  const localY = dyDeg;
+
+  // Rotate by orientation angle (East of North)
+  const rotX = localX * Math.cos(rotRad) - localY * Math.sin(rotRad);
+  const rotY = localX * Math.sin(rotRad) + localY * Math.cos(rotRad);
+
+  const cDecRad = centerDecDeg * deg2rad;
+  const cosCDec = Math.cos(cDecRad);
+
+  const dDec = rotY;
+  const dRa = Math.abs(cosCDec) > 0.0001 ? rotX / cosCDec : rotX;
+
+  let ra = (centerRaDeg + dRa + 360) % 360;
+  let dec = Math.max(-90, Math.min(90, centerDecDeg + dDec));
+
+  return { ra, dec };
+}
+

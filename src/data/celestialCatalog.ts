@@ -52,9 +52,13 @@ export const BRIGHT_STARS: CatalogStar[] = [
   { id: 'zet_cyg', nameKo: '제타 시그니', nameEn: 'Zeta Cygni', bayer: 'ζ Cyg', constellation: 'Cyg', raDeg: 318.42, decDeg: 30.23, mag: 3.21, color: '#fef08a' },
 
   // Lyra
-  { id: 'alp_lyr', nameKo: '베가 (직녀성)', nameEn: 'Vega', bayer: 'α Lyr', constellation: 'Lyr', raDeg: 279.23, decDeg: 38.78, mag: 0.03, color: '#e0f2fe' },
-  { id: 'bet_lyr', nameKo: '셰리아크', nameEn: 'Sheliak', bayer: 'β Lyr', constellation: 'Lyr', raDeg: 282.52, decDeg: 33.36, mag: 3.52, color: '#bae6fd' },
-  { id: 'gam_lyr', nameKo: '술라파트', nameEn: 'Sulafat', bayer: 'γ Lyr', constellation: 'Lyr', raDeg: 284.74, decDeg: 32.69, mag: 3.25, color: '#bae6fd' },
+  { id: 'alp_lyr', nameKo: '베가 (직녀성)', nameEn: 'Vega', bayer: 'α Lyr', constellation: 'Lyr', raDeg: 279.2347, decDeg: 38.7837, mag: 0.03, color: '#e0f2fe' },
+  { id: 'eps1_lyr', nameKo: '더블더블 ε¹ Lyr (4 Lyr)', nameEn: 'Epsilon1 Lyrae (Double Double)', bayer: 'ε¹ Lyr', constellation: 'Lyr', raDeg: 281.0848, decDeg: 39.6701, mag: 4.67, color: '#e0f2fe' },
+  { id: 'eps2_lyr', nameKo: '더블더블 ε² Lyr (5 Lyr)', nameEn: 'Epsilon2 Lyrae (Double Double)', bayer: 'ε² Lyr', constellation: 'Lyr', raDeg: 281.0952, decDeg: 39.6127, mag: 4.59, color: '#e0f2fe' },
+  { id: 'zet_lyr', nameKo: '제타 리라', nameEn: 'Zeta1 Lyrae', bayer: 'ζ Lyr', constellation: 'Lyr', raDeg: 281.1931, decDeg: 37.6051, mag: 4.36, color: '#f8fafc' },
+  { id: 'del2_lyr', nameKo: '델타2 리라', nameEn: 'Delta2 Lyrae', bayer: 'δ Lyr', constellation: 'Lyr', raDeg: 283.6260, decDeg: 36.8986, mag: 4.22, color: '#fb923c' },
+  { id: 'bet_lyr', nameKo: '셰리아크', nameEn: 'Sheliak', bayer: 'β Lyr', constellation: 'Lyr', raDeg: 282.5200, decDeg: 33.3627, mag: 3.52, color: '#bae6fd' },
+  { id: 'gam_lyr', nameKo: '술라파트', nameEn: 'Sulafat', bayer: 'γ Lyr', constellation: 'Lyr', raDeg: 284.7359, decDeg: 32.6896, mag: 3.25, color: '#bae6fd' },
 
   // Aquila
   { id: 'alp_aql', nameKo: '알타이르 (견우성)', nameEn: 'Altair', bayer: 'α Aql', constellation: 'Aql', raDeg: 297.70, decDeg: 8.87, mag: 0.77, color: '#ffffff' },
@@ -202,7 +206,7 @@ export const CONSTELLATION_FIGURES: ConstellationFigure[] = [
     ],
   },
 
-  // 4. Lyra - 거문고자리 (Parallelogram + Vega)
+  // 4. Lyra - 거문고자리 (Parallelogram + Vega & Double-Double Triangle)
   {
     code: 'Lyr',
     nameKo: '거문고자리',
@@ -211,11 +215,14 @@ export const CONSTELLATION_FIGURES: ConstellationFigure[] = [
     centerRaDeg: 282.0,
     centerDecDeg: 36.7,
     lines: [
-      [279.23, 38.78, 281.20, 37.60], // Vega - Zeta
-      [281.20, 37.60, 283.66, 36.90], // Zeta - Delta2
-      [283.66, 36.90, 284.74, 32.69], // Delta2 - Sulafat
-      [284.74, 32.69, 282.52, 33.36], // Sulafat - Sheliak
-      [282.52, 33.36, 281.20, 37.60], // Sheliak - Zeta
+      [279.2347, 38.7837, 281.0848, 39.6701], // Vega - Epsilon1 Lyr (Double Double)
+      [281.0848, 39.6701, 281.0952, 39.6127], // Epsilon1 Lyr - Epsilon2 Lyr (Double Double pair)
+      [281.0952, 39.6127, 281.1931, 37.6051], // Epsilon2 Lyr - Zeta Lyr
+      [279.2347, 38.7837, 281.1931, 37.6051], // Vega - Zeta Lyr
+      [281.1931, 37.6051, 283.6260, 36.8986], // Zeta - Delta2 Lyr
+      [283.6260, 36.8986, 284.7359, 32.6896], // Delta2 - Sulafat
+      [284.7359, 32.6896, 282.5200, 33.3627], // Sulafat - Sheliak
+      [282.5200, 33.3627, 281.1931, 37.6051], // Sheliak - Zeta Lyr
     ],
   },
 

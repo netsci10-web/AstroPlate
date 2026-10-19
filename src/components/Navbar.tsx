@@ -4,18 +4,18 @@ import { Telescope, Clock, Database, Upload, Compass, HelpCircle } from 'lucide-
 interface NavbarProps {
   onOpenUpload: () => void;
   onOpenJobInput: () => void;
-  onOpenHistory: () => void;
+  onOpenAccountJobs: () => void;
   onReset?: () => void;
-  historyCount: number;
+  accountJobsCount: number;
   hasApiKey: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   onOpenUpload,
   onOpenJobInput,
-  onOpenHistory,
+  onOpenAccountJobs,
   onReset,
-  historyCount,
+  accountJobsCount,
   hasApiKey,
 }) => {
   return (
@@ -49,17 +49,17 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center space-x-2 sm:space-x-3">
-            {/* My Analyzed Photos History Button */}
+            {/* My Account Jobs Button */}
             <button
-              onClick={onOpenHistory}
-              title="내가 분석했던 사진 목록 보기"
+              onClick={onOpenAccountJobs}
+              title="Astrometry.net 내 계정 작업 및 기억된 Job 목록 보기"
               className="text-xs px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center space-x-1.5 transition-colors relative"
             >
-              <Clock className="w-3.5 h-3.5 text-sky-400" />
-              <span className="font-medium">분석 기록</span>
-              {historyCount > 0 && (
+              <Database className="w-3.5 h-3.5 text-sky-400" />
+              <span className="font-medium">내 계정 작업</span>
+              {accountJobsCount > 0 && (
                 <span className="ml-1 px-1.5 py-0.2 rounded-full bg-sky-500 text-white text-[10px] font-bold">
-                  {historyCount}
+                  {accountJobsCount}
                 </span>
               )}
             </button>
@@ -68,7 +68,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               onClick={onOpenJobInput}
               title="Astrometry.net Job ID 직접 조회"
-              className="text-xs px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 hidden sm:flex items-center space-x-1.5 transition-colors"
+              className="text-xs px-2.5 sm:px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center space-x-1.5 transition-colors"
             >
               <Database className="w-3.5 h-3.5 text-indigo-400" />
               <span>Job ID 조회</span>

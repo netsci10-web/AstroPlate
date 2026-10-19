@@ -172,6 +172,7 @@ export const IAU_CONSTELLATIONS: Record<string, {
   Lyr: {
     nameEn: 'Lyra',
     nameKo: '거문고자리',
+    genitive: 'Lyrae',
     raHours: 18.8,
     decDeg: 36.7,
     raRange: [18.2, 19.5],
@@ -180,7 +181,11 @@ export const IAU_CONSTELLATIONS: Record<string, {
     brightest: 'Vega (α Lyr)',
     asterism: [
       ['α', 'ε'],
+      ['α', 'ε¹'],
+      ['ε¹', 'ε²'],
+      ['ε²', 'ζ'],
       ['ε', 'ζ'],
+      ['α', 'ζ'],
       ['ζ', 'δ'],
       ['δ', 'β'], // Sheliak
       ['β', 'γ'], // Sulafat
@@ -1076,7 +1081,7 @@ export function identifyConstellations(
 
 // Generate constellation stick figure lines by matching detected stars in annotations
 export function getConstellationLinesForImage(
-  annotations: { names: string[]; pixelx: number; pixely: number }[],
+  annotations: { names: string[]; pixelx: number; pixely: number; type?: string }[],
   constellations: ConstellationMatch[]
 ): {
   constellation: string;
@@ -1101,16 +1106,29 @@ export function getConstellationLinesForImage(
 
   // Index stars by constellation and greek/bayer letter e.g. "Cep_μ" -> { x, y, fullName }
   const starMap = new Map<string, { x: number; y: number; fullName: string }>();
+  const catalogIdMap = new Map<string, { x: number; y: number; fullName: string }>();
 
   for (const ann of annotations) {
     if (!ann.names || ann.names.length === 0) continue;
+    const primaryName = ann.names[0];
     for (const name of ann.names) {
+      const compactId = name.replace(/\s+/g, ' ').trim().toUpperCase();
+      if (!catalogIdMap.has(compactId)) {
+        catalogIdMap.set(compactId, { x: ann.pixelx, y: ann.pixely, fullName: primaryName });
+      }
+      if (name.includes('ε¹ Lyr') || name.toLowerCase().includes('epsilon1 lyr') || name.includes('4 Lyr')) {
+        starMap.set('Lyr_ε¹', { x: ann.pixelx, y: ann.pixely, fullName: primaryName });
+        starMap.set('Lyr_ε', { x: ann.pixelx, y: ann.pixely, fullName: primaryName });
+      }
+      if (name.includes('ε² Lyr') || name.toLowerCase().includes('epsilon2 lyr') || name.includes('5 Lyr')) {
+        starMap.set('Lyr_ε²', { x: ann.pixelx, y: ann.pixely, fullName: primaryName });
+      }
       for (const [constCode] of Object.entries(IAU_CONSTELLATIONS)) {
         if (name.includes(constCode)) {
           const greek = normalizeGreekLetter(name);
           const key = `${constCode}_${greek}`;
           if (!starMap.has(key)) {
-            starMap.set(key, { x: ann.pixelx, y: ann.pixely, fullName: name });
+            starMap.set(key, { x: ann.pixelx, y: ann.pixely, fullName: primaryName });
           }
         }
       }
@@ -1123,13 +1141,13 @@ export function getConstellationLinesForImage(
     if (!info || !info.asterism) continue;
 
     for (const [s1, s2] of info.asterism) {
-      const g1 = normalizeGreekLetter(s1);
-      const g2 = normalizeGreekLetter(s2);
+      const g1 = s1 === 'ε¹' || s1 === 'ε²' ? s1 : normalizeGreekLetter(s1);
+      const g2 = s2 === 'ε¹' || s2 === 'ε²' ? s2 : normalizeGreekLetter(s2);
 
       const p1 = starMap.get(`${match.code}_${g1}`);
       const p2 = starMap.get(`${match.code}_${g2}`);
 
-      if (p1 && p2) {
+      if (p1 && p2 && (p1.x !== p2.x || p1.y !== p2.y)) {
         linesResult.push({
           constellation: match.code,
           nameKo: match.nameKo,
@@ -1144,5 +1162,190 @@ export function getConstellationLinesForImage(
     }
   }
 
+  // For telescopic fields (such as Lyra Double Double ε¹·ε² Lyr), also connect key reference stars in the field
+  const eps1 = starMap.get('Lyr_ε¹');
+  const eps2 = starMap.get('Lyr_ε²');
+  if (eps1 && eps2) {
+    const telescopicPairs: [string, string][] = [
+      ['ε² LYR', 'HD 173383'],
+      ['HD 173383', 'HD 173631'],
+      ['ε¹ LYR', 'HD 173290'],
+      ['ε¹ LYR', 'BD+39 3514'],
+      ['BD+39 3514', 'BD+39 3523'],
+      ['ε² LYR', 'BD+39 3523'],
+    ];
+    const findStar = (token: string) => {
+      if (token === 'ε¹ LYR') return eps1;
+      if (token === 'ε² LYR') return eps2;
+      for (const [k, v] of catalogIdMap.entries()) {
+        if (k.includes(token)) return v;
+      }
+      return undefined;
+    };
+    for (const [a, b] of telescopicPairs) {
+      const pa = findStar(a);
+      const pb = findStar(b);
+      if (pa && pb) {
+        linesResult.push({
+          constellation: 'Lyr',
+          nameKo: '거문고자리 (더블더블 성야 패턴)',
+          fromStar: pa.fullName,
+          toStar: pb.fullName,
+          x1: pa.x,
+          y1: pa.y,
+          x2: pb.x,
+          y2: pb.y,
+        });
+      }
+    }
+  }
+
   return linesResult;
+}
+
+/**
+ * Extracts the most representative celestial object identifier (e.g. "더블더블 (ε¹·ε² Lyr)", "NGC 628", "M 42", "M 31", "IC 434", etc.)
+ */
+export function extractPrimaryObjectIdentifier(
+  objectsOrTags: string[] = [],
+  filename?: string,
+  title?: string
+): string | null {
+  const candidates: string[] = [];
+  if (Array.isArray(objectsOrTags)) {
+    candidates.push(...objectsOrTags.filter((s) => typeof s === 'string' && s.trim().length > 0));
+  }
+  if (filename && typeof filename === 'string' && filename.trim()) {
+    candidates.push(filename);
+  }
+  if (title && typeof title === 'string' && title.trim()) {
+    candidates.push(title);
+  }
+
+  if (candidates.length === 0) return null;
+
+  // Priority 0: Iconic Named Double Stars / Asterisms (e.g. Double Double ε Lyr)
+  for (const item of candidates) {
+    const low = item.toLowerCase();
+    if (
+      low.includes('더블더블') ||
+      low.includes('double double') ||
+      low.includes('epsilon1 lyrae') ||
+      low.includes('epsilon2 lyrae') ||
+      low.includes('ε¹ lyr') ||
+      low.includes('ε² lyr')
+    ) {
+      return '더블더블 (ε¹·ε² Lyr)';
+    }
+  }
+
+  // Priority 1: Catalogs like NGC, Messier (M), IC, Caldwell (C), Barnard (B), Sh2, etc.
+  for (const item of candidates) {
+    // Check for "target:ngc=628" or "target:messier=74" or "target:m=74"
+    const targetMatch = item.match(/target:(ngc|ic|messier|m)=?(\d+)/i);
+    if (targetMatch) {
+      const cat = targetMatch[1].toUpperCase() === 'MESSIER' ? 'M' : targetMatch[1].toUpperCase();
+      return `${cat} ${targetMatch[2]}`;
+    }
+
+    // Check for "NGC 628", "NGC628", "NGC 628A"
+    const ngcMatch = item.match(/\bNGC\s*(\d+[A-Z]?)\b/i);
+    if (ngcMatch) return `NGC ${ngcMatch[1].toUpperCase()}`;
+
+    // Check for "Messier 74", "M 74", "M74"
+    const messierMatch = item.match(/\b(?:Messier|M)\s*(\d+)\b/i);
+    if (messierMatch) return `M ${messierMatch[1]}`;
+
+    // Check for "IC 434", "IC434"
+    const icMatch = item.match(/\bIC\s*(\d+[A-Z]?)\b/i);
+    if (icMatch) return `IC ${icMatch[1].toUpperCase()}`;
+
+    // Other catalogs
+    const otherCatMatch = item.match(/\b(Sh2-\d+|vdB\s*\d+|Caldwell\s*\d+|C\s*\d+|B\s*\d+|Barnard\s*\d+|LBN\s*\d+|LDN\s*\d+|Sharpless\s*\d+)\b/i);
+    if (otherCatMatch) return otherCatMatch[1].toUpperCase();
+  }
+
+  // Priority 2: Named prominent astronomical objects (e.g. Andromeda, Orion Nebula, Pleiades, etc.)
+  for (const item of candidates) {
+    const clean = item.trim();
+    if (
+      clean.length > 1 &&
+      !/^\d+$/.test(clean) &&
+      !/^job/i.test(clean) &&
+      !clean.toLowerCase().includes('constellation') &&
+      !clean.toLowerCase().includes('stars') &&
+      !clean.toLowerCase().includes('local in-browser') &&
+      !clean.toLowerCase().endsWith('.fits') &&
+      !clean.toLowerCase().endsWith('.jpg') &&
+      !clean.toLowerCase().endsWith('.png')
+    ) {
+      return clean;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Returns formatted title for a constellation's celestial objects,
+ * e.g., "물고기 자리의 NGC 628", "오리온 자리의 M 42", "게 자리의 M 44", or fallback "물고기 자리의 천체".
+ */
+export function getConstellationObjectTitle(
+  constellationKo?: string,
+  raDeg?: number,
+  decDeg?: number,
+  objectsOrTags: string[] = [],
+  filename?: string,
+  title?: string
+): string {
+  let name = (constellationKo || '').trim();
+
+  // Strip previous placeholder suffixes like "의 천체"
+  name = name.replace(/의\s*천체$/, '').trim();
+
+  // If already contains an object identifier and no new objects passed, keep it
+  if (name.includes('의 ') && (!objectsOrTags || objectsOrTags.length === 0) && !filename && !title) {
+    return name;
+  }
+  // If re-evaluating with objects, extract base constellation name
+  if (name.includes('의 ')) {
+    name = name.split('의 ')[0].trim();
+  }
+
+  // If unknown, placeholder, or not provided, calculate from RA/Dec coordinates or tags
+  if (!name || name === '천구 별자리' || name === '천구' || name === '성도 매칭 결과') {
+    if (
+      typeof raDeg === 'number' &&
+      typeof decDeg === 'number' &&
+      !isNaN(raDeg) &&
+      !isNaN(decDeg) &&
+      (raDeg !== 0 || decDeg !== 0)
+    ) {
+      const matches = identifyConstellations(objectsOrTags, [], raDeg, decDeg, []);
+      if (matches.length > 0 && matches[0]?.nameKo) {
+        name = matches[0].nameKo;
+      }
+    }
+  }
+
+  // Format constellation with space before '자리' (e.g. "물고기자리" -> "물고기 자리")
+  let formattedConstellation = name;
+  if (/자리$/.test(name) && !name.includes(' ')) {
+    formattedConstellation = name.replace(/자리$/, ' 자리');
+  }
+
+  const primaryObj = extractPrimaryObjectIdentifier(objectsOrTags, filename, title);
+
+  if (formattedConstellation && formattedConstellation !== '천구 별자리' && formattedConstellation !== '천구' && formattedConstellation !== '성도 매칭 결과') {
+    if (primaryObj) {
+      return `${formattedConstellation}의 ${primaryObj}`;
+    }
+    return `${formattedConstellation}의 천체`;
+  }
+
+  if (primaryObj) {
+    return `천구의 ${primaryObj}`;
+  }
+
+  return '천구의 천체';
 }

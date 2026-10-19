@@ -26,14 +26,23 @@ import { CelestialStarChart } from './components/CelestialStarChart';
 import { AstroTelemetryPanel } from './components/AstroTelemetryPanel';
 import { SimbadInspectorModal } from './components/SimbadInspectorModal';
 import { UploadPlateSolveModal } from './components/UploadPlateSolveModal';
-import { AnalysisHistoryDrawer } from './components/AnalysisHistoryDrawer';
+import { MyAccountJobsDrawer } from './components/MyAccountJobsDrawer';
 import { EmptyState } from './components/EmptyState';
 import { SolvedAstroData, AnalysisHistoryItem } from './types/astronomy';
-import { identifyConstellations } from './utils/constellations';
+import { identifyConstellations, getConstellationObjectTitle } from './utils/constellations';
 import { degToRA_HMS, degToDec_DMS } from './utils/coordinateMath';
 import { SAMPLE_SOLVED_JOBS } from './data/sampleShowcase';
+import {
+  getRememberedAccountJobs,
+  rememberAccountJob,
+  deleteRememberedAccountJob,
+  clearAllRememberedAccountJobs,
+  getDeletedJobIds,
+  isJobDeleted,
+} from './utils/accountJobs';
 
-const STORAGE_KEY = 'astroplate_user_history';
+const STORAGE_KEY = 'astroplate_account_jobs';
+const LEGACY_STORAGE_KEY = 'astroplate_user_history';
 
 export type MainTab = 'photo' | 'chart' | 'telemetry';
 
@@ -43,13 +52,14 @@ export default function App() {
   const [activeJobId, setActiveJobId] = useState<number | string | null>(null);
   const [activeMainTab, setActiveMainTab] = useState<MainTab>('photo');
   const [hasApiKey, setHasApiKey] = useState(false);
-  const [history, setHistory] = useState<AnalysisHistoryItem[]>([]);
+  const [accountJobs, setAccountJobs] = useState<AnalysisHistoryItem[]>([]);
 
   // Modals state
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
+  const [isAccountJobsDrawerOpen, setIsAccountJobsDrawerOpen] = useState(false);
   const [modalInitialFile, setModalInitialFile] = useState<File | null>(null);
   const [modalInitialUrl, setModalInitialUrl] = useState<string>('');
+  const [modalInitialTab, setModalInitialTab] = useState<'upload' | 'url' | 'jobId' | 'myJobs'>('upload');
   const [selectedTargetForSimbad, setSelectedTargetForSimbad] = useState<string | null>(null);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
 
@@ -61,15 +71,25 @@ export default function App() {
     setErrorNotice(null);
     setLoading(false);
     setIsUploadModalOpen(false);
-    setIsHistoryDrawerOpen(false);
+    setIsAccountJobsDrawerOpen(false);
     setModalInitialFile(null);
     setModalInitialUrl('');
+    setModalInitialTab('upload');
   }, []);
 
-  // Open modal on click - user clicks upload area inside modal to choose file
+  // Open modal for file upload
   const handleOpenNewPhoto = () => {
     setModalInitialFile(null);
     setModalInitialUrl('');
+    setModalInitialTab('upload');
+    setIsUploadModalOpen(true);
+  };
+
+  // Open modal directly for Job ID lookup
+  const handleOpenJobInput = () => {
+    setModalInitialFile(null);
+    setModalInitialUrl('');
+    setModalInitialTab('jobId');
     setIsUploadModalOpen(true);
   };
 
@@ -84,34 +104,102 @@ export default function App() {
       .then((d) => setHasApiKey(Boolean(d?.hasApiKey)))
       .catch(() => setHasApiKey(false));
 
-    // Read local storage history
-    let localHistory: AnalysisHistoryItem[] = [];
+    // Read remembered account jobs from local storage (with legacy fallback)
+    let localJobs: AnalysisHistoryItem[] = [];
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
       if (stored) {
-        localHistory = JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          localJobs = parsed.filter(
+            (item) =>
+              item &&
+              item.jobId &&
+              !isJobDeleted(item.jobId) &&
+              !(String(item.jobId).startsWith('local_') && item.raDeg === 280 && item.decDeg === -28)
+          );
+        }
       }
     } catch (e) {
-      console.error('Failed to parse localStorage history:', e);
+      console.error('Failed to parse localStorage account jobs:', e);
     }
 
-    // Also sync with server history in background
-    fetch('/api/astrometry/history')
+    // Also sync with server my-jobs & remembered jobs in background
+    const remembered = getRememberedAccountJobs();
+    const deletedIds = Array.from(getDeletedJobIds()).join(',');
+    const extraIds = Array.from(
+      new Set([...localJobs.map((j) => j.jobId), ...remembered.map((r) => r.jobId)])
+    ).filter((id) => !isJobDeleted(id)).join(',');
+
+    fetch(`/api/astrometry/my-jobs?extraJobs=${encodeURIComponent(extraIds)}&deletedJobs=${encodeURIComponent(deletedIds)}`)
       .then((r) => {
-        if (!r.ok) throw new Error('Static environment or no server history');
+        if (!r.ok) throw new Error('Static environment or no server account jobs');
         const ct = r.headers.get('content-type') || '';
         if (!ct.includes('application/json')) throw new Error('Not JSON response');
         return r.json();
       })
       .then((data) => {
-        const serverHistory: AnalysisHistoryItem[] = data?.history || [];
+        const serverJobs: any[] = data?.detailed || [];
         const map = new Map<string, AnalysisHistoryItem>();
 
-        serverHistory.forEach((item) => map.set(String(item.jobId), item));
-        localHistory.forEach((item) => map.set(String(item.jobId), item));
+        // 1. Populate from local
+        localJobs.filter((item) => !isJobDeleted(item.jobId)).forEach((item) => {
+          map.set(String(item.jobId), {
+            ...item,
+            primaryConstellationKo: getConstellationObjectTitle(item.primaryConstellationKo, item.raDeg, item.decDeg, item.objects || [], item.title, item.solvedData?.title),
+          });
+        });
+
+        // 2. Merge server account jobs
+        serverJobs.forEach((sj) => {
+          if (!sj || !sj.jobId || isJobDeleted(sj.jobId)) return;
+          const strId = String(sj.jobId);
+          const cal = sj.calibration;
+          const constTitle = getConstellationObjectTitle(
+            undefined,
+            cal?.ra,
+            cal?.dec,
+            sj.objects || [],
+            sj.filename
+          );
+          if (!map.has(strId)) {
+            map.set(strId, {
+              id: `job_${sj.jobId}`,
+              jobId: sj.jobId,
+              title: sj.filename || `Astrometry Job #${sj.jobId}`,
+              imageUrl: `/api/astrometry/image-proxy/${sj.jobId}/annotated`,
+              rawImageUrl: `/api/astrometry/image-proxy/${sj.jobId}/original`,
+              timestamp: Date.now(),
+              raDeg: cal?.ra || 0,
+              decDeg: cal?.dec || 0,
+              radiusDeg: cal?.radius || 1,
+              primaryConstellationKo: constTitle,
+              primaryConstellationCode: '',
+              starsCount: 0,
+              dsosCount: 0,
+              objects: sj.objects || [],
+            });
+          } else {
+            const existing = map.get(strId)!;
+            const mergedObjects = Array.from(new Set([...(existing.objects || []), ...(sj.objects || [])]));
+            const updatedTitle = getConstellationObjectTitle(
+              existing.primaryConstellationKo,
+              existing.raDeg,
+              existing.decDeg,
+              mergedObjects,
+              sj.filename,
+              existing.title
+            );
+            map.set(strId, {
+              ...existing,
+              primaryConstellationKo: updatedTitle,
+              objects: mergedObjects,
+            });
+          }
+        });
 
         const combined = Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp);
-        setHistory(combined);
+        setAccountJobs(combined);
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(combined));
         } catch (e) {}
@@ -122,8 +210,8 @@ export default function App() {
         setLoading(false);
       })
       .catch(() => {
-        if (localHistory.length > 0) {
-          setHistory(localHistory);
+        if (localJobs.length > 0) {
+          setAccountJobs(localJobs);
         }
         setSolvedData(null);
         setActiveJobId(null);
@@ -131,21 +219,54 @@ export default function App() {
       });
   }, []);
 
-  // Save item to history keyed by Job ID with full solved data cache
-  const saveToHistory = useCallback((solved: SolvedAstroData, customImgUrl?: string) => {
+  // Sync with job update / delete events across components
+  useEffect(() => {
+    const handleJobsSync = (e: any) => {
+      const deleted = getDeletedJobIds();
+      setAccountJobs((prev) => {
+        const filtered = prev.filter((j) => !deleted.has(String(j.jobId)));
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+        } catch (e) {}
+        return filtered;
+      });
+      if (e?.detail?.action === 'clearAll') {
+        setAccountJobs([]);
+        setSolvedData(null);
+        setActiveJobId(null);
+      }
+    };
+    window.addEventListener('astroplate_jobs_updated', handleJobsSync);
+    return () => window.removeEventListener('astroplate_jobs_updated', handleJobsSync);
+  }, []);
+
+  // Save item to account jobs keyed by Job ID with full solved data cache
+  const saveToAccountJobs = useCallback((solved: SolvedAstroData, customImgUrl?: string) => {
     const primaryConst = solved.matchedConstellations[0];
+    const constTitle = getConstellationObjectTitle(
+      primaryConst?.nameKo,
+      solved.calibration.ra,
+      solved.calibration.dec,
+      [...(solved.info?.objects_in_field || []), ...(solved.info?.tags || [])],
+      solved.info?.original_filename,
+      solved.title
+    );
     const starsCount = solved.annotations.filter(
       (a) => a.type === 'bright' || a.type === 'star' || a.type === 'hd'
     ).length;
     const dsosCount = solved.annotations.length - starsCount;
 
-    // Use reliable image URLs linked to Job ID
-    const validImgUrl = `/api/astrometry/image-proxy/${solved.jobId}/annotated`;
-    const validRawImgUrl =
-      solved.rawImageUrl ||
-      (customImgUrl && !customImgUrl.startsWith('blob:')
-        ? customImgUrl
-        : `/api/astrometry/image-proxy/${solved.jobId}/original`);
+    // Use reliable image URLs linked to Job ID (preserve Data URLs for local in-browser jobs)
+    const isLocalJob = String(solved.jobId).startsWith('local_');
+    const validImgUrl = isLocalJob
+      ? solved.imageUrl
+      : `/api/astrometry/image-proxy/${solved.jobId}/annotated`;
+    const validRawImgUrl = isLocalJob
+      ? solved.rawImageUrl || solved.imageUrl
+      : solved.rawImageUrl ||
+        (customImgUrl && !customImgUrl.startsWith('blob:')
+          ? customImgUrl
+          : `/api/astrometry/image-proxy/${solved.jobId}/original`);
 
     const newItem: AnalysisHistoryItem = {
       id: `job_${solved.jobId}`,
@@ -157,10 +278,11 @@ export default function App() {
       raDeg: solved.calibration.ra,
       decDeg: solved.calibration.dec,
       radiusDeg: solved.calibration.radius,
-      primaryConstellationKo: primaryConst?.nameKo || '천구 별자리',
+      primaryConstellationKo: constTitle,
       primaryConstellationCode: primaryConst?.code || '',
       starsCount,
       dsosCount,
+      objects: solved.info?.objects_in_field || solved.info?.tags || [],
       solvedData: {
         ...solved,
         imageUrl: validImgUrl,
@@ -168,7 +290,16 @@ export default function App() {
       },
     };
 
-    setHistory((prev) => {
+    // Remember Job ID in accountJobs store
+    rememberAccountJob(
+      solved.jobId,
+      solved.title,
+      solved.info?.objects_in_field || [],
+      'success',
+      solved.calibration
+    );
+
+    setAccountJobs((prev) => {
       const filtered = prev.filter((h) => String(h.jobId) !== String(solved.jobId));
       const updated = [newItem, ...filtered];
       try {
@@ -189,16 +320,16 @@ export default function App() {
   const loadJobData = async (
     jobId: number | string,
     customImageUrl?: string,
-    shouldSaveToHistory = true
+    shouldSaveToAccountJobs = true
   ) => {
     setLoading(true);
     setErrorNotice(null);
     setActiveMainTab('photo');
 
-    // 1. First, check if full solvedData is already cached in history for this Job ID
-    const existingHist = history.find((h) => String(h.jobId) === String(jobId));
-    if (existingHist?.solvedData && String(existingHist.solvedData.jobId) === String(jobId)) {
-      setSolvedData(existingHist.solvedData);
+    // 1. First, check if full solvedData is already cached in accountJobs for this Job ID
+    const existingJob = accountJobs.find((h) => String(h.jobId) === String(jobId));
+    if (existingJob?.solvedData && String(existingJob.solvedData.jobId) === String(jobId)) {
+      setSolvedData(existingJob.solvedData);
       setActiveJobId(jobId);
       setLoading(false);
       return;
@@ -209,8 +340,8 @@ export default function App() {
     if (sample && (!customImageUrl || customImageUrl.startsWith('blob:'))) {
       setSolvedData(sample);
       setActiveJobId(sample.jobId);
-      if (shouldSaveToHistory) {
-        saveToHistory(sample);
+      if (shouldSaveToAccountJobs) {
+        saveToAccountJobs(sample);
       }
       setLoading(false);
       return;
@@ -223,7 +354,7 @@ export default function App() {
         if (sample) {
           setSolvedData(sample);
           setActiveJobId(sample.jobId);
-          if (shouldSaveToHistory) saveToHistory(sample);
+          if (shouldSaveToAccountJobs) saveToAccountJobs(sample);
           return;
         }
         throw new Error(`Job #${jobId} 데이터 조회 실패 (HTTP ${resp.status})`);
@@ -246,9 +377,7 @@ export default function App() {
       // Determine photo URLs: canonical Astrometry image proxies for this specific Job ID
       const resolvedImageUrl = `/api/astrometry/image-proxy/${jobId}/annotated`;
       const resolvedRawImageUrl =
-        customImageUrl && !customImageUrl.startsWith('blob:')
-          ? customImageUrl
-          : `/api/astrometry/image-proxy/${jobId}/original`;
+        customImageUrl || `/api/astrometry/image-proxy/${jobId}/original`;
 
       const calW =
         calibration?.width_arcsec && calibration?.pixscale && calibration.pixscale > 0
@@ -275,19 +404,19 @@ export default function App() {
       setSolvedData(solved);
       setActiveJobId(jobId);
 
-      // Automatically remember analyzed photo in history
-      if (shouldSaveToHistory) {
-        saveToHistory(solved, resolvedRawImageUrl);
+      // Automatically remember analyzed photo in account jobs
+      if (shouldSaveToAccountJobs) {
+        saveToAccountJobs(solved, resolvedRawImageUrl);
       }
     } catch (err: any) {
       console.error('Failed to load job data:', err);
-      if (existingHist?.solvedData) {
-        setSolvedData(existingHist.solvedData);
+      if (existingJob?.solvedData) {
+        setSolvedData(existingJob.solvedData);
         setActiveJobId(jobId);
       } else if (sample) {
         setSolvedData(sample);
         setActiveJobId(sample.jobId);
-        if (shouldSaveToHistory) saveToHistory(sample);
+        if (shouldSaveToAccountJobs) saveToAccountJobs(sample);
       } else {
         setErrorNotice(err.message || `Astrometry.net Job #${jobId} 데이터 로드 중 오류가 발생했습니다.`);
       }
@@ -296,17 +425,19 @@ export default function App() {
     }
   };
 
-  // Delete single history item
-  const handleDeleteHistoryItem = (id: string) => {
-    setHistory((prev) => {
-      const updated = prev.filter((item) => item.id !== id);
+  // Delete single account job
+  const handleDeleteAccountJob = (jobId: string | number) => {
+    deleteRememberedAccountJob(jobId);
+    setAccountJobs((prev) => {
+      const updated = prev.filter(
+        (item) => String(item.jobId) !== String(jobId) && item.id !== `job_${jobId}`
+      );
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       } catch (e) {}
 
       // If active job was deleted, switch to first item or null
-      const deletedItem = prev.find((item) => item.id === id);
-      if (deletedItem && String(deletedItem.jobId) === String(activeJobId)) {
+      if (String(activeJobId) === String(jobId)) {
         if (updated.length > 0) {
           loadJobData(updated[0].jobId, updated[0].imageUrl, false);
         } else {
@@ -317,17 +448,26 @@ export default function App() {
       return updated;
     });
 
-    fetch(`/api/astrometry/history/${id}`, { method: 'DELETE' }).catch(() => {});
+    fetch(`/api/astrometry/my-jobs/${jobId}`, { method: 'DELETE' }).catch(() => {});
+    fetch(`/api/astrometry/history/${jobId}`, { method: 'DELETE' }).catch(() => {});
   };
 
-  // Clear all history
-  const handleClearAllHistory = () => {
-    setHistory([]);
+  // Clear all account jobs
+  const handleClearAllAccountJobs = () => {
+    const ids = accountJobs.map((j) => j.jobId);
+    clearAllRememberedAccountJobs(ids);
+    setAccountJobs([]);
     try {
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
     } catch (e) {}
     setSolvedData(null);
     setActiveJobId(null);
+    fetch('/api/astrometry/my-jobs', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobIds: ids, all: true }),
+    }).catch(() => {});
     fetch('/api/astrometry/history', { method: 'DELETE' }).catch(() => {});
   };
 
@@ -336,63 +476,80 @@ export default function App() {
       {/* Navigation Header */}
       <Navbar
         onOpenUpload={handleOpenNewPhoto}
-        onOpenJobInput={() => setIsUploadModalOpen(true)}
-        onOpenHistory={() => setIsHistoryDrawerOpen(true)}
+        onOpenJobInput={handleOpenJobInput}
+        onOpenAccountJobs={() => setIsAccountJobsDrawerOpen(true)}
         onReset={handleResetHome}
-        historyCount={history.length}
+        accountJobsCount={accountJobs.length}
         hasApiKey={hasApiKey}
       />
 
       {/* Top Sub-Navigation Tabs (Shown only when a photo is analyzed) */}
       {!loading && solvedData && (
-        <div className="bg-slate-900/95 backdrop-blur-md border-b border-slate-800 sticky top-16 z-20 shadow-md">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between overflow-x-auto scrollbar-none py-2 gap-2">
-              <nav className="flex items-center space-x-1 sm:space-x-2" aria-label="천체 관측 분석 탭">
+        <div className="bg-slate-900/95 backdrop-blur-md border-b border-slate-800 sticky top-16 z-20 shadow-xl">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5">
+            <div className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-3">
+              {/* Segmented Island Container for High Distinction */}
+              <nav
+                className="flex items-center gap-1.5 sm:gap-2 p-1.5 rounded-2xl bg-slate-950 border border-slate-700/80 shadow-inner overflow-x-auto scrollbar-none"
+                aria-label="천체 관측 분석 탭"
+              >
+                {/* 1. 천체사진 분석 */}
                 <button
                   type="button"
                   onClick={() => setActiveMainTab('photo')}
-                  className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+                  className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
                     activeMainTab === 'photo'
-                      ? 'bg-sky-500 text-white shadow-md shadow-sky-500/25 ring-1 ring-sky-400/50'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      ? 'bg-gradient-to-r from-sky-500 via-indigo-600 to-purple-600 text-white shadow-lg shadow-sky-500/30 ring-2 ring-sky-300/50 scale-[1.02]'
+                      : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 hover:border-slate-500'
                   }`}
                 >
-                  <Camera className="w-4 h-4" />
+                  <Camera className={`w-4 h-4 ${activeMainTab === 'photo' ? 'text-white' : 'text-sky-400'}`} />
                   <span>천체사진 분석</span>
+                  {activeMainTab === 'photo' && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_#fff]" />
+                  )}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setActiveMainTab('chart')}
-                  className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
-                    activeMainTab === 'chart'
-                      ? 'bg-sky-500 text-white shadow-md shadow-sky-500/25 ring-1 ring-sky-400/50'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                  }`}
-                >
-                  <Compass className="w-4 h-4" />
-                  <span>실시간 전천성도</span>
-                </button>
-
+                {/* 2. 천체좌표 및 WCS 관측 원격 측정 */}
                 <button
                   type="button"
                   onClick={() => setActiveMainTab('telemetry')}
-                  className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+                  className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
                     activeMainTab === 'telemetry'
-                      ? 'bg-sky-500 text-white shadow-md shadow-sky-500/25 ring-1 ring-sky-400/50'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      ? 'bg-gradient-to-r from-sky-500 via-indigo-600 to-purple-600 text-white shadow-lg shadow-sky-500/30 ring-2 ring-sky-300/50 scale-[1.02]'
+                      : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 hover:border-slate-500'
                   }`}
                 >
-                  <Activity className="w-4 h-4" />
+                  <Activity className={`w-4 h-4 ${activeMainTab === 'telemetry' ? 'text-white' : 'text-indigo-400'}`} />
                   <span>천체좌표 및 WCS 관측 원격 측정</span>
+                  {activeMainTab === 'telemetry' && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_#fff]" />
+                  )}
+                </button>
+
+                {/* 3. 실시간 전천성도 (마지막 탭) */}
+                <button
+                  type="button"
+                  onClick={() => setActiveMainTab('chart')}
+                  className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap ${
+                    activeMainTab === 'chart'
+                      ? 'bg-gradient-to-r from-sky-500 via-indigo-600 to-purple-600 text-white shadow-lg shadow-sky-500/30 ring-2 ring-sky-300/50 scale-[1.02]'
+                      : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 hover:border-slate-500'
+                  }`}
+                >
+                  <Compass className={`w-4 h-4 ${activeMainTab === 'chart' ? 'text-white' : 'text-purple-400'}`} />
+                  <span>실시간 전천성도</span>
+                  {activeMainTab === 'chart' && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_#fff]" />
+                  )}
                 </button>
               </nav>
 
               {/* Target Quick Info Chip */}
-              <div className="hidden lg:flex items-center space-x-3 text-xs text-slate-400 pl-4 border-l border-slate-800 shrink-0">
-                <span className="font-mono text-sky-400 font-semibold">Job #{solvedData.jobId}</span>
-                <span>•</span>
+              <div className="hidden lg:flex items-center space-x-2.5 text-xs text-slate-400 px-3.5 py-2 rounded-xl bg-slate-950/70 border border-slate-800 shrink-0">
+                <span className="font-mono text-sky-400 font-bold px-1.5 py-0.5 rounded bg-sky-950/80 border border-sky-800/80">
+                  Job #{solvedData.jobId}
+                </span>
                 <span className="text-white font-medium truncate max-w-xs">{solvedData.title}</span>
                 <span>•</span>
                 <span className="text-indigo-300 font-medium">
@@ -453,7 +610,7 @@ export default function App() {
               setSolvedData(sample);
               setActiveJobId(sample.jobId);
               setActiveMainTab('photo');
-              saveToHistory(sample);
+              saveToAccountJobs(sample);
             }}
             hasApiKey={hasApiKey}
           />
@@ -471,8 +628,8 @@ export default function App() {
                   Job ID: #{solvedData.jobId}
                 </span>
                 <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-sky-400" />
-                  기록에 저장됨
+                  <Database className="w-3 h-3 text-sky-400" />
+                  계정 작업에 저장됨
                 </span>
               </div>
 
@@ -506,11 +663,12 @@ export default function App() {
 
             <div className="flex items-center space-x-2">
               <button
-                onClick={() => setIsHistoryDrawerOpen(true)}
-                className="text-xs px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center space-x-1.5 transition-colors shadow-sm"
+                onClick={() => setIsAccountJobsDrawerOpen(true)}
+                className="text-xs px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center space-x-1.5 transition-colors shadow-sm cursor-pointer"
+                title="Astrometry.net 내 계정 작업 목록 열기"
               >
-                <Clock className="w-3.5 h-3.5 text-sky-400" />
-                <span>분석 기록 ({history.length})</span>
+                <Database className="w-3.5 h-3.5 text-sky-400" />
+                <span>내 계정 작업 ({accountJobs.length})</span>
               </button>
             </div>
           </div>
@@ -526,7 +684,17 @@ export default function App() {
           </section>
         )}
 
-        {/* Tab 2: 실시간 전천성도 */}
+        {/* Tab 2: 천체좌표 및 WCS 관측 원격 측정 */}
+        {!loading && solvedData && activeMainTab === 'telemetry' && (
+          <section aria-label="천체좌표 및 WCS 관측 원격 측정">
+            <AstroTelemetryPanel
+              data={solvedData}
+              onSelectObject={(obj) => setSelectedTargetForSimbad(obj)}
+            />
+          </section>
+        )}
+
+        {/* Tab 3: 실시간 전천성도 (마지막 탭) */}
         {!loading && solvedData && activeMainTab === 'chart' && (
           <section aria-label="실시간 전천성도">
             <CelestialStarChart
@@ -534,16 +702,6 @@ export default function App() {
               onSelectConstellation={(code) => {
                 console.log('Selected constellation:', code);
               }}
-            />
-          </section>
-        )}
-
-        {/* Tab 3: 천체좌표 및 WCS 관측 원격 측정 */}
-        {!loading && solvedData && activeMainTab === 'telemetry' && (
-          <section aria-label="천체좌표 및 WCS 관측 원격 측정">
-            <AstroTelemetryPanel
-              data={solvedData}
-              onSelectObject={(obj) => setSelectedTargetForSimbad(obj)}
             />
           </section>
         )}
@@ -564,11 +722,12 @@ export default function App() {
           </button>
           <div className="flex items-center space-x-4">
             <button
-              onClick={() => setIsHistoryDrawerOpen(true)}
-              className="hover:text-sky-400 transition-colors flex items-center gap-1"
+              onClick={() => setIsAccountJobsDrawerOpen(true)}
+              className="hover:text-sky-400 transition-colors flex items-center gap-1 cursor-pointer"
+              title="Astrometry.net 내 계정 작업 목록 열기"
             >
-              <Clock className="w-3 h-3" />
-              <span>내 분석 기록 ({history.length})</span>
+              <Database className="w-3 h-3 text-sky-400" />
+              <span>내 계정 작업 ({accountJobs.length})</span>
             </button>
             <a
               href="https://nova.astrometry.net/api_help"
@@ -597,34 +756,109 @@ export default function App() {
           setIsUploadModalOpen(false);
           setModalInitialFile(null);
           setModalInitialUrl('');
+          setModalInitialTab('upload');
         }}
         onSolveSuccess={(jobId, imgUrl) => loadJobData(jobId, imgUrl, true)}
+        onLocalSolveSuccess={(solvedResult) => {
+          setSolvedData(solvedResult);
+          setActiveJobId(solvedResult.jobId);
+          setActiveMainTab('photo');
+          setErrorNotice(null);
+          setLoading(false);
+          saveToAccountJobs(solvedResult, solvedResult.rawImageUrl);
+        }}
         hasApiKey={hasApiKey}
         initialFile={modalInitialFile}
         initialUrl={modalInitialUrl}
+        initialTab={modalInitialTab}
       />
 
-      {/* Analysis History Drawer */}
-      <AnalysisHistoryDrawer
-        isOpen={isHistoryDrawerOpen}
-        onClose={() => setIsHistoryDrawerOpen(false)}
-        history={history}
+      {/* My Astrometry Account Jobs Drawer */}
+      <MyAccountJobsDrawer
+        isOpen={isAccountJobsDrawerOpen}
+        onClose={() => setIsAccountJobsDrawerOpen(false)}
+        jobs={accountJobs}
         activeJobId={activeJobId}
         onSelectJob={(jobId) => loadJobData(jobId, undefined, false)}
-        onDeleteItem={handleDeleteHistoryItem}
-        onClearAll={handleClearAllHistory}
-        onSyncMyJobs={async () => {
+        onDeleteJob={handleDeleteAccountJob}
+        onClearAllJobs={handleClearAllAccountJobs}
+        onSyncAccountJobs={async () => {
           try {
-            const resp = await fetch('/api/astrometry/my-jobs');
+            const remembered = getRememberedAccountJobs();
+            const deletedIds = Array.from(getDeletedJobIds()).join(',');
+            const extraIds = Array.from(
+              new Set([...accountJobs.map((j) => j.jobId), ...remembered.map((r) => r.jobId)])
+            ).filter((id) => !isJobDeleted(id)).join(',');
+            const resp = await fetch(
+              `/api/astrometry/my-jobs?extraJobs=${encodeURIComponent(extraIds)}&deletedJobs=${encodeURIComponent(deletedIds)}`
+            );
             if (resp.ok) {
               const data = await resp.json();
-              const jobs = data.detailed || [];
-              if (jobs.length > 0 && jobs[0].jobId) {
-                loadJobData(jobs[0].jobId, undefined, true);
+              const serverJobs: any[] = data.detailed || [];
+              const map = new Map<string, AnalysisHistoryItem>();
+              accountJobs.filter((item) => !isJobDeleted(item.jobId)).forEach((item) => {
+                map.set(String(item.jobId), {
+                  ...item,
+                  primaryConstellationKo: getConstellationObjectTitle(item.primaryConstellationKo, item.raDeg, item.decDeg, item.objects || [], item.title, item.solvedData?.title),
+                });
+              });
+              serverJobs.forEach((sj) => {
+                if (!sj || !sj.jobId || isJobDeleted(sj.jobId)) return;
+                const strId = String(sj.jobId);
+                const cal = sj.calibration;
+                const constTitle = getConstellationObjectTitle(
+                  undefined,
+                  cal?.ra,
+                  cal?.dec,
+                  sj.objects || [],
+                  sj.filename
+                );
+                if (!map.has(strId)) {
+                  map.set(strId, {
+                    id: `job_${sj.jobId}`,
+                    jobId: sj.jobId,
+                    title: sj.filename || `Astrometry Job #${sj.jobId}`,
+                    imageUrl: `/api/astrometry/image-proxy/${sj.jobId}/annotated`,
+                    rawImageUrl: `/api/astrometry/image-proxy/${sj.jobId}/original`,
+                    timestamp: Date.now(),
+                    raDeg: cal?.ra || 0,
+                    decDeg: cal?.dec || 0,
+                    radiusDeg: cal?.radius || 1,
+                    primaryConstellationKo: constTitle,
+                    primaryConstellationCode: '',
+                    starsCount: 0,
+                    dsosCount: 0,
+                    objects: sj.objects || [],
+                  });
+                } else {
+                  const existing = map.get(strId)!;
+                  const mergedObjects = Array.from(new Set([...(existing.objects || []), ...(sj.objects || [])]));
+                  const updatedTitle = getConstellationObjectTitle(
+                    existing.primaryConstellationKo,
+                    existing.raDeg,
+                    existing.decDeg,
+                    mergedObjects,
+                    sj.filename,
+                    existing.title
+                  );
+                  map.set(strId, {
+                    ...existing,
+                    primaryConstellationKo: updatedTitle,
+                    objects: mergedObjects,
+                  });
+                }
+              });
+              const combined = Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp);
+              setAccountJobs(combined);
+              try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(combined));
+              } catch (e) {}
+              if (combined.length > 0 && (!activeJobId || !solvedData)) {
+                loadJobData(combined[0].jobId, undefined, true);
               }
             }
           } catch (e) {
-            console.error('Failed to sync my jobs:', e);
+            console.error('Failed to sync account jobs:', e);
           }
         }}
       />

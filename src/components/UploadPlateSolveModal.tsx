@@ -13,28 +13,51 @@ import {
   Sparkles,
   ExternalLink,
   RefreshCw,
+  Trash2,
+  Cpu,
+  Globe,
 } from 'lucide-react';
+import {
+  getRememberedAccountJobs,
+  saveRememberedAccountJobs,
+  rememberAccountJob,
+  deleteRememberedAccountJob,
+  clearAllRememberedAccountJobs,
+  getDeletedJobIds,
+  isJobDeleted,
+} from '../utils/accountJobs';
+import { getConstellationObjectTitle } from '../utils/constellations';
+import { solvePlateLocallyInBrowser } from '../utils/localPlateSolver';
+import { SolvedAstroData } from '../types/astronomy';
 
 interface UploadPlateSolveModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSolveSuccess: (jobId: number | string, customImageUrl?: string) => void;
+  onLocalSolveSuccess?: (solvedData: SolvedAstroData) => void;
   hasApiKey: boolean;
   initialFile?: File | null;
   initialUrl?: string;
   initialJobId?: string;
+  initialTab?: 'upload' | 'url' | 'jobId' | 'myJobs';
 }
 
 export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
   isOpen,
   onClose,
   onSolveSuccess,
+  onLocalSolveSuccess,
   hasApiKey,
   initialFile = null,
   initialUrl = '',
   initialJobId = '',
+  initialTab = 'upload',
 }) => {
-  const [activeTab, setActiveTab] = useState<'upload' | 'url' | 'jobId' | 'myJobs'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'url' | 'jobId' | 'myJobs'>(initialTab);
+  const [solverMode, setSolverMode] = useState<'local' | 'api'>('local');
+  const [localTargetHint, setLocalTargetHint] = useState('');
+  const [localProgressPct, setLocalProgressPct] = useState(0);
+  const [localDetectedCount, setLocalDetectedCount] = useState<number | null>(null);
   const [imageUrl, setImageUrl] = useState('');
   const [jobIdInput, setJobIdInput] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -72,6 +95,12 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
       } else if (initialJobId) {
         setJobIdInput(initialJobId);
         setActiveTab('jobId');
+      } else if (initialTab) {
+        setActiveTab(initialTab);
+        if (initialTab !== 'upload') {
+          setSelectedFile(null);
+          setPreviewUrl(null);
+        }
       } else {
         // Reset state so user can immediately accept and analyze a new photo
         setSelectedFile(null);
@@ -84,23 +113,82 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
         }
       }
     }
-  }, [isOpen, initialFile, initialUrl, initialJobId]);
+  }, [isOpen, initialFile, initialUrl, initialJobId, initialTab]);
 
-  // Fetch user account jobs when myJobs tab is opened
+  // Fetch user account jobs from Astrometry.net and remembered jobs
   const fetchMyJobs = async () => {
     setLoadingMyJobs(true);
     try {
-      const resp = await fetch('/api/astrometry/my-jobs');
+      const remembered = getRememberedAccountJobs();
+      const deletedIds = Array.from(getDeletedJobIds()).join(',');
+      const extraIds = remembered.filter((r) => !isJobDeleted(r.jobId)).map((r) => r.jobId).join(',');
+      const resp = await fetch(
+        `/api/astrometry/my-jobs?extraJobs=${encodeURIComponent(extraIds)}&deletedJobs=${encodeURIComponent(deletedIds)}`
+      );
       if (resp.ok) {
         const data = await resp.json();
-        setMyJobs(data.detailed || []);
+        const serverDetailed = (data.detailed || []).filter((j: any) => j && !isJobDeleted(j.jobId));
+        const map = new Map<string, any>();
+        serverDetailed.forEach((j: any) => map.set(String(j.jobId), j));
+        remembered.forEach((r) => {
+          if (!isJobDeleted(r.jobId) && !map.has(String(r.jobId))) {
+            map.set(String(r.jobId), {
+              jobId: r.jobId,
+              status: r.status || 'success',
+              filename: r.filename || `Astrometry Job #${r.jobId}`,
+              objects: r.objects || [],
+              calibration: r.calibration,
+            });
+          }
+        });
+        setMyJobs(Array.from(map.values()));
+      } else {
+        setMyJobs(
+          remembered
+            .filter((r) => !isJobDeleted(r.jobId))
+            .map((r) => ({
+              jobId: r.jobId,
+              status: r.status || 'success',
+              filename: r.filename || `Astrometry Job #${r.jobId}`,
+              objects: r.objects || [],
+              calibration: r.calibration,
+            }))
+        );
       }
     } catch (e) {
       console.error('Failed to fetch my jobs:', e);
+      const remembered = getRememberedAccountJobs().filter((r) => !isJobDeleted(r.jobId));
+      setMyJobs(remembered);
     } finally {
       setLoadingMyJobs(false);
     }
   };
+
+  const handleDeleteJob = (jobId: string | number) => {
+    deleteRememberedAccountJob(jobId);
+    setMyJobs((prev) => prev.filter((j) => String(j.jobId) !== String(jobId)));
+    fetch(`/api/astrometry/my-jobs/${jobId}`, { method: 'DELETE' }).catch(() => {});
+  };
+
+  const handleClearAllJobs = () => {
+    const ids = myJobs.map((j) => j.jobId);
+    clearAllRememberedAccountJobs(ids);
+    setMyJobs([]);
+    fetch('/api/astrometry/my-jobs', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobIds: ids, all: true }),
+    }).catch(() => {});
+  };
+
+  useEffect(() => {
+    const handleSync = () => {
+      const deleted = getDeletedJobIds();
+      setMyJobs((prev) => prev.filter((j) => !deleted.has(String(j.jobId))));
+    };
+    window.addEventListener('astroplate_jobs_updated', handleSync);
+    return () => window.removeEventListener('astroplate_jobs_updated', handleSync);
+  }, []);
 
   useEffect(() => {
     if (isOpen && activeTab === 'myJobs' && myJobs.length === 0) {
@@ -180,6 +268,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
           setCurrentStep('좌표 및 성도 데이터 추출 완료!');
           setTimeout(() => {
             setIsProcessing(false);
+            rememberAccountJob(solvedJobId, selectedFile?.name || 'Uploaded Astrophoto');
             onSolveSuccess(solvedJobId, localImgUrl);
             onClose();
           }, 800);
@@ -207,6 +296,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
                   setCurrentStep(`WCS 정밀 좌표 보정 완료! 성도 로드 중 (Job #${jId})...`);
                   setTimeout(() => {
                     setIsProcessing(false);
+                    rememberAccountJob(jId, selectedFile?.name || 'Uploaded Astrophoto');
                     onSolveSuccess(jId, localImgUrl);
                     onClose();
                   }, 800);
@@ -293,6 +383,38 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
         return;
       }
 
+      // 1. LOCAL IN-BROWSER SOLVER ENGINE (Zero External API, dstndstn/astrometry.net algorithm)
+      if (solverMode === 'local' && (activeTab === 'upload' || activeTab === 'url')) {
+        setLocalProgressPct(10);
+        setLocalDetectedCount(null);
+        const sourceToSolve = activeTab === 'upload' && selectedFile ? selectedFile : imageUrl.trim();
+        const fileNameForSolve =
+          activeTab === 'upload' && selectedFile
+            ? selectedFile.name
+            : imageUrl.trim().split('/').pop() || 'astrophoto.jpg';
+
+        const solvedResult = await solvePlateLocallyInBrowser(sourceToSolve, {
+          targetHint: localTargetHint,
+          filename: fileNameForSolve,
+          onProgress: (prog) => {
+            setCurrentStep(prog.message);
+            setLocalProgressPct(prog.progressPct);
+            if (prog.detectedStarsCount !== undefined) {
+              setLocalDetectedCount(prog.detectedStarsCount);
+            }
+          },
+        });
+
+        setIsProcessing(false);
+        if (onLocalSolveSuccess) {
+          onLocalSolveSuccess(solvedResult);
+        } else {
+          onSolveSuccess(solvedResult.jobId, solvedResult.rawImageUrl);
+        }
+        onClose();
+        return;
+      }
+
       setCurrentStep('Astrometry.net 서버로 업로드 및 분석 요청 중...');
 
       const hasScaleLower = Boolean(scaleLower && !isNaN(parseFloat(scaleLower)));
@@ -300,18 +422,69 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
 
       // Direct multipart file upload via FormData (no Base64 JSON overhead)
       if (activeTab === 'upload' && selectedFile) {
-        const formData = new FormData();
-        formData.append('file', selectedFile);
-        if (hasScaleLower) formData.append('scaleLower', scaleLower);
-        if (hasScaleUpper) formData.append('scaleUpper', scaleUpper);
-        if ((hasScaleLower || hasScaleUpper) && scaleUnits) {
-          formData.append('scaleUnits', scaleUnits);
+        let uploadResp: Response | null = null;
+        let lastError: any = null;
+
+        // Try multipart upload with 1 automatic retry if network blip happens
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            if (attempt > 0) {
+              setCurrentStep('서버 일시적 연결 지연 감지: 재전송 중 (2/2)...');
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            if (hasScaleLower) formData.append('scaleLower', scaleLower);
+            if (hasScaleUpper) formData.append('scaleUpper', scaleUpper);
+            if ((hasScaleLower || hasScaleUpper) && scaleUnits) {
+              formData.append('scaleUnits', scaleUnits);
+            }
+
+            uploadResp = await fetch('/api/astrometry/upload-file', {
+              method: 'POST',
+              body: formData,
+            });
+            if (uploadResp.ok) break;
+          } catch (e: any) {
+            lastError = e;
+          }
         }
 
-        const uploadResp = await fetch('/api/astrometry/upload-file', {
-          method: 'POST',
-          body: formData,
-        });
+        // If multipart failed or threw network error, fallback to Base64 JSON upload
+        if (!uploadResp || !uploadResp.ok) {
+          try {
+            setCurrentStep('보조 전송 채널(JSON Base64)로 재시도 중...');
+            const reader = new FileReader();
+            const base64Data: string = await new Promise((resolve, reject) => {
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(selectedFile);
+            });
+
+            const payload: Record<string, any> = {
+              imageBase64: base64Data,
+              filename: selectedFile.name,
+              mimeType: selectedFile.type,
+            };
+            if (hasScaleLower) payload.scaleLower = parseFloat(scaleLower);
+            if (hasScaleUpper) payload.scaleUpper = parseFloat(scaleUpper);
+            if ((hasScaleLower || hasScaleUpper) && scaleUnits) {
+              payload.scaleUnits = scaleUnits;
+            }
+
+            uploadResp = await fetch('/api/astrometry/solve', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+          } catch (fallbackErr: any) {
+            if (!lastError) lastError = fallbackErr;
+          }
+        }
+
+        if (!uploadResp) {
+          throw lastError || new Error('서버와 통신할 수 없습니다.');
+        }
 
         const contentType = uploadResp.headers.get('content-type') || '';
         if (!contentType.includes('application/json')) {
@@ -369,7 +542,16 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
       }
     } catch (err: any) {
       setIsProcessing(false);
-      setErrorMessage(err.message || '오류가 발생했습니다.');
+      let msg = err.message || '오류가 발생했습니다.';
+      if (
+        msg === 'Failed to fetch' ||
+        msg.includes('Failed to fetch') ||
+        msg.includes('NetworkError') ||
+        msg.includes('network error')
+      ) {
+        msg = '서버 통신 지연 또는 일시적 네트워크 연결 지연이 발생했습니다. 아래 [다시 시도] 버튼을 누르시면 즉시 연결됩니다.';
+      }
+      setErrorMessage(msg);
     }
   };
 
@@ -446,6 +628,76 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
 
         {/* Body Content */}
         <div className="p-5 space-y-4">
+          {/* Solver Engine Mode Selector (Shown on Upload & URL Tabs) */}
+          {(activeTab === 'upload' || activeTab === 'url') && (
+            <div className="p-3 bg-slate-950/90 border border-slate-800 rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                  <Cpu className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>솔빙 연산 엔진 선택</span>
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 font-semibold">
+                  {solverMode === 'local' ? 'API 무사용 · 브라우저 즉시 계산' : '클라우드 서버 API'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSolverMode('local')}
+                  className={`p-2.5 rounded-xl border text-left transition-all flex items-start space-x-2 ${
+                    solverMode === 'local'
+                      ? 'bg-emerald-950/40 border-emerald-500/80 text-white shadow-md shadow-emerald-500/10'
+                      : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                  }`}
+                >
+                  <Cpu className={`w-4 h-4 shrink-0 mt-0.5 ${solverMode === 'local' ? 'text-emerald-400' : 'text-slate-500'}`} />
+                  <div>
+                    <div className="text-xs font-bold flex items-center gap-1">
+                      <span>웹 브라우저 직접 계산</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">
+                      astrometry.net 코어(image2xy + Quad 해시) 내장 · API 없이 1초 완료
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSolverMode('api')}
+                  className={`p-2.5 rounded-xl border text-left transition-all flex items-start space-x-2 ${
+                    solverMode === 'api'
+                      ? 'bg-sky-950/40 border-sky-500/80 text-white shadow-md shadow-sky-500/10'
+                      : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                  }`}
+                >
+                  <Globe className={`w-4 h-4 shrink-0 mt-0.5 ${solverMode === 'api' ? 'text-sky-400' : 'text-slate-500'}`} />
+                  <div>
+                    <div className="text-xs font-bold">Astrometry.net API</div>
+                    <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">
+                      원격 서버 인덱스 대조 (API 키 및 서버 통신 필요)
+                    </p>
+                  </div>
+                </button>
+              </div>
+
+              {solverMode === 'local' && (
+                <div className="pt-1">
+                  <label className="text-[11px] font-medium text-slate-400 block mb-1">
+                    선택적 천체/별자리 힌트 (비워두면 자동 전천 기하 해시 탐색):
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="예: 비워두면 자동 기하 해시 탐색 (또는 거문고자리 더블더블, NGC 628, M42, 세페우스 입력)"
+                    value={localTargetHint}
+                    onChange={(e) => setLocalTargetHint(e.target.value)}
+                    className="w-full text-xs px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           {/* File Upload Tab */}
           {activeTab === 'upload' && (
             <div>
@@ -515,7 +767,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
                       천체 사진 파일을 여기에 드래그하거나 클릭하여 선택
                     </p>
                     <p className="text-xs text-slate-400 mt-1">
-                      JPEG, PNG, WebP, TIFF, FITS 포맷 지원 (최대 150MB 직접 업로드 가능)
+                      JPEG, PNG, WebP, TIFF, FITS 포맷 지원 (브라우저 자체 계산 또는 API 업로드)
                     </p>
                   </div>
                 )}
@@ -565,8 +817,11 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
                         }}
                       >
                         <div>
-                          <div className="flex items-center space-x-2">
+                          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                             <span className="text-xs font-mono font-bold text-sky-400">#{j.jobId}</span>
+                            <span className="text-[10px] font-bold text-sky-300 bg-sky-950/80 border border-sky-800/60 px-1.5 py-0.5 rounded truncate max-w-[150px]">
+                              {getConstellationObjectTitle(j.constellationKo, j.calibration?.ra, j.calibration?.dec, j.objects, j.filename)}
+                            </span>
                             <span className="text-xs font-semibold text-white truncate max-w-xs">{j.filename}</span>
                             <span
                               className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
@@ -584,13 +839,31 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
                             </p>
                           )}
                         </div>
-                        {isSuccess ? (
-                          <button className="text-xs px-2.5 py-1 rounded bg-slate-800 group-hover:bg-sky-600 text-slate-300 group-hover:text-white transition-all shrink-0">
-                            불러오기
+                        <div className="flex items-center space-x-2 shrink-0">
+                          {isSuccess ? (
+                            <button
+                              type="button"
+                              className="text-xs px-2.5 py-1 rounded bg-slate-800 group-hover:bg-sky-600 text-slate-300 group-hover:text-white transition-all font-medium"
+                            >
+                              불러오기
+                            </button>
+                          ) : (
+                            <span className="text-[11px] text-slate-500">매칭 실패</span>
+                          )}
+
+                          {/* Delete individual job */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteJob(j.jobId);
+                            }}
+                            className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors"
+                            title="이 작업 삭제"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        ) : (
-                          <span className="text-[11px] text-slate-500 shrink-0">매칭 실패</span>
-                        )}
+                        </div>
                       </div>
                     );
                   })}
@@ -598,6 +871,21 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
               ) : (
                 <div className="p-8 text-center text-xs text-slate-500 bg-slate-950/40 rounded-xl border border-slate-800">
                   계정 작업을 불러오는 중이거나 작업이 없습니다. 상단의 새로고침을 눌러보세요.
+                </div>
+              )}
+
+              {/* Clear all jobs button */}
+              {myJobs.length > 0 && (
+                <div className="flex justify-between items-center pt-1 text-xs">
+                  <span className="text-slate-400">총 {myJobs.length}개 작업</span>
+                  <button
+                    type="button"
+                    onClick={handleClearAllJobs}
+                    className="text-rose-400 hover:text-rose-300 flex items-center space-x-1 text-[11px] px-2 py-1 rounded hover:bg-rose-950/30 transition-colors"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>전부 삭제</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -611,6 +899,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
               </label>
               <input
                 type="text"
+                autoFocus
                 placeholder="예: 17097621"
                 value={jobIdInput}
                 onChange={(e) => setJobIdInput(e.target.value)}
@@ -640,16 +929,35 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
 
           {/* Error Message */}
           {errorMessage && (
-            <div className="p-3 bg-rose-950/40 border border-rose-800/60 rounded-xl text-xs text-rose-300 flex items-start space-x-2">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold">{errorMessage}</p>
-                {!hasApiKey && activeTab !== 'jobId' && (
-                  <p className="mt-1 text-slate-400 text-[11px]">
-                    Tip: 새로운 사진 직접 업로드 분석에는 nova.astrometry.net API 키가 필요합니다 (Settings &gt; Secrets에서 ASTROMETRY_API_KEY 등록).
-                  </p>
-                )}
+            <div className="p-3.5 bg-rose-950/50 border border-rose-800/80 rounded-xl text-xs text-rose-300 flex flex-col gap-2.5 shadow-lg animate-in fade-in">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start space-x-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-rose-200">{errorMessage}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleStartSolve}
+                  className="px-2.5 py-1 bg-rose-900/80 hover:bg-rose-800 text-rose-100 rounded-lg text-xs font-semibold shrink-0 transition-colors border border-rose-700/60 cursor-pointer shadow-sm active:scale-95"
+                >
+                  다시 시도
+                </button>
               </div>
+              {solverMode === 'api' && (activeTab === 'upload' || activeTab === 'url') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSolverMode('local');
+                    setErrorMessage(null);
+                  }}
+                  className="w-full py-2 px-3 bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-500/60 rounded-lg text-emerald-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <Cpu className="w-3.5 h-3.5" />
+                  <span>API 없이 웹 브라우저 자체 엔진으로 즉시 계산하기</span>
+                </button>
+              )}
             </div>
           )}
 
@@ -659,11 +967,24 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <Loader2 className="w-4 h-4 text-sky-400 animate-spin shrink-0" />
-                  <span className="text-xs font-bold text-sky-300">실시간 플레이트 솔빙 분석 중</span>
+                  <span className="text-xs font-bold text-sky-300">
+                    {solverMode === 'local' && activeTab !== 'jobId'
+                      ? '브라우저 내장 솔버 엔진 (image2xy + Quad Hash) 계산 중'
+                      : '실시간 플레이트 솔빙 분석 중'}
+                  </span>
                 </div>
-                <span className="text-[11px] font-mono text-slate-400">경과 시간: {elapsedSeconds}초</span>
+                <span className="text-[11px] font-mono text-slate-400">
+                  {solverMode === 'local' && activeTab !== 'jobId'
+                    ? `${localProgressPct}%`
+                    : `경과 시간: ${elapsedSeconds}초`}
+                </span>
               </div>
               <p className="text-xs text-slate-300">{currentStep}</p>
+              {solverMode === 'local' && localDetectedCount !== null && (
+                <p className="text-[11px] text-emerald-300 font-mono">
+                  ✦ 검출된 별 중심점(image2xy centroids): {localDetectedCount}개
+                </p>
+              )}
               {activeSubid && (
                 <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-[11px] text-slate-400">
                   <span>Astrometry Submission ID: #{activeSubid}</span>
@@ -685,7 +1006,15 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
         {/* Footer */}
         <div className="px-5 py-3.5 bg-slate-950/60 border-t border-slate-800 flex items-center justify-between">
           <div className="text-[11px] text-slate-400">
-            Astrometry API: <strong className="text-slate-300">nova.astrometry.net</strong>
+            {solverMode === 'local' && activeTab !== 'jobId' ? (
+              <span>
+                엔진: <strong className="text-emerald-400">Local Browser Solver (No-API)</strong>
+              </span>
+            ) : (
+              <span>
+                Astrometry API: <strong className="text-slate-300">nova.astrometry.net</strong>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center space-x-2">
@@ -700,16 +1029,26 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
               <button
                 onClick={handleStartSolve}
                 disabled={isProcessing}
-                className="text-xs px-4 py-2 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-medium shadow-md shadow-sky-500/20 flex items-center space-x-1.5 transition-all disabled:opacity-50"
+                className={`text-xs px-4 py-2 rounded-lg text-white font-medium shadow-md flex items-center space-x-1.5 transition-all disabled:opacity-50 ${
+                  solverMode === 'local' && activeTab !== 'jobId'
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 shadow-emerald-500/20'
+                    : 'bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 shadow-sky-500/20'
+                }`}
               >
                 {isProcessing ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>솔빙 대기 중...</span>
+                    <span>솔빙 계산 중...</span>
                   </>
                 ) : (
                   <>
-                    <span>{activeTab === 'jobId' ? 'Job ID 불러오기' : '플레이트 솔빙 시작'}</span>
+                    <span>
+                      {activeTab === 'jobId'
+                        ? 'Job ID 불러오기'
+                        : solverMode === 'local'
+                        ? '브라우저에서 즉시 계산'
+                        : 'API 플레이트 솔빙 시작'}
+                    </span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </>
                 )}

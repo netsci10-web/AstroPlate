@@ -11,9 +11,18 @@ import {
   Clock,
   Loader2,
   RefreshCw,
+  Trash2,
 } from 'lucide-react';
 import { SolvedAstroData } from '../types/astronomy';
 import { SAMPLE_SOLVED_JOBS } from '../data/sampleShowcase';
+import {
+  getRememberedAccountJobs,
+  deleteRememberedAccountJob,
+  clearAllRememberedAccountJobs,
+  getDeletedJobIds,
+  isJobDeleted,
+} from '../utils/accountJobs';
+import { getConstellationObjectTitle } from '../utils/constellations';
 
 interface EmptyStateProps {
   onStartUpload: (file: File) => void;
@@ -38,21 +47,80 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch user account jobs from nova.astrometry.net
+  // Fetch user account jobs from nova.astrometry.net and remembered jobs
   const fetchMyJobs = async () => {
     setLoadingMyJobs(true);
     try {
-      const resp = await fetch('/api/astrometry/my-jobs');
+      const remembered = getRememberedAccountJobs();
+      const deletedIds = Array.from(getDeletedJobIds()).join(',');
+      const extraIds = remembered.filter((r) => !isJobDeleted(r.jobId)).map((r) => r.jobId).join(',');
+      const resp = await fetch(
+        `/api/astrometry/my-jobs?extraJobs=${encodeURIComponent(extraIds)}&deletedJobs=${encodeURIComponent(deletedIds)}`
+      );
       if (resp.ok) {
         const data = await resp.json();
-        setMyJobs(data.detailed || []);
+        const serverDetailed = (data.detailed || []).filter((j: any) => j && !isJobDeleted(j.jobId));
+        const map = new Map<string, any>();
+        serverDetailed.forEach((j: any) => map.set(String(j.jobId), j));
+        remembered.forEach((r) => {
+          if (!isJobDeleted(r.jobId) && !map.has(String(r.jobId))) {
+            map.set(String(r.jobId), {
+              jobId: r.jobId,
+              status: r.status || 'success',
+              filename: r.filename || `Astrometry Job #${r.jobId}`,
+              objects: r.objects || [],
+              calibration: r.calibration,
+            });
+          }
+        });
+        setMyJobs(Array.from(map.values()));
+      } else {
+        setMyJobs(
+          remembered
+            .filter((r) => !isJobDeleted(r.jobId))
+            .map((r) => ({
+              jobId: r.jobId,
+              status: r.status || 'success',
+              filename: r.filename || `Astrometry Job #${r.jobId}`,
+              objects: r.objects || [],
+              calibration: r.calibration,
+            }))
+        );
       }
     } catch (e) {
       console.error('Failed to fetch my jobs:', e);
+      const remembered = getRememberedAccountJobs().filter((r) => !isJobDeleted(r.jobId));
+      setMyJobs(remembered);
     } finally {
       setLoadingMyJobs(false);
     }
   };
+
+  const handleDeleteJob = (jobId: string | number) => {
+    deleteRememberedAccountJob(jobId);
+    setMyJobs((prev) => prev.filter((j) => String(j.jobId) !== String(jobId)));
+    fetch(`/api/astrometry/my-jobs/${jobId}`, { method: 'DELETE' }).catch(() => {});
+  };
+
+  const handleClearAllJobs = () => {
+    const ids = myJobs.map((j) => j.jobId);
+    clearAllRememberedAccountJobs(ids);
+    setMyJobs([]);
+    fetch('/api/astrometry/my-jobs', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobIds: ids, all: true }),
+    }).catch(() => {});
+  };
+
+  useEffect(() => {
+    const handleSync = () => {
+      const deleted = getDeletedJobIds();
+      setMyJobs((prev) => prev.filter((j) => !deleted.has(String(j.jobId))));
+    };
+    window.addEventListener('astroplate_jobs_updated', handleSync);
+    return () => window.removeEventListener('astroplate_jobs_updated', handleSync);
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'myJobs' && myJobs.length === 0) {
@@ -209,8 +277,11 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
                     onClick={() => onSubmitJobId(String(j.jobId))}
                   >
                     <div>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                         <span className="text-xs font-mono font-bold text-sky-400">#{j.jobId}</span>
+                        <span className="text-[10px] font-bold text-sky-300 bg-sky-950/80 border border-sky-800/60 px-1.5 py-0.5 rounded truncate max-w-[150px]">
+                          {getConstellationObjectTitle(j.constellationKo, j.calibration?.ra, j.calibration?.dec, j.objects, j.filename)}
+                        </span>
                         <span className="text-xs font-semibold text-white truncate max-w-xs">{j.filename}</span>
                       </div>
                       {j.objects && j.objects.length > 0 && (
@@ -219,15 +290,46 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
                         </p>
                       )}
                     </div>
-                    <button className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 group-hover:bg-sky-600 text-slate-300 group-hover:text-white transition-all shrink-0 font-medium">
-                      성도 불러오기
-                    </button>
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <button
+                        type="button"
+                        className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 group-hover:bg-sky-600 text-slate-300 group-hover:text-white transition-all font-medium"
+                      >
+                        성도 불러오기
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteJob(j.jobId);
+                        }}
+                        className="p-1.5 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors"
+                        title="이 작업 삭제"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
             ) : (
               <div className="p-8 text-center text-xs text-slate-400 bg-slate-950/40 rounded-xl border border-slate-800">
                 계정 작업을 불러오는 중이거나 작업이 없습니다. 상단의 새로고침을 눌러보세요.
+              </div>
+            )}
+
+            {/* Clear all account jobs button */}
+            {myJobs.length > 0 && (
+              <div className="flex justify-between items-center pt-1 text-xs">
+                <span className="text-slate-400">총 {myJobs.length}개 작업</span>
+                <button
+                  type="button"
+                  onClick={handleClearAllJobs}
+                  className="text-rose-400 hover:text-rose-300 flex items-center space-x-1 text-[11px] px-2 py-1 rounded hover:bg-rose-950/30 transition-colors"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>전부 삭제</span>
+                </button>
               </div>
             )}
           </div>

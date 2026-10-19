@@ -16,6 +16,17 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 app.use(express.json({ limit: '150mb' }));
 app.use(express.urlencoded({ extended: true, limit: '150mb' }));
 
+// Enable CORS for API routes and handle preflight
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // Multer memory storage for direct file uploads up to 150MB
 const upload = multer({
   limits: { fileSize: 150 * 1024 * 1024 },
@@ -189,48 +200,86 @@ app.get('/api/astrometry/sample-jobs', (_req: Request, res: Response) => {
   res.json({ samples: [] });
 });
 
-// Fetch user's solved jobs directly from nova.astrometry.net account
-app.get('/api/astrometry/my-jobs', async (_req: Request, res: Response) => {
+const deletedJobIds = new Set<string>();
+
+// Fetch user's solved jobs directly from nova.astrometry.net account & remembered jobs
+app.get('/api/astrometry/my-jobs', async (req: Request, res: Response) => {
   try {
-    let session: string;
+    const extraParam = String(req.query.extraJobs || req.query.jobIds || '').trim();
+    const extraList: (string | number)[] = extraParam
+      ? extraParam.split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
+
+    const deletedParam = String(req.query.deletedJobs || '').trim();
+    if (deletedParam) {
+      deletedParam.split(',').forEach((d) => {
+        const trimmed = d.trim();
+        if (trimmed) deletedJobIds.add(trimmed);
+      });
+    }
+
+    let accountJobIds: (string | number)[] = [];
     try {
-      session = await getAstrometrySession();
-    } catch (err: any) {
-      return res.status(401).json({ error: 'API_KEY_REQUIRED', message: err.message });
+      const session = await getAstrometrySession();
+      const resp = await fetch('https://nova.astrometry.net/api/myjobs/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'AstroPlate/1.0' },
+        body: `request-json=${encodeURIComponent(JSON.stringify({ session }))}`,
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        if (Array.isArray(data.jobs)) {
+          accountJobIds = data.jobs;
+        }
+      }
+    } catch {
+      // Session error / no API key: we still proceed with extraList!
     }
 
-    const resp = await fetch('https://nova.astrometry.net/api/myjobs/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'AstroPlate/1.0' },
-      body: `request-json=${encodeURIComponent(JSON.stringify({ session }))}`,
-    });
+    // Merge: extraList first (latest remembered in app), then account jobs, deduplicated
+    // Filter out jobs that the user explicitly deleted
+    const combinedIds = Array.from(new Set([...extraList, ...accountJobIds.reverse()]))
+      .filter((id) => id && !deletedJobIds.has(String(id)));
 
-    if (!resp.ok) {
-      return res.status(resp.status).json({ error: `Failed to fetch myjobs: ${resp.statusText}` });
-    }
-
-    const data = await resp.json();
-    const rawJobIds: number[] = data.jobs || [];
-
-    // Reverse to show latest first
-    const jobIds = [...rawJobIds].reverse();
-
-    // Fetch brief info for latest jobs
-    const topJobs = jobIds.slice(0, 15);
+    // Fetch brief info for top 25 jobs from Astrometry.net
+    const topJobs = combinedIds.slice(0, 25);
     const detailed = await Promise.all(
       topJobs.map(async (jobId) => {
         try {
-          const infoResp = await fetch(`https://nova.astrometry.net/api/jobs/${jobId}/info/`, {
-            headers: { 'User-Agent': 'AstroPlate/1.0' },
-          });
-          if (!infoResp.ok) return { jobId, status: 'unknown' };
-          const info = await infoResp.json();
+          const [infoResp, calResp, annoResp] = await Promise.all([
+            fetch(`https://nova.astrometry.net/api/jobs/${jobId}/info/`, {
+              headers: { 'User-Agent': 'AstroPlate/1.0' },
+            }),
+            fetch(`https://nova.astrometry.net/api/jobs/${jobId}/calibration/`, {
+              headers: { 'User-Agent': 'AstroPlate/1.0' },
+            }).catch(() => null),
+            fetch(`https://nova.astrometry.net/api/jobs/${jobId}/annotations/`, {
+              headers: { 'User-Agent': 'AstroPlate/1.0' },
+            }).catch(() => null),
+          ]);
+
+          const info = infoResp.ok ? await infoResp.json() : {};
+          const calibration = calResp && calResp.ok ? await calResp.json() : null;
+          const annoData = annoResp && annoResp.ok ? await annoResp.json().catch(() => null) : null;
+          const annoNames = Array.isArray(annoData?.annotations)
+            ? annoData.annotations.flatMap((a: any) => (Array.isArray(a.names) ? a.names : []))
+            : [];
+
+          const rawObjects = [
+            ...(Array.isArray(info.objects_in_field) ? info.objects_in_field : []),
+            ...(Array.isArray(info.tags) ? info.tags : []),
+            ...(Array.isArray(info.machine_tags) ? info.machine_tags : []),
+            ...annoNames,
+          ];
+          const objects = Array.from(new Set(rawObjects.filter(Boolean)));
+
           return {
             jobId,
-            status: info.status || 'unknown',
-            filename: info.original_filename || `Job #${jobId}`,
-            objects: info.objects_in_field || [],
-            calibration: info.calibration || null,
+            status: info.status || (calibration ? 'success' : 'unknown'),
+            filename: info.original_filename || `Astrometry Job #${jobId}`,
+            objects,
+            calibration,
           };
         } catch {
           return { jobId, status: 'unknown' };
@@ -239,12 +288,52 @@ app.get('/api/astrometry/my-jobs', async (_req: Request, res: Response) => {
     );
 
     res.json({
-      jobIds,
-      detailed,
+      jobIds: combinedIds,
+      detailed: detailed.filter((d) => d && !deletedJobIds.has(String(d.jobId))),
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message || 'Failed to fetch my jobs' });
   }
+});
+
+// Delete single job from remembered account jobs
+app.delete('/api/astrometry/my-jobs/:jobId', (req: Request, res: Response) => {
+  const { jobId } = req.params;
+  if (jobId) {
+    deletedJobIds.add(String(jobId));
+  }
+  userHistory = userHistory.filter((h) => String(h.jobId) !== String(jobId) && h.id !== jobId);
+  res.json({ success: true, removedJobId: jobId });
+});
+
+// Clear all remembered account jobs
+app.delete('/api/astrometry/my-jobs', async (req: Request, res: Response) => {
+  const { jobIds, all } = req.body || {};
+  if (Array.isArray(jobIds)) {
+    jobIds.forEach((id) => deletedJobIds.add(String(id)));
+  }
+  userHistory.forEach((h) => deletedJobIds.add(String(h.jobId)));
+  userHistory = [];
+
+  // Also query session to mark all current account jobs as deleted if requested
+  if (all) {
+    try {
+      const session = await getAstrometrySession();
+      const resp = await fetch('https://nova.astrometry.net/api/myjobs/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'AstroPlate/1.0' },
+        body: `request-json=${encodeURIComponent(JSON.stringify({ session }))}`,
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (Array.isArray(data.jobs)) {
+          data.jobs.forEach((id: any) => deletedJobIds.add(String(id)));
+        }
+      }
+    } catch {}
+  }
+
+  res.json({ success: true, message: 'All remembered account jobs cleared' });
 });
 
 // Direct Multipart File Upload (Supports up to 150MB files without Base64 overhead)
@@ -542,13 +631,21 @@ async function getCdsSkyImage(jobId: string | number): Promise<Buffer | null> {
     const ra = cal.ra;
     const dec = cal.dec;
     const fov = Math.max(0.4, (cal.radius || 1) * 2);
-    const cdsUrl = `https://alasky.cds.unistra.fr/hips-image-services/hips2fits?hips=CDS%2FP%2FDSS2%2Fcolor&ra=${ra}&dec=${dec}&fov=${fov}&width=1280&height=800&format=jpg`;
+    const calW = cal.width_arcsec || 1920;
+    const calH = cal.height_arcsec || 1080;
+    const aspect = Math.max(0.5, Math.min(2.0, calW / calH));
+    const width = 1280;
+    const height = Math.round(1280 / aspect);
+    const rotation = cal.orientation !== undefined ? Math.round(cal.orientation) : 0;
+    const cdsUrl = `https://alasky.cds.unistra.fr/hips-image-services/hips2fits?hips=CDS%2FP%2FDSS2%2Fcolor&ra=${ra}&dec=${dec}&fov=${fov}&width=${width}&height=${height}&rotation_angle=${rotation}&format=jpg`;
     const resp = await fetch(cdsUrl, {
       headers: { 'User-Agent': 'Mozilla/5.0' },
     });
     if (resp.ok) {
       const arrayBuf = await resp.arrayBuffer();
-      return Buffer.from(arrayBuf);
+      if (arrayBuf.byteLength > 8000) {
+        return Buffer.from(arrayBuf);
+      }
     }
   } catch (e) {
     console.error('Failed to get CDS sky image:', e);
@@ -639,6 +736,16 @@ app.get('/api/astrometry/image-proxy/:jobId/:type', async (req: Request, res: Re
         res.setHeader('Cache-Control', 'public, max-age=86400');
         return res.send(cached.buffer);
       }
+
+      // If no local uploaded photo cached (e.g. loaded by Job ID lookup), fetch authentic clean CDS optical survey image
+      // This ensures the background of the constellation precision overlay has clean real stars without official Astrometry annotations
+      const surveyBuf = await getCdsSkyImage(jobId);
+      if (surveyBuf) {
+        originalPhotoCache.set(String(jobId), { buffer: surveyBuf, mimetype: 'image/jpeg' });
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.send(surveyBuf);
+      }
     }
 
     // 2. Candidate upstream Astrometry URLs in order of preference (full resolution first)
@@ -707,10 +814,13 @@ app.get('/api/astrometry/image-proxy/:jobId/:type', async (req: Request, res: Re
 
         const contentType = upstream.headers.get('content-type') || '';
         if (upstream.ok && contentType.startsWith('image/')) {
-          res.setHeader('Content-Type', contentType);
-          res.setHeader('Cache-Control', 'public, max-age=86400');
           const arrayBuf = await upstream.arrayBuffer();
-          return res.send(Buffer.from(arrayBuf));
+          // Skip dummy tiny placeholder images (< 10000 bytes)
+          if (arrayBuf.byteLength >= 10000) {
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            return res.send(Buffer.from(arrayBuf));
+          }
         }
       } catch (e) {
         console.warn(`Astrometry proxy error for ${targetUrl}:`, e);

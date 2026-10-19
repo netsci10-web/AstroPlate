@@ -36,6 +36,11 @@ export interface OverlayColorConfig {
   badgeText: string;
   starReticle: string;
   starText: string;
+  dsoStroke: string;
+  dsoCross: string;
+  dsoText: string;
+  dsoPillBg: string;
+  dsoPillBorder: string;
   activeClass: string;
 }
 
@@ -47,25 +52,35 @@ export const OVERLAY_COLORS: Record<OverlayColor, OverlayColorConfig> = {
     glowColor: '#ef4444',
     primary: '#ff4d4d',
     halo: '#f87171',
-    badgeBg: '#450a0acc',
+    badgeBg: 'rgba(50, 10, 15, 0.88)',
     badgeBorder: '#ef4444',
     badgeText: '#fecaca',
     starReticle: '#ef4444',
     starText: '#fca5a5',
+    dsoStroke: '#f43f5e',
+    dsoCross: '#fb7185',
+    dsoText: '#fda4af',
+    dsoPillBg: 'rgba(40, 10, 15, 0.85)',
+    dsoPillBorder: '#f43f5e',
     activeClass: 'ring-2 ring-red-400 bg-red-500/25 text-red-200 border-red-500 font-bold',
   },
   yellow: {
     id: 'yellow',
     label: '노랑',
     dotColor: '#eab308',
-    glowColor: '#eab308',
+    glowColor: '#facc15',
     primary: '#facc15',
-    halo: '#fde047',
-    badgeBg: '#422006cc',
-    badgeBorder: '#eab308',
+    halo: '#fef08a',
+    badgeBg: 'rgba(45, 25, 0, 0.88)',
+    badgeBorder: '#facc15',
     badgeText: '#fef08a',
-    starReticle: '#eab308',
+    starReticle: '#facc15',
     starText: '#fef08a',
+    dsoStroke: '#facc15',
+    dsoCross: '#fef08a',
+    dsoText: '#fef08a',
+    dsoPillBg: 'rgba(35, 20, 0, 0.88)',
+    dsoPillBorder: '#facc15',
     activeClass: 'ring-2 ring-amber-400 bg-amber-500/25 text-amber-200 border-amber-500 font-bold',
   },
   green: {
@@ -75,11 +90,16 @@ export const OVERLAY_COLORS: Record<OverlayColor, OverlayColorConfig> = {
     glowColor: '#22c55e',
     primary: '#4ade80',
     halo: '#86efac',
-    badgeBg: '#052e16cc',
+    badgeBg: 'rgba(5, 35, 18, 0.88)',
     badgeBorder: '#22c55e',
     badgeText: '#bbf7d0',
     starReticle: '#22c55e',
     starText: '#86efac',
+    dsoStroke: '#22c55e',
+    dsoCross: '#86efac',
+    dsoText: '#bbf7d0',
+    dsoPillBg: 'rgba(5, 30, 15, 0.85)',
+    dsoPillBorder: '#22c55e',
     activeClass: 'ring-2 ring-green-400 bg-green-500/25 text-green-200 border-green-500 font-bold',
   },
   white: {
@@ -89,11 +109,16 @@ export const OVERLAY_COLORS: Record<OverlayColor, OverlayColorConfig> = {
     glowColor: '#ffffff',
     primary: '#ffffff',
     halo: '#e2e8f0',
-    badgeBg: '#1e293bcc',
+    badgeBg: 'rgba(15, 23, 42, 0.88)',
     badgeBorder: '#ffffff',
     badgeText: '#ffffff',
     starReticle: '#ffffff',
     starText: '#f8fafc',
+    dsoStroke: '#ffffff',
+    dsoCross: '#e2e8f0',
+    dsoText: '#ffffff',
+    dsoPillBg: 'rgba(15, 23, 42, 0.85)',
+    dsoPillBorder: '#94a3b8',
     activeClass: 'ring-2 ring-white bg-white/20 text-white border-white font-bold',
   },
 };
@@ -119,7 +144,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
   const [showDSO, setShowDSO] = useState(true);
   const [showGrid, setShowGrid] = useState(true);
   const [showCenterFov, setShowCenterFov] = useState(true);
-  const [overlayOpacity, setOverlayOpacity] = useState(0.9);
+  const [overlayOpacity, setOverlayOpacity] = useState(0.85);
 
   // Overlay color: red, yellow, green, white (stored in localStorage, default: red)
   const [overlayColor, setOverlayColor] = useState<OverlayColor>(() => {
@@ -160,6 +185,8 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
       ? Math.round(cal.height_arcsec / cal.pixscale)
       : data.imageHeight || naturalSize.height || 1080;
   const orientation = cal?.orientation || 0;
+  // Dynamic scale factor for label sizes based on coordinate dimensions
+  const fontScale = Math.max(1, Math.min(2.5, calWidth / 1400));
 
   // Reset imgLoadError, zoom/pan and synchronize coordinates when job changes
   useEffect(() => {
@@ -276,11 +303,24 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
     return { stars: starsList, dsos: dsosList };
   }, [data.annotations]);
 
+  // Reset imgLoadError when switching viewMode or jobId
+  useEffect(() => {
+    setImgLoadError(false);
+  }, [viewMode, data.jobId]);
+
   // Current image source based on viewMode
   const getImageSource = () => {
+    const isLocalJob = String(data.jobId).startsWith('local_');
+    if (isLocalJob) {
+      if (viewMode === 'annotated' || viewMode === 'red_green') {
+        return data.imageUrl || data.rawImageUrl || '';
+      }
+      return data.rawImageUrl || data.imageUrl || '';
+    }
+
     if (imgLoadError) {
-      if (viewMode === 'raw') {
-        return data.rawImageUrl || `https://nova.astrometry.net/image/${data.jobId}`;
+      if (viewMode === 'raw' || viewMode === 'vector') {
+        return `/api/astrometry/sky-image/${data.jobId}`;
       }
       return `https://nova.astrometry.net/annotated_display/${data.jobId}`;
     }
@@ -474,30 +514,35 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                     ))}
 
                     {/* Constellation Name Badges at top-left of photo */}
-                    {data.matchedConstellations.map((c, i) => (
-                      <g key={`cname-${c.code}-${i}`}>
-                        <rect
-                          x={calWidth * 0.04}
-                          y={calHeight * 0.05 + i * 36}
-                          width={240}
-                          height={28}
-                          rx={6}
-                          fill={currentColorConfig.badgeBg}
-                          stroke={currentColorConfig.badgeBorder}
-                          strokeWidth="1.2"
-                        />
-                        <text
-                          x={calWidth * 0.04 + 12}
-                          y={calHeight * 0.05 + i * 36 + 18}
-                          fill={currentColorConfig.badgeText}
-                          fontSize="13"
-                          fontWeight="bold"
-                          fontFamily="sans-serif"
-                        >
-                          ✦ {c.nameKo} ({c.nameEn})
-                        </text>
-                      </g>
-                    ))}
+                    {data.matchedConstellations.map((c, i) => {
+                      const badgeW = Math.max(260, 240 * fontScale);
+                      const badgeH = 34 * fontScale;
+                      return (
+                        <g key={`cname-${c.code}-${i}`}>
+                          <rect
+                            x={calWidth * 0.04}
+                            y={calHeight * 0.05 + i * (badgeH + 8 * fontScale)}
+                            width={badgeW}
+                            height={badgeH}
+                            rx={6 * fontScale}
+                            fill={currentColorConfig.badgeBg}
+                            stroke={currentColorConfig.badgeBorder}
+                            strokeWidth={1.5 * fontScale}
+                            filter="drop-shadow(0 3px 6px rgba(0,0,0,0.6))"
+                          />
+                          <text
+                            x={calWidth * 0.04 + 14 * fontScale}
+                            y={calHeight * 0.05 + i * (badgeH + 8 * fontScale) + 22 * fontScale}
+                            fill={currentColorConfig.badgeText}
+                            fontSize={15 * fontScale}
+                            fontWeight="bold"
+                            fontFamily="sans-serif"
+                          >
+                            ✦ {c.nameKo} ({c.nameEn})
+                          </text>
+                        </g>
+                      );
+                    })}
                   </g>
                 )}
 
@@ -505,8 +550,13 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                 {showDSO && (
                   <g className="dsos">
                     {dsos.map((dso, idx) => {
-                      const radius = Math.max(14, dso.radius || 18);
+                      const radius = Math.max(16 * fontScale, (dso.radius || 18) * fontScale);
                       const primaryName = dso.names[0] || 'DSO';
+                      const textWidth = Math.max(48 * fontScale, primaryName.length * (10 * fontScale) + 16 * fontScale);
+                      const textHeight = 22 * fontScale;
+                      const textX = dso.pixelx + radius + 8 * fontScale;
+                      const textY = dso.pixely;
+
                       return (
                         <g
                           key={`dso-${idx}`}
@@ -515,58 +565,72 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                           onMouseEnter={() => setHoveredAnnotation(dso)}
                           onMouseLeave={() => setHoveredAnnotation(null)}
                         >
-                          {/* Outer dashed DSO target circle */}
+                          {/* Outer dashed DSO target circle - dynamically colored */}
                           <circle
                             cx={dso.pixelx}
                             cy={dso.pixely}
                             r={radius}
                             fill="none"
-                            stroke="#f43f5e"
-                            strokeWidth="1.8"
-                            strokeDasharray="5 3"
-                            filter="url(#dso-glow)"
+                            stroke={currentColorConfig.dsoStroke}
+                            strokeWidth={2.2 * fontScale}
+                            strokeDasharray="6 3.5"
+                            filter="url(#celestial-glow)"
                           />
                           {/* Inner cross reticle */}
                           <line
-                            x1={dso.pixelx - radius - 4}
+                            x1={dso.pixelx - radius - 5 * fontScale}
                             y1={dso.pixely}
-                            x2={dso.pixelx - radius + 5}
+                            x2={dso.pixelx - radius + 5 * fontScale}
                             y2={dso.pixely}
-                            stroke="#fb7185"
-                            strokeWidth="1.5"
+                            stroke={currentColorConfig.dsoCross}
+                            strokeWidth={1.8 * fontScale}
                           />
                           <line
-                            x1={dso.pixelx + radius - 5}
+                            x1={dso.pixelx + radius - 5 * fontScale}
                             y1={dso.pixely}
-                            x2={dso.pixelx + radius + 4}
+                            x2={dso.pixelx + radius + 5 * fontScale}
                             y2={dso.pixely}
-                            stroke="#fb7185"
-                            strokeWidth="1.5"
+                            stroke={currentColorConfig.dsoCross}
+                            strokeWidth={1.8 * fontScale}
                           />
                           <line
                             x1={dso.pixelx}
-                            y1={dso.pixely - radius - 4}
+                            y1={dso.pixely - radius - 5 * fontScale}
                             x2={dso.pixelx}
-                            y2={dso.pixely - radius + 5}
-                            stroke="#fb7185"
-                            strokeWidth="1.5"
+                            y2={dso.pixely - radius + 5 * fontScale}
+                            stroke={currentColorConfig.dsoCross}
+                            strokeWidth={1.8 * fontScale}
                           />
                           <line
                             x1={dso.pixelx}
-                            y1={dso.pixely + radius - 5}
+                            y1={dso.pixely + radius - 5 * fontScale}
                             x2={dso.pixelx}
-                            y2={dso.pixely + radius + 4}
-                            stroke="#fb7185"
-                            strokeWidth="1.5"
+                            y2={dso.pixely + radius + 5 * fontScale}
+                            stroke={currentColorConfig.dsoCross}
+                            strokeWidth={1.8 * fontScale}
                           />
-                          {/* DSO Label */}
+
+                          {/* High-contrast background pill for DSO label */}
+                          <rect
+                            x={textX}
+                            y={textY - textHeight / 2}
+                            width={textWidth}
+                            height={textHeight}
+                            rx={4 * fontScale}
+                            fill={currentColorConfig.dsoPillBg}
+                            stroke={currentColorConfig.dsoPillBorder}
+                            strokeWidth={1 * fontScale}
+                            filter="drop-shadow(0 2px 4px rgba(0,0,0,0.85))"
+                          />
+                          {/* DSO Label Text - Large & bold */}
                           <text
-                            x={dso.pixelx + radius + 8}
-                            y={dso.pixely + 4}
-                            fill="#fda4af"
-                            fontSize="13"
+                            x={textX + 8 * fontScale}
+                            y={textY + 5 * fontScale}
+                            fill={currentColorConfig.dsoText}
+                            fontSize={15 * fontScale}
                             fontWeight="bold"
-                            filter="drop-shadow(0 2px 4px rgba(0,0,0,0.8))"
+                            fontFamily="sans-serif"
+                            filter="drop-shadow(0 1px 2px rgba(0,0,0,0.9))"
                           >
                             {primaryName}
                           </text>
@@ -582,6 +646,12 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                     {stars.map((star, idx) => {
                       const name = star.names[0] || '';
                       const isBright = star.vmag !== undefined && star.vmag < 4.0;
+                      const starRadius = (isBright ? 10 : 7) * fontScale;
+                      const textWidth = name ? Math.max(38 * fontScale, name.length * (9 * fontScale) + (star.vmag !== undefined ? 44 * fontScale : 14 * fontScale)) : 0;
+                      const textHeight = (isBright ? 24 : 20) * fontScale;
+                      const textX = star.pixelx + starRadius + 6 * fontScale;
+                      const textY = star.pixely;
+
                       return (
                         <g
                           key={`star-${idx}`}
@@ -594,35 +664,53 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                           <circle
                             cx={star.pixelx}
                             cy={star.pixely}
-                            r={isBright ? 9 : 6}
+                            r={starRadius}
                             fill={`${currentColorConfig.dotColor}25`}
                             stroke={currentColorConfig.starReticle}
-                            strokeWidth={isBright ? '2.2' : '1.3'}
+                            strokeWidth={(isBright ? 2.4 : 1.6) * fontScale}
                             filter="url(#celestial-glow)"
                           />
                           {/* Star center dot */}
                           <circle
                             cx={star.pixelx}
                             cy={star.pixely}
-                            r={isBright ? 2.5 : 1.5}
+                            r={(isBright ? 3 : 2) * fontScale}
                             fill={currentColorConfig.primary}
                           />
-                          {/* Name Text */}
-                          <text
-                            x={star.pixelx + 10}
-                            y={star.pixely - 6}
-                            fill={currentColorConfig.starText}
-                            fontSize={isBright ? '12' : '10'}
-                            fontWeight={isBright ? 'bold' : 'normal'}
-                            filter="drop-shadow(0 2px 4px rgba(0,0,0,0.95))"
-                          >
-                            {name}
-                            {star.vmag !== undefined && (
-                              <tspan fill="#cbd5e1" fontSize="9" dx="4">
-                                {star.vmag.toFixed(1)}m
-                              </tspan>
-                            )}
-                          </text>
+
+                          {/* Star Name Pill & Text - Large & bold */}
+                          {name && (
+                            <>
+                              <rect
+                                x={textX}
+                                y={textY - textHeight / 2}
+                                width={textWidth}
+                                height={textHeight}
+                                rx={4 * fontScale}
+                                fill={currentColorConfig.dsoPillBg}
+                                stroke={currentColorConfig.dsoPillBorder}
+                                strokeWidth={0.8 * fontScale}
+                                strokeOpacity="0.8"
+                                filter="drop-shadow(0 2px 4px rgba(0,0,0,0.85))"
+                              />
+                              <text
+                                x={textX + 7 * fontScale}
+                                y={textY + 4 * fontScale}
+                                fill={currentColorConfig.starText}
+                                fontSize={(isBright ? 15 : 12.5) * fontScale}
+                                fontWeight={isBright ? 'bold' : '600'}
+                                fontFamily="sans-serif"
+                                filter="drop-shadow(0 1px 2px rgba(0,0,0,0.95))"
+                              >
+                                {name}
+                                {star.vmag !== undefined && (
+                                  <tspan fill="#cbd5e1" fontSize={(isBright ? 11.5 : 9.5) * fontScale} dx="4">
+                                    {star.vmag.toFixed(1)}m
+                                  </tspan>
+                                )}
+                              </text>
+                            </>
+                          )}
                         </g>
                       );
                     })}
@@ -634,35 +722,45 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                   <g className="center-fov">
                     {/* Image center crosshair */}
                     <g transform={`translate(${calWidth / 2}, ${calHeight / 2})`}>
-                      <circle r="16" fill="none" stroke="#e0e7ff" strokeWidth="1.2" strokeDasharray="3 3" />
-                      <line x1="-24" y1="0" x2="-6" y2="0" stroke="#e0e7ff" strokeWidth="1.5" />
-                      <line x1="6" y1="0" x2="24" y2="0" stroke="#e0e7ff" strokeWidth="1.5" />
-                      <line x1="0" y1="-24" x2="0" y2="-6" stroke="#e0e7ff" strokeWidth="1.5" />
-                      <line x1="0" y1="6" x2="0" y2="24" stroke="#e0e7ff" strokeWidth="1.5" />
-                      <text x="18" y="-18" fill="#e0e7ff" fontSize="11" fontWeight="bold">
+                      <circle r={18 * fontScale} fill="none" stroke={currentColorConfig.starReticle} strokeWidth={1.5 * fontScale} strokeDasharray="4 3" />
+                      <line x1={-26 * fontScale} y1="0" x2={-8 * fontScale} y2="0" stroke={currentColorConfig.primary} strokeWidth={1.8 * fontScale} />
+                      <line x1={8 * fontScale} y1="0" x2={26 * fontScale} y2="0" stroke={currentColorConfig.primary} strokeWidth={1.8 * fontScale} />
+                      <line x1="0" y1={-26 * fontScale} x2="0" y2={-8 * fontScale} stroke={currentColorConfig.primary} strokeWidth={1.8 * fontScale} />
+                      <line x1="0" y1={8 * fontScale} x2="0" y2={26 * fontScale} stroke={currentColorConfig.primary} strokeWidth={1.8 * fontScale} />
+                      <rect
+                        x={20 * fontScale}
+                        y={-28 * fontScale}
+                        width={125 * fontScale}
+                        height={22 * fontScale}
+                        rx={4 * fontScale}
+                        fill={currentColorConfig.dsoPillBg}
+                        stroke={currentColorConfig.dsoPillBorder}
+                        strokeWidth={0.8 * fontScale}
+                      />
+                      <text x={26 * fontScale} y={-13 * fontScale} fill={currentColorConfig.starText} fontSize={12 * fontScale} fontWeight="bold">
                         화각 중심 (Center)
                       </text>
                     </g>
 
                     {/* Celestial North / East Compass Reticle */}
                     <g
-                      transform={`translate(${calWidth - 70}, 70) rotate(${orientation})`}
+                      transform={`translate(${calWidth - 70 * fontScale}, ${70 * fontScale}) rotate(${orientation})`}
                       className="cursor-default"
                     >
-                      <circle r="36" fill="#0f172acc" stroke="#6366f1" strokeWidth="1.5" />
+                      <circle r={36 * fontScale} fill="#0f172acc" stroke="#6366f1" strokeWidth={1.5 * fontScale} />
                       {/* North Arrow */}
-                      <line x1="0" y1="0" x2="0" y2="-28" stroke="#38bdf8" strokeWidth="2.5" />
-                      <polygon points="0,-33 -4,-24 4,-24" fill="#38bdf8" />
-                      <text x="0" y="-36" fill="#38bdf8" fontSize="11" fontWeight="bold" textAnchor="middle">
+                      <line x1="0" y1="0" x2="0" y2={-28 * fontScale} stroke="#38bdf8" strokeWidth={2.5 * fontScale} />
+                      <polygon points={`0,${-33 * fontScale} ${-4 * fontScale},${-24 * fontScale} ${4 * fontScale},${-24 * fontScale}`} fill="#38bdf8" />
+                      <text x="0" y={-36 * fontScale} fill="#38bdf8" fontSize={12 * fontScale} fontWeight="bold" textAnchor="middle">
                         N
                       </text>
                       {/* East Arrow */}
-                      <line x1="0" y1="0" x2="-26" y2="0" stroke="#a855f7" strokeWidth="2" />
-                      <polygon points="-30,0 -22,-3.5 -22,3.5" fill="#a855f7" />
-                      <text x="-36" y="4" fill="#a855f7" fontSize="11" fontWeight="bold" textAnchor="middle">
+                      <line x1="0" y1="0" x2={-26 * fontScale} y2="0" stroke="#a855f7" strokeWidth={2 * fontScale} />
+                      <polygon points={`${-30 * fontScale},0 ${-22 * fontScale},${-3.5 * fontScale} ${-22 * fontScale},${3.5 * fontScale}`} fill="#a855f7" />
+                      <text x={-36 * fontScale} y={4 * fontScale} fill="#a855f7" fontSize={12 * fontScale} fontWeight="bold" textAnchor="middle">
                         E
                       </text>
-                      <circle r="3" fill="#ffffff" />
+                      <circle r={3 * fontScale} fill="#ffffff" />
                     </g>
                   </g>
                 )}
@@ -730,10 +828,16 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
 
             <button
               onClick={() => setShowDSO(!showDSO)}
-              className={`px-2 py-1 rounded transition-colors flex items-center space-x-1 ${
-                showDSO ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'text-slate-400 hover:text-slate-200'
+              className={`px-2 py-1 rounded transition-colors flex items-center space-x-1.5 ${
+                showDSO
+                  ? `${currentColorConfig.activeClass} shadow-sm`
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
             >
+              <span
+                className="w-2 h-2 rounded-full inline-block"
+                style={{ backgroundColor: showDSO ? currentColorConfig.dsoStroke : '#64748b' }}
+              />
               <span>심우주 천체 DSO ({dsos.length})</span>
             </button>
 
