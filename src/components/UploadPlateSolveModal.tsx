@@ -16,6 +16,8 @@ import {
   Trash2,
   Cpu,
   Globe,
+  Download,
+  Compass,
 } from 'lucide-react';
 import {
   getRememberedAccountJobs,
@@ -28,6 +30,7 @@ import {
 } from '../utils/accountJobs';
 import { getConstellationObjectTitle } from '../utils/constellations';
 import { solvePlateLocallyInBrowser } from '../utils/localPlateSolver';
+import { getLocalDualIndexStats } from '../utils/dualIndexCatalog';
 import { SolvedAstroData } from '../types/astronomy';
 
 interface UploadPlateSolveModalProps {
@@ -62,6 +65,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
   const [jobIdInput, setJobIdInput] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const dualIndexStats = getLocalDualIndexStats();
 
   // Advanced solver options
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -682,17 +686,48 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
               </div>
 
               {solverMode === 'local' && (
-                <div className="pt-1">
-                  <label className="text-[11px] font-medium text-slate-400 block mb-1">
-                    선택적 천체/별자리 힌트 (비워두면 자동 전천 기하 해시 탐색):
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="예: 비워두면 자동 기하 해시 탐색 (또는 거문고자리 더블더블, NGC 628, M42, 세페우스 입력)"
-                    value={localTargetHint}
-                    onChange={(e) => setLocalTargetHint(e.target.value)}
-                    className="w-full text-xs px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                  />
+                <div className="pt-1 space-y-2.5">
+                  <div className="p-2.5 bg-slate-900/90 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                    <div className="flex items-center space-x-2">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span className="font-bold text-slate-200">
+                        듀얼 인덱스 대조: 광각 Tycho-2 ({dualIndexStats.tycho2TotalStars}개) / 딥스카이 Gaia DR3 ({dualIndexStats.gaiaTotalStars}개)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <a
+                        href="/indexes/tycho2_wide_index.json"
+                        download="tycho2_wide_index.json"
+                        className="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 hover:text-white border border-indigo-800 text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
+                        title="로컬 Tycho-2 광각 인덱스 JSON 파일 다운로드"
+                      >
+                        <Download className="w-3 h-3" />
+                        <span>Tycho-2 JSON</span>
+                      </a>
+                      <a
+                        href="/indexes/gaia_dr3_deepsky_index.json"
+                        download="gaia_dr3_deepsky_index.json"
+                        className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 hover:text-white border border-amber-800 text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
+                        title="로컬 Gaia DR3 딥스카이 인덱스 JSON 파일 다운로드"
+                      >
+                        <Download className="w-3 h-3" />
+                        <span>Gaia DR3 JSON</span>
+                      </a>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-medium text-slate-400 block mb-1">
+                      선택적 천체/별자리 힌트 (비워두면 자동 전천 기하 해시 탐색):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="예: 비워두면 자동 기하 해시 탐색 (또는 거문고자리 더블더블, NGC 628, M42, 세페우스 입력)"
+                      value={localTargetHint}
+                      onChange={(e) => setLocalTargetHint(e.target.value)}
+                      className="w-full text-xs px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
               )}
             </div>

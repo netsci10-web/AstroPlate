@@ -62,54 +62,43 @@ export function angularSeparation(
   return (Math.acos(clamped) * 180) / Math.PI;
 }
 
-// Compute the 4 sky corners (RA, Dec) of the image field of view
+// Compute the 4 sky corners (RA, Dec) of the image field of view using exact TAN projection
 export function computeFieldCorners(
   centerRaDeg: number,
   centerDecDeg: number,
   widthArcsec: number,
   heightArcsec: number,
-  orientationDeg: number, // East of North
+  orientationDeg: number,
   parity: number = 1.0
 ): { ra: number; dec: number }[] {
-  const deg2rad = Math.PI / 180;
-  const rad2deg = 180 / Math.PI;
+  const wPx = 1000;
+  const hPx = widthArcsec > 0 ? (1000 * heightArcsec) / widthArcsec : 1000;
+  const pixscale = widthArcsec > 0 ? widthArcsec / wPx : 1;
 
-  const halfWidthDeg = (widthArcsec / 3600) / 2;
-  const halfHeightDeg = (heightArcsec / 3600) / 2;
-  const rotRad = orientationDeg * deg2rad;
-
-  // Local pixel offsets from center [-halfW, +halfW]
-  const cornersLocal = [
-    { x: -halfWidthDeg * parity, y: -halfHeightDeg },
-    { x: halfWidthDeg * parity, y: -halfHeightDeg },
-    { x: halfWidthDeg * parity, y: halfHeightDeg },
-    { x: -halfWidthDeg * parity, y: halfHeightDeg },
+  const pixelCorners = [
+    { x: 0, y: 0 },
+    { x: wPx, y: 0 },
+    { x: wPx, y: hPx },
+    { x: 0, y: hPx },
   ];
 
-  const cDec = centerDecDeg * deg2rad;
-  const cosCDec = Math.cos(cDec);
-
-  return cornersLocal.map((c) => {
-    // Rotate by orientation angle
-    const rotX = c.x * Math.cos(rotRad) - c.y * Math.sin(rotRad);
-    const rotY = c.x * Math.sin(rotRad) + c.y * Math.cos(rotRad);
-
-    // Approximate tangent plane displacement in RA & Dec
-    const dDec = rotY;
-    const dRa = cosCDec !== 0 ? rotX / cosCDec : rotX;
-
-    let cornerRa = centerRaDeg + dRa;
-    let cornerDec = centerDecDeg + dDec;
-
-    if (cornerRa < 0) cornerRa += 360;
-    if (cornerRa >= 360) cornerRa -= 360;
-    cornerDec = Math.max(-90, Math.min(90, cornerDec));
-
-    return { ra: cornerRa, dec: cornerDec };
-  });
+  return pixelCorners.map((pt) =>
+    pixelToSkyCoords(
+      pt.x,
+      pt.y,
+      wPx,
+      hPx,
+      centerRaDeg,
+      centerDecDeg,
+      pixscale,
+      orientationDeg,
+      parity
+    )
+  );
 }
 
 // Convert 2D image pixel coordinates (X, Y) to celestial coordinates (RA, Dec in degrees)
+// Matches dstndstn/astrometry.net exact Gnomonic (TAN) WCS & parity convention
 export function pixelToSkyCoords(
   pixelX: number,
   pixelY: number,
@@ -122,28 +111,42 @@ export function pixelToSkyCoords(
   parity: number = 1.0
 ): { ra: number; dec: number } {
   const deg2rad = Math.PI / 180;
-  const rotRad = orientationDeg * deg2rad;
+  const rad2deg = 180 / Math.PI;
+  const rotRad = (orientationDeg || 0) * deg2rad;
+  const p = parity || 1.0;
 
-  // Tangent plane displacement from center in degrees
-  const dxDeg = ((pixelX - imageWidth / 2) * pixscaleArcsec) / 3600;
-  const dyDeg = -((pixelY - imageHeight / 2) * pixscaleArcsec) / 3600; // Inverted image Y
+  // Astrometry.net convention: for parity = +1 and orientation = 0,
+  // +eta (North) is UP (-y) and +xi (East) is LEFT (-x)
+  const uxDeg = (-p * (pixelX - imageWidth / 2) * pixscaleArcsec) / 3600;
+  const uyDeg = ((imageHeight / 2 - pixelY) * pixscaleArcsec) / 3600;
 
-  const localX = dxDeg * parity;
-  const localY = dyDeg;
+  // Rotate from image frame into local tangent plane (xi, eta in degrees)
+  const xiDeg = uxDeg * Math.cos(rotRad) - uyDeg * Math.sin(rotRad);
+  const etaDeg = uxDeg * Math.sin(rotRad) + uyDeg * Math.cos(rotRad);
 
-  // Rotate by orientation angle (East of North)
-  const rotX = localX * Math.cos(rotRad) - localY * Math.sin(rotRad);
-  const rotY = localX * Math.sin(rotRad) + localY * Math.cos(rotRad);
+  const xi = xiDeg * deg2rad;
+  const eta = etaDeg * deg2rad;
+  const ra0 = centerRaDeg * deg2rad;
+  const dec0 = centerDecDeg * deg2rad;
 
-  const cDecRad = centerDecDeg * deg2rad;
-  const cosCDec = Math.cos(cDecRad);
+  const rho = Math.hypot(xi, eta);
+  if (rho < 1e-12) {
+    return { ra: ((centerRaDeg % 360) + 360) % 360, dec: centerDecDeg };
+  }
 
-  const dDec = rotY;
-  const dRa = Math.abs(cosCDec) > 0.0001 ? rotX / cosCDec : rotX;
+  const c = Math.atan(rho);
+  const sinC = Math.sin(c);
+  const cosC = Math.cos(c);
 
-  let ra = (centerRaDeg + dRa + 360) % 360;
-  let dec = Math.max(-90, Math.min(90, centerDecDeg + dDec));
+  const dec = Math.asin(cosC * Math.sin(dec0) + (eta * sinC * Math.cos(dec0)) / rho);
+  const ra =
+    ra0 +
+    Math.atan2(xi * sinC, rho * Math.cos(dec0) * cosC - eta * Math.sin(dec0) * sinC);
 
-  return { ra, dec };
+  return {
+    ra: (((ra * rad2deg) % 360) + 360) % 360,
+    dec: Math.max(-90, Math.min(90, dec * rad2deg)),
+  };
 }
+
 

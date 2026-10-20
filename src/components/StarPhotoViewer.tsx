@@ -19,6 +19,7 @@ import {
 import { SolvedAstroData, AstrometryAnnotationItem } from '../types/astronomy';
 import { degToRA_HMS, degToDec_DMS } from '../utils/coordinateMath';
 import { getConstellationLinesForImage } from '../utils/constellations';
+import { extractStarsImage2XY, verifyAndSnapAnnotationsToDetectedStars } from '../utils/localPlateSolver';
 
 export type OverlayColor = 'red' | 'yellow' | 'green' | 'white';
 
@@ -144,7 +145,41 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
   const [showDSO, setShowDSO] = useState(true);
   const [showGrid, setShowGrid] = useState(true);
   const [showCenterFov, setShowCenterFov] = useState(true);
+  const [showDetectedCircles, setShowDetectedCircles] = useState(true);
   const [overlayOpacity, setOverlayOpacity] = useState(0.85);
+
+  // Astrometry.net Simplexy detected stars state
+  const [extractedStars, setExtractedStars] = useState<{ x: number; y: number; flux: number; radius: number; instMag?: number }[]>([]);
+  const [hoveredDetectedStar, setHoveredDetectedStar] = useState<{ x: number; y: number; idx: number; instMag?: number; flux: number } | null>(null);
+
+  // Memoized detected stars (prefer data.detectedStars, fallback to client-extracted stars)
+  const effectiveDetectedStars = React.useMemo(() => {
+    if (data.detectedStars && data.detectedStars.length > 0) return data.detectedStars;
+    return extractedStars;
+  }, [data.detectedStars, extractedStars]);
+
+  // Extract stars if not already present on data (e.g. Astrometry server jobs or legacy items)
+  useEffect(() => {
+    if (data.detectedStars && data.detectedStars.length > 0) {
+      setExtractedStars(data.detectedStars);
+      return;
+    }
+    const rawSrc =
+      data.rawImageUrl ||
+      (typeof data.imageUrl === 'string' && data.imageUrl.startsWith('data:')
+        ? data.imageUrl
+        : `/api/astrometry/image-proxy/${data.jobId}/original`);
+
+    if (rawSrc) {
+      extractStarsImage2XY(rawSrc, { keepOriginalCoords: true })
+        .then((res) => {
+          if (res.stars && res.stars.length > 0) {
+            setExtractedStars(res.stars);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [data.jobId, data.detectedStars, data.rawImageUrl, data.imageUrl]);
 
   // Overlay color: red, yellow, green, white (stored in localStorage, default: red)
   const [overlayColor, setOverlayColor] = useState<OverlayColor>(() => {
@@ -174,16 +209,17 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
   const imgRef = useRef<HTMLImageElement>(null);
   const [naturalSize, setNaturalSize] = useState({ width: 1920, height: 1080 });
   const [imgLoadError, setImgLoadError] = useState(false);
+  const isLocalJob = String(data.jobId).startsWith('local_');
 
   const cal = data.calibration;
   const calWidth =
     cal?.width_arcsec && cal?.pixscale && cal.pixscale > 0
       ? Math.round(cal.width_arcsec / cal.pixscale)
-      : data.imageWidth || naturalSize.width || 1920;
+      : naturalSize.width || data.imageWidth || 1920;
   const calHeight =
     cal?.height_arcsec && cal?.pixscale && cal.pixscale > 0
       ? Math.round(cal.height_arcsec / cal.pixscale)
-      : data.imageHeight || naturalSize.height || 1080;
+      : naturalSize.height || data.imageHeight || 1080;
   const orientation = cal?.orientation || 0;
   // Dynamic scale factor for label sizes based on coordinate dimensions
   const fontScale = Math.max(1, Math.min(2.5, calWidth / 1400));
@@ -194,6 +230,9 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
     setScale(1);
     setTranslate({ x: 0, y: 0 });
     setIsDragging(false);
+    if (String(data.jobId).startsWith('local_') && viewMode === 'annotated') {
+      setViewMode('vector');
+    }
     if (cal?.width_arcsec && cal?.height_arcsec && cal?.pixscale && cal.pixscale > 0) {
       setNaturalSize({
         width: Math.round(cal.width_arcsec / cal.pixscale),
@@ -284,7 +323,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
       const type = (ann.type || '').toLowerCase();
       const name = (ann.names?.[0] || '').toLowerCase();
 
-      if (type === 'bright' || type === 'hd' || type === 'star') {
+      if (type === 'bright' || type === 'hd' || type === 'star' || type === 'tycho2' || type === 'gaia') {
         starsList.push(ann);
       } else if (
         type === 'ngc' ||
@@ -300,8 +339,20 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
       }
     });
 
-    return { stars: starsList, dsos: dsosList };
-  }, [data.annotations]);
+    const verifiedStars =
+      effectiveDetectedStars.length > 0
+        ? verifyAndSnapAnnotationsToDetectedStars(
+            starsList,
+            effectiveDetectedStars,
+            calWidth,
+            calHeight,
+            data.imageWidth || calWidth,
+            data.imageHeight || calHeight
+          )
+        : [];
+
+    return { stars: verifiedStars, dsos: dsosList };
+  }, [data.annotations, data.imageWidth, data.imageHeight, effectiveDetectedStars, calWidth, calHeight]);
 
   // Reset imgLoadError when switching viewMode or jobId
   useEffect(() => {
@@ -312,9 +363,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
   const getImageSource = () => {
     const isLocalJob = String(data.jobId).startsWith('local_');
     if (isLocalJob) {
-      if (viewMode === 'annotated' || viewMode === 'red_green') {
-        return data.imageUrl || data.rawImageUrl || '';
-      }
+      // For vector, red_green, raw: show clean unannotated photo in background so our SVG overlay renders crisp circles
       return data.rawImageUrl || data.imageUrl || '';
     }
 
@@ -363,17 +412,19 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
             <Sparkles className="w-3.5 h-3.5" />
             <span>별자리 정밀 오버레이</span>
           </button>
-          <button
-            onClick={() => setViewMode('annotated')}
-            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
-              viewMode === 'annotated'
-                ? 'bg-sky-500 text-white shadow-sm'
-                : 'text-slate-300 hover:text-white hover:bg-slate-800'
-            }`}
-            title="Astrometry.net 공식 라벨 렌더링"
-          >
-            Astrometry 공식 라벨
-          </button>
+          {!isLocalJob && (
+            <button
+              onClick={() => setViewMode('annotated')}
+              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
+                viewMode === 'annotated'
+                  ? 'bg-sky-500 text-white shadow-sm'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+              title="Astrometry.net 공식 라벨 렌더링"
+            >
+              Astrometry 공식 라벨
+            </button>
+          )}
           <button
             onClick={() => setViewMode('red_green')}
             className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
@@ -392,7 +443,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                 ? 'bg-sky-500 text-white shadow-sm'
                 : 'text-slate-300 hover:text-white hover:bg-slate-800'
             }`}
-            title="Astrometry 라벨 없는 순수 원본 사진"
+            title="라벨 없는 순수 원본 사진"
           >
             원본 사진
           </button>
@@ -464,8 +515,8 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
               className="max-h-[580px] w-auto object-contain block pointer-events-none rounded shadow-2xl"
             />
 
-            {/* SVG Interactive Overlay Layer (When viewMode === 'vector') */}
-            {viewMode === 'vector' && (
+            {/* SVG Interactive Overlay Layer (When viewMode === 'vector' or 'red_green' on local) */}
+            {(viewMode === 'vector' || (viewMode === 'red_green' && isLocalJob)) && (
               <svg
                 className="absolute inset-0 w-full h-full pointer-events-auto"
                 viewBox={`0 0 ${calWidth} ${calHeight}`}
@@ -482,6 +533,80 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                     <feComposite in="SourceGraphic" in2="blur" operator="over" />
                   </filter>
                 </defs>
+
+                {/* Astrometry.net Simplexy Detected Stars Layer (Red Circles) */}
+                {((viewMode === 'vector' && showDetectedCircles) || viewMode === 'red_green') && (
+                  <g className="astrometry-detected-stars-red" opacity={viewMode === 'red_green' ? 0.95 : 0.88}>
+                    {effectiveDetectedStars.map((ds, idx) => {
+                      const detScaleX = data.imageWidth && data.imageWidth > 0 ? calWidth / data.imageWidth : 1;
+                      const detScaleY = data.imageHeight && data.imageHeight > 0 ? calHeight / data.imageHeight : 1;
+                      const sx = ds.x * detScaleX;
+                      const sy = ds.y * detScaleY;
+                      const r = Math.max(3.5, Math.min(13, (ds.radius || 2) * 2.2 * Math.min(detScaleX, detScaleY)));
+                      const isHovered = hoveredDetectedStar?.idx === idx;
+                      return (
+                        <circle
+                          key={`ds-circle-${idx}`}
+                          cx={sx}
+                          cy={sy}
+                          r={r}
+                          fill={isHovered ? 'rgba(239, 68, 68, 0.45)' : 'none'}
+                          stroke="#ef4444"
+                          strokeWidth={isHovered ? '2.4' : '1.5'}
+                          className="cursor-pointer transition-all"
+                          onMouseEnter={() => setHoveredDetectedStar({ ...ds, idx })}
+                          onMouseLeave={() => setHoveredDetectedStar(null)}
+                        />
+                      );
+                    })}
+                  </g>
+                )}
+
+                {/* In red_green mode: Catalog Matched Stars Green Rings & Top Badge */}
+                {viewMode === 'red_green' && (
+                  <>
+                    <g className="astrometry-matched-stars-green">
+                      {stars.map((star, idx) => {
+                        const r = Math.max(7, (star.radius || 9) * 1.35);
+                        return (
+                          <circle
+                            key={`rg-cat-${idx}`}
+                            cx={star.pixelx}
+                            cy={star.pixely}
+                            r={r}
+                            fill="none"
+                            stroke="#22c55e"
+                            strokeWidth="2.2"
+                          />
+                        );
+                      })}
+                    </g>
+                    {/* Red/Green Detection Mode Badge */}
+                    <g transform={`translate(${calWidth * 0.04}, ${calHeight * 0.05})`}>
+                      <rect
+                        width={Math.max(340, 320 * fontScale)}
+                        height={36 * fontScale}
+                        rx={8 * fontScale}
+                        fill="rgba(15, 23, 42, 0.92)"
+                        stroke="#ef4444"
+                        strokeWidth={1.5 * fontScale}
+                        filter="drop-shadow(0 4px 8px rgba(0,0,0,0.8))"
+                      />
+                      <circle cx={20 * fontScale} cy={18 * fontScale} r={6 * fontScale} fill="none" stroke="#ef4444" strokeWidth={2 * fontScale} />
+                      <circle cx={42 * fontScale} cy={18 * fontScale} r={6 * fontScale} fill="none" stroke="#22c55e" strokeWidth={2 * fontScale} />
+                      <text
+                        x={56 * fontScale}
+                        y={23 * fontScale}
+                        fill="#f8fafc"
+                        fontSize={13 * fontScale}
+                        fontWeight="bold"
+                        fontFamily="sans-serif"
+                      >
+                        {isLocalJob ? '웹브라우저 항성 검출' : 'Astrometry 항성 검출'}: {effectiveDetectedStars.length}개 (적색) / 매칭: {stars.length}개 (녹색)
+                      </text>
+                    </g>
+                  </>
+                )}
 
                 {/* 1. Constellation Asterism Lines */}
                 {showConstellationLines && (
@@ -678,8 +803,8 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
                             fill={currentColorConfig.primary}
                           />
 
-                          {/* Star Name Pill & Text - Large & bold */}
-                          {name && (
+                          {/* Star Name Pill & Text - Only show full pill if named catalog star or hovered to prevent visual clutter */}
+                          {name && (!name.startsWith('검출 항성') || hoveredAnnotation === star) && (
                             <>
                               <rect
                                 x={textX}
@@ -790,6 +915,35 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
           </div>
         )}
 
+        {/* Floating Tooltip when hovering a detected star (Simplexy red circle) */}
+        {hoveredDetectedStar && !hoveredAnnotation && (
+          <div className="absolute bottom-4 left-4 z-20 bg-slate-900/95 border border-red-500/60 rounded-xl p-3 shadow-2xl backdrop-blur-md max-w-xs animate-in fade-in">
+            <div className="flex items-center justify-between space-x-2">
+              <span className="text-xs uppercase font-bold text-red-400 flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                {isLocalJob ? '브라우저 직접 검출 항성' : 'Astrometry 검출 항성'} #{hoveredDetectedStar.idx + 1}
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono">simplexy centroid</span>
+            </div>
+            <div className="text-xs text-slate-200 mt-1.5 space-y-1 font-mono">
+              <div className="flex justify-between">
+                <span className="text-slate-400">서브픽셀 좌표:</span>
+                <span className="text-white font-bold">X={hoveredDetectedStar.x.toFixed(1)}, Y={hoveredDetectedStar.y.toFixed(1)}</span>
+              </div>
+              {hoveredDetectedStar.instMag !== undefined && (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">추정 등급:</span>
+                  <span className="text-amber-300 font-bold">{hoveredDetectedStar.instMag.toFixed(1)}m</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-slate-400">검출 광량 (Flux):</span>
+                <span className="text-sky-300">{Math.round(hoveredDetectedStar.flux)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Live Coordinate Inspector Overlay (Bottom Right) */}
         {mousePos && (
           <div className="absolute bottom-4 right-4 z-20 bg-slate-900/80 backdrop-blur-md border border-slate-700/80 rounded-lg px-2.5 py-1 text-[11px] font-mono text-slate-300 pointer-events-none">
@@ -806,6 +960,20 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
               <Layers className="w-3.5 h-3.5 text-sky-400" />
               레이어:
             </span>
+
+            {/* Astrometry.net Simplexy Detected Stars Red Circles Toggle */}
+            <button
+              onClick={() => setShowDetectedCircles(!showDetectedCircles)}
+              className={`px-2 py-1 rounded transition-colors flex items-center space-x-1.5 ${
+                showDetectedCircles
+                  ? 'bg-red-500/20 text-red-300 border border-red-500/40 font-semibold shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Astrometry.net 방식 항성 검출 원형 마커 (Red Circles)"
+            >
+              <span className="w-2.5 h-2.5 rounded-full border border-red-400 inline-block bg-red-500/40" />
+              <span>항성 검출 원 ({effectiveDetectedStars.length}개)</span>
+            </button>
 
             <button
               onClick={() => setShowConstellationLines(!showConstellationLines)}
@@ -825,6 +993,20 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
             >
               <span>항성 라벨 ({stars.length})</span>
             </button>
+
+            {data.dualIndexTelemetry && (
+              <div
+                className={`hidden md:inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-mono border ${
+                  data.dualIndexTelemetry.selectedCatalog === 'Gaia DR3'
+                    ? 'bg-amber-950/60 text-amber-300 border-amber-600/40'
+                    : 'bg-indigo-950/60 text-indigo-300 border-indigo-600/40'
+                }`}
+                title={`듀얼 인덱스 대조 완료: ${data.dualIndexTelemetry.matchedIndexSeries} (광각: Tycho-2 / 딥스카이: Gaia DR3)`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+                <span>{data.dualIndexTelemetry.selectedCatalog === 'Gaia DR3' ? 'Gaia DR3 (딥스카이 5200)' : 'Tycho-2 (광각 4100)'}</span>
+              </div>
+            )}
 
             <button
               onClick={() => setShowDSO(!showDSO)}

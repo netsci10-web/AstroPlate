@@ -27,6 +27,30 @@ export interface AstrometryJobInfo {
   calibration?: AstrometryCalibration;
 }
 
+export interface DetectedStarItem {
+  x: number;
+  y: number;
+  flux: number;
+  peak?: number;
+  radius: number;
+  instMag?: number;
+}
+
+export interface DualIndexComparisonTelemetry {
+  selectedCatalog: 'Tycho-2' | 'Gaia DR3';
+  fovClass: 'wide_field' | 'deep_sky';
+  matchedIndexSeries: string;
+  tycho2Inliers: number;
+  tycho2RmsPx: number | null;
+  tycho2LogOdds: number;
+  tycho2PoolCount: number;
+  gaiaDr3Inliers: number;
+  gaiaDr3RmsPx: number | null;
+  gaiaDr3LogOdds: number;
+  gaiaDr3PoolCount: number;
+  localIndexFilesLoaded: string[];
+}
+
 export interface SolvedAstroData {
   jobId: number | string;
   title?: string;
@@ -38,6 +62,8 @@ export interface SolvedAstroData {
   annotations: AstrometryAnnotationItem[];
   info: AstrometryJobInfo;
   matchedConstellations: ConstellationMatch[];
+  detectedStars?: DetectedStarItem[];
+  dualIndexTelemetry?: DualIndexComparisonTelemetry;
 }
 
 export interface ConstellationMatch {

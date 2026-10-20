@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Compass,
   Maximize,
@@ -26,23 +26,56 @@ import {
 } from '../utils/coordinateMath';
 import { AladinSurveyModal } from './AladinSurveyModal';
 import { StarChartLayerModal, STAR_CHART_LAYERS, StarChartLayerType } from './StarChartLayerModal';
+import {
+  generateBrowserStarChartLayers,
+  downloadLocalSolverArtifact,
+  LocalLayerImageMap,
+} from '../utils/localStarChartLayers';
+import {
+  downloadLiveDualIndexTileFromVizier,
+  getLocalDualIndexStats,
+} from '../utils/dualIndexCatalog';
 
 interface AstroTelemetryPanelProps {
   data: SolvedAstroData;
   onSelectObject: (objectName: string) => void;
+  onOpenDualIndexModal?: () => void;
 }
 
-export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({ data, onSelectObject }) => {
+export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({
+  data,
+  onSelectObject,
+  onOpenDualIndexModal,
+}) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'star' | 'dso'>('all');
   const [copiedCoords, setCopiedCoords] = useState(false);
   const [downloadedCSV, setDownloadedCSV] = useState(false);
   const [isAladinOpen, setIsAladinOpen] = useState(false);
   const [selectedLayerModal, setSelectedLayerModal] = useState<StarChartLayerType | null>(null);
+  const [localLayerUrls, setLocalLayerUrls] = useState<LocalLayerImageMap | null>(null);
+  const [isDownloadingTile, setIsDownloadingTile] = useState(false);
+  const [tileDownloadNotice, setTileDownloadNotice] = useState<string | null>(null);
+  const dualIndexStats = getLocalDualIndexStats();
 
+  const isLocalJob = String(data.jobId).startsWith('local_');
   const cal = data.calibration;
   const annotations = data.annotations || [];
   const objectsInField = data.info?.objects_in_field || [];
+
+  useEffect(() => {
+    let cancelled = false;
+    generateBrowserStarChartLayers(data)
+      .then((urls) => {
+        if (!cancelled) {
+          setLocalLayerUrls(urls);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [data]);
 
   const copyCoordinates = () => {
     if (!cal) return;
@@ -297,6 +330,218 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({ data, 
         )}
       </div>
 
+      {/* Dual-Index Architecture (Tycho-2 Wide-Field vs Gaia DR3 Deep-Sky) Telemetry Panel */}
+      <div className="bg-slate-900/80 rounded-2xl p-4 sm:p-5 border border-slate-800 shadow-xl space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 rounded-xl bg-gradient-to-br from-amber-500/20 to-indigo-500/20 border border-amber-500/30">
+              <Sparkles className="w-4 h-4 text-amber-300" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-sm font-bold text-white tracking-wide">
+                  듀얼 인덱스 대조 엔진 (Dual-Index Comparison Engine)
+                </h3>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-sky-950 text-sky-300 border border-sky-800">
+                  {data.dualIndexTelemetry?.selectedCatalog === 'Gaia DR3'
+                    ? '딥스카이 모드 (< 2.0° FOV)'
+                    : '광각 모드 (≥ 2.0° FOV)'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                광각은 Tycho-2 (4100-시리즈) · 딥스카이는 Gaia DR3 (5200-시리즈) 자동 교차 검증 및 로컬 인덱스 적용
+              </p>
+            </div>
+          </div>
+
+          {/* Action buttons: Download Local Index JSON files & CDS Tile */}
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href="/indexes/tycho2_wide_index.json"
+              download="tycho2_wide_index.json"
+              className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 flex items-center space-x-1.5 transition-colors cursor-pointer"
+              title="로컬 Tycho-2 광각 인덱스 파일(1,800개 전천 항성) JSON 다운로드"
+            >
+              <Download className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Tycho-2 인덱스 ({dualIndexStats.tycho2TotalStars}개)</span>
+            </a>
+
+            <a
+              href="/indexes/gaia_dr3_deepsky_index.json"
+              download="gaia_dr3_deepsky_index.json"
+              className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 flex items-center space-x-1.5 transition-colors cursor-pointer"
+              title="로컬 Gaia DR3 딥스카이 인덱스 파일(1,010개 항성 / 35개 영역) JSON 다운로드"
+            >
+              <Download className="w-3.5 h-3.5 text-amber-400" />
+              <span>Gaia DR3 인덱스 ({dualIndexStats.gaiaTotalStars}개)</span>
+            </a>
+
+            {cal && (
+              <button
+                disabled={isDownloadingTile}
+                onClick={async () => {
+                  setIsDownloadingTile(true);
+                  setTileDownloadNotice(null);
+                  try {
+                    const res = await downloadLiveDualIndexTileFromVizier(
+                      cal.ra,
+                      cal.dec,
+                      Math.max(0.6, cal.radius),
+                      data.title || '현재 관측 화각',
+                      data.matchedConstellations?.[0]?.code || 'Sky'
+                    );
+                    setTileDownloadNotice(
+                      `현재 화각의 Gaia DR3 (${res.gaiaStars.length}개) 및 Tycho-2 (${res.tycho2Stars.length}개) 타일 다운로드 및 로컬 캐시 완료!`
+                    );
+                  } catch (e: any) {
+                    setTileDownloadNotice(`타일 다운로드 오류: ${e.message}`);
+                  } finally {
+                    setIsDownloadingTile(false);
+                    setTimeout(() => setTileDownloadNotice(null), 5000);
+                  }
+                }}
+                className="text-xs px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white flex items-center space-x-1.5 transition-colors cursor-pointer shadow-sm"
+                title="CDS VizieR에서 현재 천구 좌표의 Gaia DR3 및 Tycho-2 정밀 타일을 즉시 다운로드하여 로컬 브라우저에 저장"
+              >
+                <Compass className={`w-3.5 h-3.5 ${isDownloadingTile ? 'animate-spin' : ''}`} />
+                <span>{isDownloadingTile ? '타일 다운로드 중...' : '현 위치 타일 다운로드'}</span>
+              </button>
+            )}
+
+            {onOpenDualIndexModal && (
+              <button
+                onClick={onOpenDualIndexModal}
+                className="text-xs px-2.5 py-1.5 rounded-lg bg-sky-950/90 hover:bg-sky-900 text-sky-300 hover:text-white border border-sky-700/80 flex items-center space-x-1.5 transition-colors cursor-pointer shadow-sm"
+                title="듀얼 인덱스 상세 대조 관리자, 알고리즘 사양 및 통합 번들 다운로드 열기"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>듀얼 인덱스 상세 관리자</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {tileDownloadNotice && (
+          <div className="p-2.5 bg-emerald-950/60 border border-emerald-600/40 rounded-xl text-xs text-emerald-300 flex items-center space-x-2">
+            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{tileDownloadNotice}</span>
+          </div>
+        )}
+
+        {/* Comparison Grid: Tycho-2 vs Gaia DR3 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          {/* Box 1: Tycho-2 Wide-Field Index */}
+          <div
+            className={`p-3.5 rounded-xl border transition-all ${
+              data.dualIndexTelemetry?.selectedCatalog === 'Tycho-2'
+                ? 'bg-indigo-950/40 border-indigo-500 shadow-md ring-1 ring-indigo-500/50'
+                : 'bg-slate-950/60 border-slate-800'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center space-x-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-400" />
+                <span className="text-xs font-bold text-white">Tycho-2 광각 인덱스 (4100-시리즈)</span>
+              </div>
+              {data.dualIndexTelemetry?.selectedCatalog === 'Tycho-2' && (
+                <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500 text-white font-bold">
+                  선택 채택됨 (Wide-Field)
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400 mb-2.5">
+              CDS VizieR <code className="text-indigo-300 font-mono">I/259/tyc2</code> 기반 · 화각 ≥ 2.0° 광각 성야 및 별자리 대조
+            </p>
+            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                <span className="text-[10px] text-slate-400 block">일치 기준성</span>
+                <span className="font-mono font-bold text-indigo-300">
+                  {data.dualIndexTelemetry?.tycho2Inliers ?? 0} 개
+                </span>
+              </div>
+              <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                <span className="text-[10px] text-slate-400 block">RMS 정합 오차</span>
+                <span className="font-mono font-bold text-indigo-300">
+                  {data.dualIndexTelemetry?.tycho2RmsPx ? `${data.dualIndexTelemetry.tycho2RmsPx}px` : 'N/A'}
+                </span>
+              </div>
+              <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                <span className="text-[10px] text-slate-400 block">로그-오즈 점수</span>
+                <span className="font-mono font-bold text-indigo-300">
+                  {data.dualIndexTelemetry?.tycho2LogOdds ?? 0}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Box 2: Gaia DR3 Deep-Sky Index */}
+          <div
+            className={`p-3.5 rounded-xl border transition-all ${
+              data.dualIndexTelemetry?.selectedCatalog === 'Gaia DR3'
+                ? 'bg-amber-950/40 border-amber-500 shadow-md ring-1 ring-amber-500/50'
+                : 'bg-slate-950/60 border-slate-800'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center space-x-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                <span className="text-xs font-bold text-white">Gaia DR3 딥스카이 인덱스 (5200-시리즈)</span>
+              </div>
+              {data.dualIndexTelemetry?.selectedCatalog === 'Gaia DR3' && (
+                <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-bold">
+                  선택 채택됨 (Deep-Sky)
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400 mb-2.5">
+              ESA / CDS VizieR <code className="text-amber-300 font-mono">I/355/gaiadr3</code> 서브밀리초각 정밀 성표 · 화각 &lt; 2.0° 망원 정합
+            </p>
+            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                <span className="text-[10px] text-slate-400 block">일치 기준성</span>
+                <span className="font-mono font-bold text-amber-300">
+                  {data.dualIndexTelemetry?.gaiaDr3Inliers ?? 0} 개
+                </span>
+              </div>
+              <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                <span className="text-[10px] text-slate-400 block">RMS 정합 오차</span>
+                <span className="font-mono font-bold text-amber-300">
+                  {data.dualIndexTelemetry?.gaiaDr3RmsPx ? `${data.dualIndexTelemetry.gaiaDr3RmsPx}px` : 'N/A'}
+                </span>
+              </div>
+              <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                <span className="text-[10px] text-slate-400 block">로그-오즈 점수</span>
+                <span className="font-mono font-bold text-amber-300">
+                  {data.dualIndexTelemetry?.gaiaDr3LogOdds ?? 0}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Astrometry.net Equal-Density Downsampling & Seeing De-blending Indicators */}
+        <div className="p-3 bg-slate-950/70 rounded-xl border border-slate-800/80 text-[11px] text-slate-300 space-y-1.5">
+          <div className="flex items-center space-x-2 text-slate-200 font-medium">
+            <Target className="w-3.5 h-3.5 text-sky-400" />
+            <span>오인식 방지 및 공간 밀도 균일화(Equal-Density Downsampling) 적용 사양</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-slate-400">
+            <div className="flex items-start space-x-1.5">
+              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-slate-300">시상(Seeing) 2.5" 근접쌍 디블렌딩:</strong> 해상도 한계로 뭉개지는 2~3 arcsec 이하 동반성을 사전 병합하여 위조 사각 쿼드 오인식 차단
+              </span>
+            </div>
+            <div className="flex items-start space-x-1.5">
+              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-slate-300">HEALPix 서브셀 동적 컷오프 (G ≤ 15.8 mag):</strong> 은하수 영역은 13~14등급 자동 컷으로 비대화 방지, 처녀자리 등 희소 영역은 16등급까지 긁어모아 공백 방지
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Objects In Field Tags */}
       {objectsInField.length > 0 && (
         <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800/80">
@@ -320,92 +565,172 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({ data, 
         </div>
       )}
 
-      {/* Astrometry Analysis Output & Data Artifacts */}
+      {/* Astrometry / Browser Direct Analysis Output & Data Artifacts */}
       {data.jobId && (
         <div className="bg-slate-950/60 rounded-xl border border-slate-800 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Layers className="w-4 h-4 text-sky-400" />
               <h4 className="text-sm font-bold text-white">
-                Astrometry.net 원본 분석 산출물 및 데이터 파일
+                {isLocalJob
+                  ? '웹브라우저 직접 계산 산출물 및 데이터 파일 (Browser Direct WCS Artifacts)'
+                  : 'Astrometry.net 원본 분석 산출물 및 데이터 파일'}
               </h4>
             </div>
-            <span className="text-xs font-mono text-slate-400">Job #{data.jobId}</span>
+            <span className="text-xs font-mono text-slate-400">
+              {isLocalJob ? `웹브라우저 직접 계산 · #${data.jobId}` : `Job #${data.jobId}`}
+            </span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-            <a
-              href={`/api/astrometry/files/${data.jobId}/wcs_file`}
-              download
-              className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between text-slate-400 group-hover:text-sky-400 mb-1">
-                <span className="text-[11px] font-bold">WCS FITS</span>
-                <Download className="w-3.5 h-3.5" />
-              </div>
-              <span className="text-[10px] text-slate-400">천구 보정 헤더</span>
-            </a>
+          {isLocalJob ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              <button
+                type="button"
+                onClick={() => downloadLocalSolverArtifact(data, 'wcs_file')}
+                className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between cursor-pointer"
+              >
+                <div className="flex items-center justify-between text-slate-400 group-hover:text-sky-400 mb-1">
+                  <span className="text-[11px] font-bold">WCS FITS</span>
+                  <Download className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[10px] text-slate-400">브라우저 천구 보정 헤더</span>
+              </button>
 
-            <a
-              href={`/api/astrometry/files/${data.jobId}/new_fits_file`}
-              download
-              className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between text-slate-400 group-hover:text-sky-400 mb-1">
-                <span className="text-[11px] font-bold">보정 FITS</span>
-                <Download className="w-3.5 h-3.5" />
-              </div>
-              <span className="text-[10px] text-slate-400">WCS 삽입 이미지</span>
-            </a>
+              <button
+                type="button"
+                onClick={() => downloadLocalSolverArtifact(data, 'new_fits_file')}
+                className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between cursor-pointer"
+              >
+                <div className="flex items-center justify-between text-slate-400 group-hover:text-sky-400 mb-1">
+                  <span className="text-[11px] font-bold">보정 WCS JSON</span>
+                  <Download className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[10px] text-slate-400">CD 행렬 &amp; 보정 데이터</span>
+              </button>
 
-            <a
-              href={`/api/astrometry/files/${data.jobId}/kml_file`}
-              download
-              className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between text-slate-400 group-hover:text-emerald-400 mb-1">
-                <span className="text-[11px] font-bold">Google Earth</span>
-                <Download className="w-3.5 h-3.5" />
-              </div>
-              <span className="text-[10px] text-slate-400">KML 스카이 오버레이</span>
-            </a>
+              <button
+                type="button"
+                onClick={() => downloadLocalSolverArtifact(data, 'kml_file')}
+                className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between cursor-pointer"
+              >
+                <div className="flex items-center justify-between text-slate-400 group-hover:text-emerald-400 mb-1">
+                  <span className="text-[11px] font-bold">Google Earth</span>
+                  <Download className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[10px] text-slate-400">KML 스카이 오버레이</span>
+              </button>
 
-            <a
-              href={`/api/astrometry/files/${data.jobId}/rdls_file`}
-              download
-              className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between text-slate-400 group-hover:text-indigo-400 mb-1">
-                <span className="text-[11px] font-bold">RDLS 항성목록</span>
-                <Download className="w-3.5 h-3.5" />
-              </div>
-              <span className="text-[10px] text-slate-400">검출 별 RA/Dec FITS</span>
-            </a>
+              <button
+                type="button"
+                onClick={() => downloadLocalSolverArtifact(data, 'rdls_file')}
+                className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between cursor-pointer"
+              >
+                <div className="flex items-center justify-between text-slate-400 group-hover:text-indigo-400 mb-1">
+                  <span className="text-[11px] font-bold">RDLS 항성목록</span>
+                  <Download className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[10px] text-slate-400">검출 별 RA/Dec 좌표</span>
+              </button>
 
-            <a
-              href={`/api/astrometry/files/${data.jobId}/axy_file`}
-              download
-              className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between text-slate-400 group-hover:text-amber-400 mb-1">
-                <span className="text-[11px] font-bold">AXY 픽셀좌표</span>
-                <Download className="w-3.5 h-3.5" />
-              </div>
-              <span className="text-[10px] text-slate-400">추출 항성 X/Y 좌표</span>
-            </a>
+              <button
+                type="button"
+                onClick={() => downloadLocalSolverArtifact(data, 'axy_file')}
+                className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between cursor-pointer"
+              >
+                <div className="flex items-center justify-between text-slate-400 group-hover:text-amber-400 mb-1">
+                  <span className="text-[11px] font-bold">AXY 픽셀좌표</span>
+                  <Download className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[10px] text-slate-400">추출 항성 X/Y 좌표</span>
+              </button>
 
-            <a
-              href={`/api/astrometry/files/${data.jobId}/corr_file`}
-              download
-              className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between text-slate-400 group-hover:text-violet-400 mb-1">
-                <span className="text-[11px] font-bold">Corr 대응표</span>
-                <Download className="w-3.5 h-3.5" />
-              </div>
-              <span className="text-[10px] text-slate-400">카탈로그 매칭표</span>
-            </a>
-          </div>
+              <button
+                type="button"
+                onClick={() => downloadLocalSolverArtifact(data, 'corr_file')}
+                className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between cursor-pointer"
+              >
+                <div className="flex items-center justify-between text-slate-400 group-hover:text-violet-400 mb-1">
+                  <span className="text-[11px] font-bold">Corr 대응표</span>
+                  <Download className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[10px] text-slate-400">카탈로그 매칭표</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              <a
+                href={`/api/astrometry/files/${data.jobId}/wcs_file`}
+                download
+                className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between text-slate-400 group-hover:text-sky-400 mb-1">
+                  <span className="text-[11px] font-bold">WCS FITS</span>
+                  <Download className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[10px] text-slate-400">천구 보정 헤더</span>
+              </a>
+
+              <a
+                href={`/api/astrometry/files/${data.jobId}/new_fits_file`}
+                download
+                className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between text-slate-400 group-hover:text-sky-400 mb-1">
+                  <span className="text-[11px] font-bold">보정 FITS</span>
+                  <Download className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[10px] text-slate-400">WCS 삽입 이미지</span>
+              </a>
+
+              <a
+                href={`/api/astrometry/files/${data.jobId}/kml_file`}
+                download
+                className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between text-slate-400 group-hover:text-emerald-400 mb-1">
+                  <span className="text-[11px] font-bold">Google Earth</span>
+                  <Download className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[10px] text-slate-400">KML 스카이 오버레이</span>
+              </a>
+
+              <a
+                href={`/api/astrometry/files/${data.jobId}/rdls_file`}
+                download
+                className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between text-slate-400 group-hover:text-indigo-400 mb-1">
+                  <span className="text-[11px] font-bold">RDLS 항성목록</span>
+                  <Download className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[10px] text-slate-400">검출 별 RA/Dec FITS</span>
+              </a>
+
+              <a
+                href={`/api/astrometry/files/${data.jobId}/axy_file`}
+                download
+                className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between text-slate-400 group-hover:text-amber-400 mb-1">
+                  <span className="text-[11px] font-bold">AXY 픽셀좌표</span>
+                  <Download className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[10px] text-slate-400">추출 항성 X/Y 좌표</span>
+              </a>
+
+              <a
+                href={`/api/astrometry/files/${data.jobId}/corr_file`}
+                download
+                className="p-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-left transition-colors group flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between text-slate-400 group-hover:text-violet-400 mb-1">
+                  <span className="text-[11px] font-bold">Corr 대응표</span>
+                  <Download className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[10px] text-slate-400">카탈로그 매칭표</span>
+              </a>
+            </div>
+          )}
 
           {/* Web Star Chart Layers Section */}
           <div className="pt-3 border-t border-slate-800/80 space-y-2.5">
@@ -413,29 +738,39 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({ data, 
               <span className="text-slate-300 text-xs font-bold flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-sky-400" />
                 웹성도 레이어 (클릭하여 큰 이미지 보기):
+                {isLocalJob && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-950/90 text-sky-300 border border-sky-700/70 font-semibold">
+                    웹브라우저 직접 계산 기반 합성
+                  </span>
+                )}
               </span>
               <span className="text-[11px] text-slate-400">
-                원하는 레이어를 클릭하면 고해상도 확대 뷰어로 크게 볼 수 있습니다
+                {isLocalJob
+                  ? '웹브라우저에서 직접 계산된 TAN WCS 좌표 및 Simplexy 항성 검출 결과로 생성된 5종 성도 레이어입니다'
+                  : '원하는 레이어를 클릭하면 고해상도 확대 뷰어로 크게 볼 수 있습니다'}
               </span>
             </div>
 
             {/* Small Thumbnails Grid: 5 Layer Images */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 pt-1">
               {STAR_CHART_LAYERS.map((layer) => {
-                const imgProxyUrl =
-                  layer.id === 'original' && data.rawImageUrl && !data.rawImageUrl.startsWith('blob:')
-                    ? data.rawImageUrl
-                    : `/api/astrometry/image-proxy/${data.jobId}/${layer.id}`;
-                const fallbackUrl =
-                  layer.id === 'annotated'
-                    ? `https://nova.astrometry.net/annotated_display/${data.jobId}`
-                    : layer.id === 'red_green'
-                    ? `https://nova.astrometry.net/red_green_image_display/${data.jobId}/`
-                    : layer.id === 'extraction'
-                    ? `https://nova.astrometry.net/extraction_image_display/${data.jobId}/`
-                    : layer.id === 'grid'
-                    ? `https://nova.astrometry.net/grid_display/${data.jobId}`
-                    : `https://nova.astrometry.net/image/${data.jobId}`;
+                const localUrl = localLayerUrls?.[layer.id];
+                const imgProxyUrl = isLocalJob
+                  ? localUrl || data.rawImageUrl || data.imageUrl
+                  : layer.id === 'original' && data.rawImageUrl && !data.rawImageUrl.startsWith('blob:')
+                  ? data.rawImageUrl
+                  : `/api/astrometry/image-proxy/${data.jobId}/${layer.id}`;
+                const fallbackUrl = isLocalJob
+                  ? localUrl || data.rawImageUrl || data.imageUrl
+                  : layer.id === 'annotated'
+                  ? `https://nova.astrometry.net/annotated_display/${data.jobId}`
+                  : layer.id === 'red_green'
+                  ? `https://nova.astrometry.net/red_green_image_display/${data.jobId}/`
+                  : layer.id === 'extraction'
+                  ? `https://nova.astrometry.net/extraction_image_display/${data.jobId}/`
+                  : layer.id === 'grid'
+                  ? `https://nova.astrometry.net/grid_display/${data.jobId}`
+                  : `https://nova.astrometry.net/image/${data.jobId}`;
 
                 return (
                   <div
@@ -452,7 +787,9 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({ data, 
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         onError={(e) => {
                           const target = e.currentTarget as HTMLImageElement;
-                          if (!target.src.includes('nova.astrometry.net')) {
+                          if (localUrl && target.src !== localUrl) {
+                            target.src = localUrl;
+                          } else if (!isLocalJob && !target.src.includes('nova.astrometry.net')) {
                             target.src = fallbackUrl;
                           }
                         }}
@@ -566,7 +903,13 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({ data, 
               {filteredAnnotations.length > 0 ? (
                 filteredAnnotations.map((item, idx) => {
                   const primaryName = item.names[0] || 'Unknown';
-                  const isBright = item.type === 'bright';
+                  const type = (item.type || '').toLowerCase();
+                  const isStar =
+                    type === 'bright' ||
+                    type === 'hd' ||
+                    type === 'star' ||
+                    type === 'tycho2' ||
+                    type === 'gaia';
                   return (
                     <tr key={`row-${idx}`} className="hover:bg-slate-800/40 transition-colors">
                       <td className="px-4 py-2 font-semibold text-white font-sans">
@@ -580,12 +923,12 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({ data, 
                       <td className="px-3 py-2">
                         <span
                           className={`text-[10px] px-2 py-0.5 rounded-full font-sans font-medium ${
-                            isBright
+                            isStar
                               ? 'bg-sky-950 text-sky-300 border border-sky-800'
                               : 'bg-rose-950 text-rose-300 border border-rose-800'
                           }`}
                         >
-                          {isBright ? '항성 (Star)' : '심우주 천체'}
+                          {isStar ? '항성 (Star)' : '심우주 천체'}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-slate-400">
@@ -637,6 +980,7 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({ data, 
         initialLayer={selectedLayerModal || 'annotated'}
         title={data.title}
         rawImageUrl={data.rawImageUrl}
+        localLayerUrls={localLayerUrls}
       />
     </div>
   );

@@ -92,6 +92,7 @@ interface StarChartLayerModalProps {
   initialLayer?: StarChartLayerType;
   title?: string;
   rawImageUrl?: string;
+  localLayerUrls?: Partial<Record<StarChartLayerType, string>> | null;
 }
 
 export const StarChartLayerModal: React.FC<StarChartLayerModalProps> = ({
@@ -101,10 +102,12 @@ export const StarChartLayerModal: React.FC<StarChartLayerModalProps> = ({
   initialLayer = 'annotated',
   title = '',
   rawImageUrl,
+  localLayerUrls,
 }) => {
   const [activeLayer, setActiveLayer] = useState<StarChartLayerType>(initialLayer);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [imgError, setImgError] = useState(false);
+  const isLocalJob = String(jobId).startsWith('local_');
 
   useEffect(() => {
     if (isOpen) {
@@ -145,13 +148,25 @@ export const StarChartLayerModal: React.FC<StarChartLayerModalProps> = ({
   const currentDef = STAR_CHART_LAYERS.find((l) => l.id === activeLayer) || STAR_CHART_LAYERS[0];
 
   const getLayerImageUrl = (type: StarChartLayerType) => {
+    if (isLocalJob && localLayerUrls?.[type]) {
+      return localLayerUrls[type]!;
+    }
     if (type === 'original' && rawImageUrl && !rawImageUrl.startsWith('blob:')) {
       return rawImageUrl;
+    }
+    if (isLocalJob) {
+      return rawImageUrl || '';
     }
     return `/api/astrometry/image-proxy/${jobId}/${type}`;
   };
 
   const getFallbackUrl = (type: StarChartLayerType) => {
+    if (localLayerUrls?.[type]) {
+      return localLayerUrls[type]!;
+    }
+    if (isLocalJob) {
+      return rawImageUrl || '';
+    }
     switch (type) {
       case 'annotated':
         return `https://nova.astrometry.net/annotated_display/${jobId}`;
@@ -195,11 +210,11 @@ export const StarChartLayerModal: React.FC<StarChartLayerModalProps> = ({
                   {currentDef.titleKo} ({currentDef.titleEn})
                 </h3>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${currentDef.badgeBg} ${currentDef.badgeBorder} ${currentDef.badgeText}`}>
-                  Job #{jobId}
+                  {isLocalJob ? '웹브라우저 직접 계산' : `Job #${jobId}`}
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 truncate max-w-md mt-0.5">
-                {title || `Astrometry Plate Solve #${jobId}`}
+                {title || `Plate Solve #${jobId}`}
               </p>
             </div>
           </div>
@@ -256,19 +271,21 @@ export const StarChartLayerModal: React.FC<StarChartLayerModalProps> = ({
               </button>
             </div>
 
-            <a
-              href={currentImgUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-sky-300 hover:bg-slate-800 transition-colors"
-              title="새 탭에서 원본 해상도로 보기"
-            >
-              <ExternalLink className="w-4 h-4" />
-            </a>
+            {!isLocalJob && (
+              <a
+                href={currentImgUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-sky-300 hover:bg-slate-800 transition-colors"
+                title="새 탭에서 원본 해상도로 보기"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            )}
 
             <a
               href={currentImgUrl}
-              download={`astrometry_${jobId}_${activeLayer}.jpg`}
+              download={`astroplate_${jobId}_${activeLayer}.jpg`}
               className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition-colors"
               title="이미지 파일 다운로드"
             >

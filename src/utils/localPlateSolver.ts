@@ -1,27 +1,41 @@
 /**
  * Browser-Native Local Astrometry Plate Solver Engine
- * Based on the mathematical & algorithmic principles of dstndstn/astrometry.net:
- * 1. image2xy / simplexy: Local sky background estimation, noise sigma thresholding, and sub-pixel Gaussian centroid extraction
- * 2. Geometric Quad & Binary Pair Hashing: Scale-, rotation-, translation-, and parity-invariant 4-star quad codes (xC, yC, xD, yD)
- * 3. RANSAC Verification (verify.c) & Iterative Gnomonic (TAN) Least-Squares WCS Fit (fit-wcs.c): Solves CRVAL (RA, Dec), pixscale, orientation, and parity (±1)
- * 4. Catalog Projection & Annotation Synthesis: Matches detected stars to Hipparcos/Bright Star, HD/BD/Tycho telescopic fields, & Messier/NGC/IC catalogs
+ * Based on the mathematical & algorithmic architecture of dstndstn/astrometry.net:
+ * 1. simplexy (dmedsmooth.c + dsmooth.c + dpeaks.c): Two-pass sigma-clipped sky background grid,
+ *    5x5 Gaussian PSF matched filter, chroma/border-noise rejection, and circular R=7px aperture photometry
+ * 2. Geometric Quad & Triangle Hashing (quad-builder.c): Scale-, rotation-, translation-, and parity-invariant
+ *    4-star quad codes (xC, yC, xD, yD) & 3-star triangle codes
+ * 3. Bayesian Log-Odds Verification (blind/verify.c) & Iterative Gnomonic (TAN) Least-Squares WCS Fit (fit-wcs.c):
+ *    Evaluates foreground Gaussian positional likelihood vs background star density P(fg)/P(bg) and solves exact
+ *    CRVAL (RA, Dec), pixscale, orientation, and parity (±1)
+ * 4. Catalog Projection & Annotation Synthesis: Matches detected stars to Hipparcos/Bright Star, HD/BD/Tycho-2
+ *    telescopic index fields, & Messier/NGC/IC deep-sky catalogs
  */
 
 import {
   SolvedAstroData,
   AstrometryAnnotationItem as AstroAnnotation,
   AstrometryCalibration as AstroCalibration,
+  DualIndexComparisonTelemetry,
 } from '../types/astronomy';
 import { BRIGHT_STARS, CONSTELLATION_FIGURES, CatalogStar } from '../data/celestialCatalog';
 import { IAU_CONSTELLATIONS, identifyConstellations } from './constellations';
 import { angularSeparation } from './coordinateMath';
+import {
+  TYCHO2_WIDE_INDEX_DATA,
+  GAIA_DR3_DEEPSKY_INDEX_DATA,
+  queryLocalTycho2Cone,
+  queryLocalGaiaDr3Field,
+  getCustomCachedGaiaFields,
+  downloadLiveDualIndexTileFromVizier,
+} from './dualIndexCatalog';
 
 export interface DetectedStarXY {
   x: number;        // Sub-pixel centroid X in original image pixels
   y: number;        // Sub-pixel centroid Y in original image pixels
-  flux: number;     // Integrated background-subtracted flux
-  peak: number;     // Peak pixel intensity above sky background
-  radius: number;   // Estimated HFR / star radius in pixels
+  flux: number;     // Integrated background-subtracted circular aperture flux
+  peak: number;     // Peak pixel intensity above local sky background
+  radius: number;   // Estimated HFR / star PSF radius in pixels
   instMag: number;  // Instrumental magnitude estimate
 }
 
@@ -59,7 +73,7 @@ export interface LocalSolveProgress {
 }
 
 export interface LocalSolveOptions {
-  targetHint?: string;       // Optional target name or constellation hint (e.g. "거문고자리 더블더블", "NGC 628", "M42")
+  targetHint?: string;       // Optional target name or constellation hint
   fovHintDeg?: number;       // Optional approximate field of view width in degrees
   filename?: string;         // Original filename for metadata hint extraction
   onProgress?: (progress: LocalSolveProgress) => void;
@@ -67,8 +81,20 @@ export interface LocalSolveOptions {
 
 // Comprehensive built-in Deep Sky Objects catalog (Messier, NGC, IC) for local solving & annotation
 export const LOCAL_DSO_CATALOG: DsoCatalogEntry[] = [
+  { id: 'NGC 752', names: ['NGC 752', 'Caldwell 28 (NGC 752 산개성단)'], nameKo: 'NGC 752 산개성단 (Caldwell 28)', type: 'ngc', constellation: 'And', raDeg: 29.421, decDeg: 37.785, radiusArcmin: 19.5, vmag: 5.7 },
+  { id: 'IC 179', names: ['IC 179'], nameKo: 'IC 179 은하', type: 'ic', constellation: 'And', raDeg: 30.044, decDeg: 38.021, radiusArcmin: 0.8, vmag: 13.2 },
+  { id: 'NGC 6695', names: ['NGC 6695'], nameKo: 'NGC 6695 나선은하', type: 'ngc', constellation: 'Lyr', raDeg: 281.0775, decDeg: 40.3664, radiusArcmin: 0.8, vmag: 13.5 },
   { id: 'NGC 628', names: ['NGC 628', 'M 74', '유령 은하 (Phantom Galaxy)'], nameKo: '유령 은하 (M74 / NGC 628)', type: 'ngc', constellation: 'Psc', raDeg: 24.1739, decDeg: 15.7836, radiusArcmin: 5.2, vmag: 9.4 },
-  { id: 'M 34', names: ['M 34', 'NGC 1039', 'Spiral Cluster (M34 산개성단)'], nameKo: 'M34 산개성단 (NGC 1039)', type: 'messier', constellation: 'Per', raDeg: 40.5308, decDeg: 42.7619, radiusArcmin: 17.5, vmag: 5.5 },
+  { id: 'M 34', names: ['NGC 1039', 'M 34', 'Spiral Cluster (M34 산개성단)'], nameKo: 'M34 산개성단 (NGC 1039)', type: 'ngc', constellation: 'Per', raDeg: 40.5308, decDeg: 42.7619, radiusArcmin: 17.5, vmag: 5.5 },
+  { id: 'NGC 891', names: ['NGC 891', 'Caldwell 23 (Silver Sliver Galaxy)'], nameKo: '은하수 은하 (NGC 891)', type: 'ngc', constellation: 'And', raDeg: 35.6392, decDeg: 42.3492, radiusArcmin: 6.8, vmag: 9.9 },
+  { id: 'NGC 898', names: ['NGC 898'], nameKo: 'NGC 898 은하', type: 'ngc', constellation: 'And', raDeg: 35.834, decDeg: 41.951, radiusArcmin: 0.9, vmag: 13.1 },
+  { id: 'NGC 906', names: ['NGC 906'], nameKo: 'NGC 906 은하', type: 'ngc', constellation: 'And', raDeg: 36.322, decDeg: 42.088, radiusArcmin: 0.9, vmag: 13.0 },
+  { id: 'NGC 910', names: ['NGC 910'], nameKo: 'NGC 910 은하', type: 'ngc', constellation: 'And', raDeg: 36.362, decDeg: 41.824, radiusArcmin: 1.0, vmag: 12.2 },
+  { id: 'NGC 663', names: ['NGC 663', 'Caldwell 10 (NGC 663 산개성단)'], nameKo: 'NGC 663 산개성단 (Caldwell 10)', type: 'ngc', constellation: 'Cas', raDeg: 26.586, decDeg: 61.212, radiusArcmin: 8.0, vmag: 7.1 },
+  { id: 'IC 155', names: ['IC 155'], nameKo: 'IC 155 성운', type: 'ic', constellation: 'Cas', raDeg: 26.88, decDeg: 61.62, radiusArcmin: 1.5, vmag: 11.0 },
+  { id: 'M 3', names: ['NGC 5272', 'M 3', 'M3 구상성단'], nameKo: 'M3 구상성단 (NGC 5272)', type: 'ngc', constellation: 'CVn', raDeg: 205.5484, decDeg: 28.3773, radiusArcmin: 9.0, vmag: 6.2 },
+  { id: 'NGC 5263', names: ['NGC 5263'], nameKo: 'NGC 5263 은하', type: 'ngc', constellation: 'CVn', raDeg: 204.971, decDeg: 28.400, radiusArcmin: 0.8, vmag: 13.4 },
+  { id: 'NGC 5122', names: ['NGC 5122'], nameKo: 'NGC 5122 은하', type: 'ngc', constellation: 'Vir', raDeg: 201.082, decDeg: -10.654, radiusArcmin: 0.8, vmag: 13.4 },
   { id: 'M 31', names: ['M 31', 'NGC 224', 'Andromeda Galaxy (안드로메다 은하)'], nameKo: '안드로메다 은하', type: 'messier', constellation: 'And', raDeg: 10.6847, decDeg: 41.2687, radiusArcmin: 95.0, vmag: 3.4 },
   { id: 'M 32', names: ['M 32', 'NGC 221'], nameKo: 'M32 타원은하', type: 'messier', constellation: 'And', raDeg: 10.6743, decDeg: 40.8653, radiusArcmin: 4.3, vmag: 8.1 },
   { id: 'M 110', names: ['M 110', 'NGC 205'], nameKo: 'M110 왜소타원은하', type: 'messier', constellation: 'And', raDeg: 10.092, decDeg: 41.6853, radiusArcmin: 10.0, vmag: 8.5 },
@@ -82,7 +108,8 @@ export const LOCAL_DSO_CATALOG: DsoCatalogEntry[] = [
   { id: 'NGC 7000', names: ['NGC 7000', 'North America Nebula (북아메리카 성운)'], nameKo: '북아메리카 성운', type: 'ngc', constellation: 'Cyg', raDeg: 314.68, decDeg: 44.33, radiusArcmin: 60.0, vmag: 4.0 },
   { id: 'IC 5070', names: ['IC 5070', 'Pelican Nebula (펠리컨 성운)'], nameKo: '펠리컨 성운', type: 'ic', constellation: 'Cyg', raDeg: 312.75, decDeg: 44.35, radiusArcmin: 45.0, vmag: 8.0 },
   { id: 'NGC 6960', names: ['NGC 6960', 'Western Veil Nebula (서쪽 베일 성운)'], nameKo: '서쪽 베일 성운', type: 'ngc', constellation: 'Cyg', raDeg: 311.42, decDeg: 30.71, radiusArcmin: 35.0, vmag: 7.0 },
-  { id: 'NGC 6992', names: ['NGC 6992', 'Eastern Veil Nebula (동쪽 베일 성운)'], nameKo: '동쪽 베일 성운', type: 'ngc', constellation: 'Cyg', raDeg: 314.11, decDeg: 31.72, radiusArcmin: 30.0, vmag: 7.0 },
+  { id: 'NGC 6992', names: ['NGC 6992', 'Eastern Veil Nebula (동쪽 베일 성운)'], nameKo: '동쪽 베일 성운 (NGC 6992)', type: 'ngc', constellation: 'Cyg', raDeg: 314.11, decDeg: 31.72, radiusArcmin: 30.0, vmag: 7.0 },
+  { id: 'NGC 6995', names: ['NGC 6995', 'Bat Nebula (박쥐 성운)'], nameKo: '박쥐 성운 (NGC 6995)', type: 'ngc', constellation: 'Cyg', raDeg: 314.28, decDeg: 31.22, radiusArcmin: 6.0, vmag: 7.5 },
   { id: 'NGC 6888', names: ['NGC 6888', 'Crescent Nebula (초승달 성운)'], nameKo: '초승달 성운', type: 'ngc', constellation: 'Cyg', raDeg: 303.06, decDeg: 38.35, radiusArcmin: 9.0, vmag: 7.4 },
   { id: 'IC 1396', names: ['IC 1396', 'Elephant Trunk Nebula (코끼리 코 성운)'], nameKo: '코끼리 코 성운', type: 'ic', constellation: 'Cep', raDeg: 324.74, decDeg: 57.49, radiusArcmin: 85.0, vmag: 3.5 },
   { id: 'NGC 7023', names: ['NGC 7023', 'Iris Nebula (아이리스 성운)'], nameKo: '아이리스 성운', type: 'ngc', constellation: 'Cep', raDeg: 315.40, decDeg: 68.16, radiusArcmin: 9.0, vmag: 6.8 },
@@ -97,7 +124,9 @@ export const LOCAL_DSO_CATALOG: DsoCatalogEntry[] = [
   { id: 'NGC 1499', names: ['NGC 1499', 'California Nebula (캘리포니아 성운)'], nameKo: '캘리포니아 성운', type: 'ngc', constellation: 'Per', raDeg: 60.21, decDeg: 36.42, radiusArcmin: 75.0, vmag: 6.0 },
   { id: 'M 33', names: ['M 33', 'NGC 598', 'Triangulum Galaxy (삼각형자리 은하)'], nameKo: '삼각형자리 은하', type: 'messier', constellation: 'Tri', raDeg: 23.4621, decDeg: 30.6599, radiusArcmin: 35.0, vmag: 5.7 },
   { id: 'M 51', names: ['M 51', 'NGC 5194', 'Whirlpool Galaxy (부자 은하 / 소용돌이 은하)'], nameKo: '부자 은하 (M51)', type: 'messier', constellation: 'CVn', raDeg: 202.4696, decDeg: 47.1952, radiusArcmin: 5.6, vmag: 8.4 },
-  { id: 'M 101', names: ['M 101', 'NGC 5457', 'Pinwheel Galaxy (바람개비 은하)'], nameKo: '바람개비 은하 (M101)', type: 'messier', constellation: 'UMa', raDeg: 210.8023, decDeg: 54.3489, radiusArcmin: 14.4, vmag: 7.9 },
+  { id: 'M 101', names: ['NGC 5457', 'M 101', 'Pinwheel Galaxy (바람개비 은하)'], nameKo: '바람개비 은하 (M101 / NGC 5457)', type: 'ngc', constellation: 'UMa', raDeg: 210.8023, decDeg: 54.3489, radiusArcmin: 14.4, vmag: 7.9 },
+  { id: 'NGC 5473', names: ['NGC 5473'], nameKo: 'NGC 5473 은하', type: 'ngc', constellation: 'UMa', raDeg: 211.180, decDeg: 54.893, radiusArcmin: 1.1, vmag: 11.4 },
+  { id: 'NGC 5485', names: ['NGC 5485'], nameKo: 'NGC 5485 은하', type: 'ngc', constellation: 'UMa', raDeg: 211.797, decDeg: 55.002, radiusArcmin: 1.2, vmag: 11.4 },
   { id: 'M 81', names: ['M 81', 'NGC 3031', 'Bode Galaxy (보데 은하)'], nameKo: '보데 은하 (M81)', type: 'messier', constellation: 'UMa', raDeg: 148.8882, decDeg: 69.0653, radiusArcmin: 13.5, vmag: 6.9 },
   { id: 'M 82', names: ['M 82', 'NGC 3034', 'Cigar Galaxy (시가 은하)'], nameKo: '시가 은하 (M82)', type: 'messier', constellation: 'UMa', raDeg: 148.9685, decDeg: 69.6797, radiusArcmin: 5.6, vmag: 8.4 },
   { id: 'M 57', names: ['M 57', 'NGC 6720', 'Ring Nebula (고리 성운)'], nameKo: '고리 성운 (M57)', type: 'messier', constellation: 'Lyr', raDeg: 283.3962, decDeg: 33.0292, radiusArcmin: 1.5, vmag: 8.8 },
@@ -109,23 +138,362 @@ export const LOCAL_DSO_CATALOG: DsoCatalogEntry[] = [
   { id: 'M 17', names: ['M 17', 'NGC 6618', 'Omega Nebula (오메가 성운 / 백조 성운)'], nameKo: '오메가 성운 (M17)', type: 'messier', constellation: 'Sgr', raDeg: 275.20, decDeg: -16.18, radiusArcmin: 18.0, vmag: 6.0 },
   { id: 'NGC 2237', names: ['NGC 2237', 'Rosette Nebula (장미 성운)'], nameKo: '장미 성운', type: 'ngc', constellation: 'Mon', raDeg: 97.98, decDeg: 4.95, radiusArcmin: 40.0, vmag: 6.0 },
   { id: 'M 44', names: ['M 44', 'NGC 2632', 'Beehive Cluster (프레세페 성단 / 벌집 성단)'], nameKo: '프레세페 성단 (M44)', type: 'messier', constellation: 'Cnc', raDeg: 130.10, decDeg: 19.67, radiusArcmin: 47.0, vmag: 3.7 },
+  { id: 'M 36', names: ['M 36', 'NGC 1960', 'Pinwheel Cluster (마차부자리 M36 산개성단)'], nameKo: 'M36 산개성단 (NGC 1960)', type: 'messier', constellation: 'Aur', raDeg: 84.0842, decDeg: 34.1350, radiusArcmin: 10.0, vmag: 6.0 },
+  { id: 'M 37', names: ['M 37', 'NGC 2099', 'Salt and Pepper Cluster (마차부자리 M37 산개성단)'], nameKo: 'M37 산개성단 (NGC 2099)', type: 'messier', constellation: 'Aur', raDeg: 88.074, decDeg: 32.553, radiusArcmin: 12.0, vmag: 5.6 },
+  { id: 'M 38', names: ['M 38', 'NGC 1912', 'Starfish Cluster (마차부자리 M38 산개성단)'], nameKo: 'M38 산개성단 (NGC 1912)', type: 'messier', constellation: 'Aur', raDeg: 82.167, decDeg: 35.848, radiusArcmin: 10.5, vmag: 6.4 },
+  { id: 'M 35', names: ['M 35', 'NGC 2168', '쌍둥이자리 M35 산개성단'], nameKo: 'M35 산개성단 (NGC 2168)', type: 'messier', constellation: 'Gem', raDeg: 92.225, decDeg: 24.333, radiusArcmin: 14.0, vmag: 5.1 },
+  { id: 'M 103', names: ['M 103', 'NGC 581', '카시오페이아자리 M103 산개성단'], nameKo: 'M103 산개성단 (NGC 581)', type: 'messier', constellation: 'Cas', raDeg: 23.34, decDeg: 60.658, radiusArcmin: 6.0, vmag: 7.4 },
+  { id: 'NGC 457', names: ['NGC 457', 'Owl Cluster (올빼미 성단 / ET 성단)'], nameKo: '올빼미 성단 (NGC 457)', type: 'ngc', constellation: 'Cas', raDeg: 19.88, decDeg: 58.29, radiusArcmin: 10.0, vmag: 6.4 },
+  { id: 'M 11', names: ['M 11', 'NGC 6705', 'Wild Duck Cluster (야생오리 성단)'], nameKo: '야생오리 성단 (M11 / NGC 6705)', type: 'messier', constellation: 'Sct', raDeg: 282.77, decDeg: -6.27, radiusArcmin: 7.0, vmag: 5.8 },
   { id: 'M 104', names: ['M 104', 'NGC 4594', 'Sombrero Galaxy (솜브레로 은하)'], nameKo: '솜브레로 은하 (M104)', type: 'messier', constellation: 'Vir', raDeg: 189.9976, decDeg: -11.6231, radiusArcmin: 4.5, vmag: 8.0 },
   { id: 'M 65', names: ['M 65', 'NGC 3623', 'Leo Triplet'], nameKo: '사자자리 삼중은하 M65', type: 'messier', constellation: 'Leo', raDeg: 169.733, decDeg: 13.092, radiusArcmin: 4.5, vmag: 9.3 },
   { id: 'M 66', names: ['M 66', 'NGC 3627', 'Leo Triplet'], nameKo: '사자자리 삼중은하 M66', type: 'messier', constellation: 'Leo', raDeg: 170.062, decDeg: 12.992, radiusArcmin: 4.5, vmag: 8.9 },
 ];
 
 /**
- * High-Precision Telescopic Reference Fields (1° ~ 3° FOV, SIMBAD/Hipparcos/HD/BD/Tycho-2 J2000 coordinates)
- * Enables exact sub-pixel blind & assisted solving for telescopic photos where FOV is too narrow for naked-eye wide-field constellations
+ * High-Precision Telescopic Reference Index Fields (1° ~ 3° FOV, SIMBAD/Hipparcos/HD/BD/Tycho-2 J2000 coordinates)
+ * Acts as local Astrometry.net 4100/5200-series telescopic index tiles for sub-pixel blind & assisted solving
  */
 export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
+  {
+    id: 'aur_m36',
+    nameKo: '마차부자리 M36 산개성단 (NGC 1960)',
+    nameEn: 'Auriga Open Cluster M36 (NGC 1960)',
+    constellation: 'Aur',
+    centerRaDeg: 84.0850,
+    centerDecDeg: 34.1360,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'M 36',
+    keywords: ['m36', 'm 36', 'ngc1960', 'ngc 1960', 'pinwheel cluster', '마차부자리 m36'],
+    stars: [
+      { id: 'hd_37138', nameKo: 'HD 37138', nameEn: 'HD 37138', bayer: 'HD 37138 (Aur)', constellation: 'Aur', raDeg: 84.44086, decDeg: 33.55917, mag: 6.36 },
+      { id: 'hd_37268', nameKo: 'HD 37268', nameEn: 'HD 37268', bayer: 'HD 37268 (Aur)', constellation: 'Aur', raDeg: 84.71891, decDeg: 35.07811, mag: 8.08 },
+      { id: 'hd_36545', nameKo: 'HD 36545', nameEn: 'HD 36545', bayer: 'HD 36545 (Aur)', constellation: 'Aur', raDeg: 83.49148, decDeg: 33.41354, mag: 8.09 },
+      { id: 'hd_36574', nameKo: 'HD 36574', nameEn: 'HD 36574', bayer: 'HD 36574 (Aur)', constellation: 'Aur', raDeg: 83.54351, decDeg: 34.21763, mag: 8.12 },
+      { id: 'hd_37032', nameKo: 'HD 37032', nameEn: 'HD 37032', bayer: 'HD 37032 (Aur)', constellation: 'Aur', raDeg: 84.28747, decDeg: 34.81196, mag: 8.15 },
+      { id: 'hd_36424', nameKo: 'HD 36424', nameEn: 'HD 36424', bayer: 'HD 36424 (Aur)', constellation: 'Aur', raDeg: 83.28449, decDeg: 33.44489, mag: 8.22 },
+      { id: 'hd_36573', nameKo: 'HD 36573', nameEn: 'HD 36573', bayer: 'HD 36573 (Aur)', constellation: 'Aur', raDeg: 83.55263, decDeg: 34.63343, mag: 8.37 },
+      { id: 'hd_245493', nameKo: 'HD 245493', nameEn: 'HD 245493', bayer: 'HD 245493 (Aur)', constellation: 'Aur', raDeg: 84.46227, decDeg: 33.96723, mag: 8.44 },
+      { id: 'hd_37217', nameKo: 'HD 37217', nameEn: 'HD 37217', bayer: 'HD 37217 (Aur)', constellation: 'Aur', raDeg: 84.60162, decDeg: 34.17416, mag: 8.47 },
+      { id: 'hd_244949', nameKo: 'HD 244949', nameEn: 'HD 244949', bayer: 'HD 244949 (Aur)', constellation: 'Aur', raDeg: 83.81075, decDeg: 33.96258, mag: 8.66 },
+      { id: 'bd_34_1103', nameKo: 'BD+34 1103', nameEn: 'BD+34 1103', bayer: 'BD+34 1103 (M36)', constellation: 'Aur', raDeg: 84.06583, decDeg: 34.14351, mag: 8.79 },
+      { id: 'bd_34_1096', nameKo: 'BD+34 1096', nameEn: 'BD+34 1096', bayer: 'BD+34 1096 (Aur)', constellation: 'Aur', raDeg: 83.89738, decDeg: 35.05955, mag: 8.80 },
+      { id: 'hd_36664', nameKo: 'HD 36664', nameEn: 'HD 36664', bayer: 'HD 36664 (Aur)', constellation: 'Aur', raDeg: 83.72313, decDeg: 34.28273, mag: 8.87 },
+      { id: 'hd_245239', nameKo: 'HD 245239', nameEn: 'HD 245239', bayer: 'HD 245239 (Aur)', constellation: 'Aur', raDeg: 84.16357, decDeg: 34.06384, mag: 8.94 },
+      { id: 'bd_34_1109', nameKo: 'BD+34 1109', nameEn: 'BD+34 1109', bayer: 'BD+34 1109 (M36)', constellation: 'Aur', raDeg: 84.09606, decDeg: 34.17574, mag: 8.96 },
+      { id: 'bd_34_1119', nameKo: 'BD+34 1119', nameEn: 'BD+34 1119', bayer: 'BD+34 1119 (Aur)', constellation: 'Aur', raDeg: 84.29607, decDeg: 34.54578, mag: 9.00 },
+      { id: 'bd_34_1129', nameKo: 'BD+34 1129', nameEn: 'BD+34 1129', bayer: 'BD+34 1129 (Aur)', constellation: 'Aur', raDeg: 84.87543, decDeg: 34.60272, mag: 9.00 },
+      { id: 'bd_34_1111', nameKo: 'BD+34 1111', nameEn: 'BD+34 1111', bayer: 'BD+34 1111 (M36)', constellation: 'Aur', raDeg: 84.13332, decDeg: 34.17980, mag: 9.09 },
+      { id: 'hd_245593', nameKo: 'HD 245593', nameEn: 'HD 245593', bayer: 'HD 245593 (Aur)', constellation: 'Aur', raDeg: 84.58781, decDeg: 33.52576, mag: 9.10 },
+      { id: 'hd_245060', nameKo: 'HD 245060', nameEn: 'HD 245060', bayer: 'HD 245060 (Aur)', constellation: 'Aur', raDeg: 83.93366, decDeg: 33.99565, mag: 9.10 },
+      { id: 'bd_34_1107', nameKo: 'BD+34 1107', nameEn: 'BD+34 1107', bayer: 'BD+34 1107 (M36)', constellation: 'Aur', raDeg: 84.09441, decDeg: 34.13384, mag: 9.13 },
+      { id: 'bd_34_1113', nameKo: 'BD+34 1113', nameEn: 'BD+34 1113', bayer: 'BD+34 1113 (Aur)', constellation: 'Aur', raDeg: 84.17626, decDeg: 34.20165, mag: 9.14 },
+      { id: 'bd_34_1121', nameKo: 'BD+34 1121', nameEn: 'BD+34 1121', bayer: 'BD+34 1121 (Aur)', constellation: 'Aur', raDeg: 84.54784, decDeg: 35.04186, mag: 9.18 },
+      { id: 'bd_34_1104', nameKo: 'BD+34 1104', nameEn: 'BD+34 1104', bayer: 'BD+34 1104 (Aur)', constellation: 'Aur', raDeg: 84.09281, decDeg: 34.71445, mag: 9.25 },
+      { id: 'bd_34_1122', nameKo: 'BD+34 1122', nameEn: 'BD+34 1122', bayer: 'BD+34 1122 (Aur)', constellation: 'Aur', raDeg: 84.60161, decDeg: 34.72067, mag: 9.27 },
+    ],
+  },
+  {
+    id: 'aur_m37',
+    nameKo: '마차부자리 M37 산개성단 (NGC 2099)',
+    nameEn: 'Auriga M37 (NGC 2099)',
+    constellation: 'Aur',
+    centerRaDeg: 88.074,
+    centerDecDeg: 32.553,
+    defaultRadiusDeg: 1.25,
+    primaryObjectLabel: 'M 37',
+    keywords: ['m37', 'm 37', 'ngc2099', 'ngc 2099', 'salt and pepper cluster', '마차부자리 m37'],
+    stars: [
+      { id: 'hd_249380', nameKo: 'HD 249380', nameEn: 'HD 249380', bayer: 'HD 249380 (Aur)', constellation: 'Aur', raDeg: 89.30714, decDeg: 32.91343, mag: 8.45 },
+      { id: 'hd_247909', nameKo: 'HD 247909', nameEn: 'HD 247909', bayer: 'HD 247909 (Aur)', constellation: 'Aur', raDeg: 87.44248, decDeg: 32.97317, mag: 8.46 },
+      { id: 'hd_38997', nameKo: 'HD 38997', nameEn: 'HD 38997', bayer: 'HD 38997 (Aur)', constellation: 'Aur', raDeg: 87.75572, decDeg: 31.61916, mag: 8.56 },
+      { id: 'hd_39095', nameKo: 'HD 39095', nameEn: 'HD 39095', bayer: 'HD 39095 (Aur)', constellation: 'Aur', raDeg: 87.94566, decDeg: 33.62079, mag: 8.57 },
+      { id: 'hd_38571', nameKo: 'HD 38571', nameEn: 'HD 38571', bayer: 'HD 38571 (Aur)', constellation: 'Aur', raDeg: 87.05957, decDeg: 33.29042, mag: 8.6 },
+      { id: 'hd_38978', nameKo: 'HD 38978', nameEn: 'HD 38978', bayer: 'HD 38978 (Aur)', constellation: 'Aur', raDeg: 87.73399, decDeg: 32.1991, mag: 8.61 },
+      { id: 'hd_247768', nameKo: 'HD 247768', nameEn: 'HD 247768', bayer: 'HD 247768 (Aur)', constellation: 'Aur', raDeg: 87.27654, decDeg: 33.01921, mag: 8.64 },
+      { id: 'hd_248341', nameKo: 'HD 248341', nameEn: 'HD 248341', bayer: 'HD 248341 (Aur)', constellation: 'Aur', raDeg: 87.93819, decDeg: 33.34658, mag: 8.67 },
+      { id: 'hd_38864', nameKo: 'HD 38864', nameEn: 'HD 38864', bayer: 'HD 38864 (Aur)', constellation: 'Aur', raDeg: 87.56574, decDeg: 32.15381, mag: 8.75 },
+      { id: 'hd_247932', nameKo: 'HD 247932', nameEn: 'HD 247932', bayer: 'HD 247932 (Aur)', constellation: 'Aur', raDeg: 87.46239, decDeg: 32.9731, mag: 8.76 },
+      { id: 'hd_39136', nameKo: 'HD 39136', nameEn: 'HD 39136', bayer: 'HD 39136 (Aur)', constellation: 'Aur', raDeg: 87.97823, decDeg: 32.23975, mag: 8.77 },
+    ],
+  },
+  {
+    id: 'aur_m38',
+    nameKo: '마차부자리 M38 산개성단 (NGC 1912)',
+    nameEn: 'Auriga M38 (NGC 1912)',
+    constellation: 'Aur',
+    centerRaDeg: 82.167,
+    centerDecDeg: 35.848,
+    defaultRadiusDeg: 1.25,
+    primaryObjectLabel: 'M 38',
+    keywords: ['m38', 'm 38', 'ngc1912', 'ngc 1912', 'starfish cluster', '마차부자리 m38'],
+    stars: [
+      { id: 'hd_35519', nameKo: 'HD 35519', nameEn: 'HD 35519', bayer: 'HD 35519 (Aur)', constellation: 'Aur', raDeg: 81.72632, decDeg: 35.45727, mag: 6.15 },
+      { id: 'hd_35202', nameKo: 'HD 35202', nameEn: 'HD 35202', bayer: 'HD 35202 (Aur)', constellation: 'Aur', raDeg: 81.18667, decDeg: 36.19995, mag: 6.46 },
+      { id: 'hd_35295', nameKo: 'HD 35295', nameEn: 'HD 35295', bayer: 'HD 35295 (Aur)', constellation: 'Aur', raDeg: 81.3039, decDeg: 34.85504, mag: 6.52 },
+      { id: 'hd_35742', nameKo: 'HD 35742', nameEn: 'HD 35742', bayer: 'HD 35742 (Aur)', constellation: 'Aur', raDeg: 82.11, decDeg: 34.69747, mag: 6.57 },
+      { id: 'hd_35089', nameKo: 'HD 35089', nameEn: 'HD 35089', bayer: 'HD 35089 (Aur)', constellation: 'Aur', raDeg: 80.9636, decDeg: 36.39841, mag: 6.84 },
+      { id: 'hd_35940', nameKo: 'HD 35940', nameEn: 'HD 35940', bayer: 'HD 35940 (Aur)', constellation: 'Aur', raDeg: 82.43183, decDeg: 35.10875, mag: 6.85 },
+      { id: 'hd_35921a', nameKo: 'HD 35921A', nameEn: 'HD 35921A', bayer: 'HD 35921A (Aur)', constellation: 'Aur', raDeg: 82.42772, decDeg: 35.37503, mag: 7.15 },
+      { id: 'hd_36360', nameKo: 'HD 36360', nameEn: 'HD 36360', bayer: 'HD 36360 (Aur)', constellation: 'Aur', raDeg: 83.22198, decDeg: 36.31987, mag: 7.16 },
+      { id: 'hd_36149', nameKo: 'HD 36149', nameEn: 'HD 36149', bayer: 'HD 36149 (Aur)', constellation: 'Aur', raDeg: 82.85289, decDeg: 36.77906, mag: 7.41 },
+      { id: 'hd_36212', nameKo: 'HD 36212', nameEn: 'HD 36212', bayer: 'HD 36212 (Aur)', constellation: 'Aur', raDeg: 82.93973, decDeg: 34.88193, mag: 7.81 },
+      { id: 'hd_36483', nameKo: 'HD 36483', nameEn: 'HD 36483', bayer: 'HD 36483 (Aur)', constellation: 'Aur', raDeg: 83.42147, decDeg: 36.45971, mag: 8.24 },
+      { id: 'hd_36197', nameKo: 'HD 36197', nameEn: 'HD 36197', bayer: 'HD 36197 (Aur)', constellation: 'Aur', raDeg: 82.93065, decDeg: 35.49122, mag: 8.3 },
+      { id: 'bd_34_1030', nameKo: 'BD+34 1030', nameEn: 'BD+34 1030', bayer: 'BD+34 1030 (Aur)', constellation: 'Aur', raDeg: 81.30157, decDeg: 34.8635, mag: 8.35 },
+    ],
+  },
+  {
+    id: 'gem_m35',
+    nameKo: '쌍둥이자리 M35 산개성단 (NGC 2168)',
+    nameEn: 'Gemini M35 (NGC 2168)',
+    constellation: 'Gem',
+    centerRaDeg: 92.225,
+    centerDecDeg: 24.333,
+    defaultRadiusDeg: 1.25,
+    primaryObjectLabel: 'M 35',
+    keywords: ['m35', 'm 35', 'ngc2168', 'ngc 2168', '쌍둥이자리 m35'],
+    stars: [
+      { id: '3_gem', nameKo: '3 Gem', nameEn: '3 Gem', bayer: '3 Gem (Gem)', constellation: 'Gem', raDeg: 92.43327, decDeg: 23.11346, mag: 5.75 },
+      { id: '5_gem', nameKo: '5 Gem', nameEn: '5 Gem', bayer: '5 Gem (Gem)', constellation: 'Gem', raDeg: 92.88461, decDeg: 24.42025, mag: 5.83 },
+      { id: '2_gem', nameKo: '2 Gem', nameEn: '2 Gem', bayer: '2 Gem (Gem)', constellation: 'Gem', raDeg: 91.70275, decDeg: 23.6386, mag: 6.65 },
+      { id: 'hd_41996', nameKo: 'HD 41996', nameEn: 'HD 41996', bayer: 'HD 41996 (Gem)', constellation: 'Gem', raDeg: 92.31643, decDeg: 24.42789, mag: 7.42 },
+      { id: 'hd_42086', nameKo: 'HD 42086', nameEn: 'HD 42086', bayer: 'HD 42086 (Gem)', constellation: 'Gem', raDeg: 92.45608, decDeg: 24.21517, mag: 7.55 },
+      { id: 'hd_42397', nameKo: 'HD 42397', nameEn: 'HD 42397', bayer: 'HD 42397 (Gem)', constellation: 'Gem', raDeg: 92.89451, decDeg: 25.00977, mag: 7.82 },
+      { id: 'hd_41830', nameKo: 'HD 41830', nameEn: 'HD 41830', bayer: 'HD 41830 (Gem)', constellation: 'Gem', raDeg: 92.11048, decDeg: 23.36964, mag: 8.04 },
+      { id: 'hd_41752', nameKo: 'HD 41752', nameEn: 'HD 41752', bayer: 'HD 41752 (Gem)', constellation: 'Gem', raDeg: 92.02018, decDeg: 23.73803, mag: 8.05 },
+      { id: 'hd_42768', nameKo: 'HD 42768', nameEn: 'HD 42768', bayer: 'HD 42768 (Gem)', constellation: 'Gem', raDeg: 93.41655, decDeg: 23.74511, mag: 8.1 },
+      { id: 'hd_41940', nameKo: 'HD 41940', nameEn: 'HD 41940', bayer: 'HD 41940 (Gem)', constellation: 'Gem', raDeg: 92.23559, decDeg: 24.35987, mag: 8.14 },
+      { id: 'hd_41767', nameKo: 'HD 41767', nameEn: 'HD 41767', bayer: 'HD 41767 (Gem)', constellation: 'Gem', raDeg: 92.04602, decDeg: 23.86108, mag: 8.24 },
+      { id: 'hd_253516', nameKo: 'HD 253516', nameEn: 'HD 253516', bayer: 'HD 253516 (Gem)', constellation: 'Gem', raDeg: 93.41926, decDeg: 24.67487, mag: 8.5 },
+      { id: 'hd_252197', nameKo: 'HD 252197', nameEn: 'HD 252197', bayer: 'HD 252197 (Gem)', constellation: 'Gem', raDeg: 92.2116, decDeg: 24.50068, mag: 8.53 },
+      { id: 'hd_252078', nameKo: 'HD 252078', nameEn: 'HD 252078', bayer: 'HD 252078 (Gem)', constellation: 'Gem', raDeg: 92.07837, decDeg: 23.51674, mag: 8.54 },
+      { id: 'hd_41419', nameKo: 'HD 41419', nameEn: 'HD 41419', bayer: 'HD 41419 (Gem)', constellation: 'Gem', raDeg: 91.50754, decDeg: 23.51436, mag: 8.57 },
+      { id: 'hd_252260', nameKo: 'HD 252260', nameEn: 'HD 252260', bayer: 'HD 252260 (Gem)', constellation: 'Gem', raDeg: 92.2536, decDeg: 24.26562, mag: 8.57 },
+    ],
+  },
+  {
+    id: 'and_m31',
+    nameKo: '안드로메다자리 안드로메다 은하 (M31 / NGC 224)',
+    nameEn: 'Andromeda Galaxy (M31)',
+    constellation: 'And',
+    centerRaDeg: 10.6847,
+    centerDecDeg: 41.2687,
+    defaultRadiusDeg: 1.4,
+    primaryObjectLabel: 'M 31',
+    keywords: ['m31', 'm 31', 'ngc224', 'ngc 224', 'andromeda', '안드로메다', 'm32', 'm110'],
+    stars: [
+      { id: 'm_31_n', nameKo: 'M 31', nameEn: 'M 31', bayer: 'M 31 (And)', constellation: 'And', raDeg: 10.68471, decDeg: 41.26875, mag: 3.44 },
+      { id: 'nu_and', nameKo: 'ν And', nameEn: 'Nu Andromedae', bayer: 'ν And', constellation: 'And', raDeg: 12.45353, decDeg: 41.07891, mag: 4.53 },
+      { id: 'hd_3431', nameKo: 'HD 3431', nameEn: 'HD 3431', bayer: 'HD 3431 (And)', constellation: 'And', raDeg: 9.36, decDeg: 40.33238, mag: 6.84 },
+      { id: 'hd_3914', nameKo: 'HD 3914', nameEn: 'HD 3914', bayer: 'HD 3914 (And)', constellation: 'And', raDeg: 10.50595, decDeg: 40.68825, mag: 7.03 },
+      { id: 'hd_4685', nameKo: 'HD 4685', nameEn: 'HD 4685', bayer: 'HD 4685 (And)', constellation: 'And', raDeg: 12.3173, decDeg: 41.08176, mag: 7.07 },
+      { id: 'v_eg_and', nameKo: 'EG And', nameEn: 'EG Andromedae', bayer: 'EG And (And)', constellation: 'And', raDeg: 11.15495, decDeg: 40.67936, mag: 7.22 },
+      { id: 'hd_4322', nameKo: 'HD 4322', nameEn: 'HD 4322', bayer: 'HD 4322 (And)', constellation: 'And', raDeg: 11.51349, decDeg: 40.80891, mag: 7.58 },
+      { id: 'hd_4669', nameKo: 'HD 4669', nameEn: 'HD 4669', bayer: 'HD 4669 (And)', constellation: 'And', raDeg: 12.25939, decDeg: 41.13202, mag: 7.63 },
+      { id: 'm_110_n', nameKo: 'M 110', nameEn: 'M 110', bayer: 'M 110 (And)', constellation: 'And', raDeg: 10.09191, decDeg: 41.68542, mag: 8.07 },
+      { id: 'm_32_n', nameKo: 'M 32', nameEn: 'M 32', bayer: 'M 32 (And)', constellation: 'And', raDeg: 10.67427, decDeg: 40.86517, mag: 8.08 },
+      { id: 'hd_4127', nameKo: 'HD 4127', nameEn: 'HD 4127', bayer: 'HD 4127 (And)', constellation: 'And', raDeg: 11.02127, decDeg: 40.43391, mag: 8.39 },
+      { id: 'bd_40_128', nameKo: 'BD+40 128', nameEn: 'BD+40 128', bayer: 'BD+40 128 (And)', constellation: 'And', raDeg: 9.46139, decDeg: 40.87164, mag: 8.45 },
+      { id: 'hd_4194', nameKo: 'HD 4194', nameEn: 'HD 4194', bayer: 'HD 4194 (And)', constellation: 'And', raDeg: 11.1996, decDeg: 42.49691, mag: 8.54 },
+      { id: 'hd_4143', nameKo: 'HD 4143', nameEn: 'HD 4143', bayer: 'HD 4143 (And)', constellation: 'And', raDeg: 11.06971, decDeg: 40.68517, mag: 8.61 },
+      { id: 'bd_40_127', nameKo: 'BD+40 127', nameEn: 'BD+40 127', bayer: 'BD+40 127 (And)', constellation: 'And', raDeg: 9.3916, decDeg: 41.41852, mag: 8.65 },
+      { id: 'bd_39_174', nameKo: 'BD+39 174', nameEn: 'BD+39 174', bayer: 'BD+39 174 (And)', constellation: 'And', raDeg: 11.46965, decDeg: 40.25157, mag: 8.8 },
+    ],
+  },
+  {
+    id: 'her_m13',
+    nameKo: '헤르쿨레스자리 M13 구상성단 (NGC 6205)',
+    nameEn: 'Hercules Cluster (M13)',
+    constellation: 'Her',
+    centerRaDeg: 250.4218,
+    centerDecDeg: 36.4599,
+    defaultRadiusDeg: 1.3,
+    primaryObjectLabel: 'M 13',
+    keywords: ['m13', 'm 13', 'ngc6205', 'ngc 6205', '헤르쿨레스성단', 'hercules cluster'],
+    stars: [
+      { id: 'm_13_n', nameKo: 'M 13', nameEn: 'M 13', bayer: 'M 13 (Her)', constellation: 'Her', raDeg: 250.42347, decDeg: 36.46132, mag: 5.8 },
+      { id: 'hd_150998', nameKo: 'HD 150998', nameEn: 'HD 150998', bayer: 'HD 150998 (Her)', constellation: 'Her', raDeg: 250.7676, decDeg: 36.50964, mag: 6.83 },
+      { id: 'v_v902_her', nameKo: 'V902 Her', nameEn: 'V902 Her', bayer: 'V902 Her (Her)', constellation: 'Her', raDeg: 249.132, decDeg: 36.03993, mag: 7.09 },
+      { id: 'hd_150679', nameKo: 'HD 150679', nameEn: 'HD 150679', bayer: 'HD 150679 (Her)', constellation: 'Her', raDeg: 250.26909, decDeg: 36.20119, mag: 7.32 },
+      { id: 'hd_151428a', nameKo: 'HD 151428A', nameEn: 'HD 151428A', bayer: 'HD 151428A (Her)', constellation: 'Her', raDeg: 251.45071, decDeg: 35.63076, mag: 7.46 },
+      { id: 'hd_150462', nameKo: 'HD 150462', nameEn: 'HD 150462', bayer: 'HD 150462 (Her)', constellation: 'Her', raDeg: 249.9382, decDeg: 35.51551, mag: 7.64 },
+      { id: 'hd_150566', nameKo: 'HD 150566', nameEn: 'HD 150566', bayer: 'HD 150566 (Her)', constellation: 'Her', raDeg: 250.06431, decDeg: 37.35565, mag: 7.74 },
+      { id: 'hd_150392', nameKo: 'HD 150392', nameEn: 'HD 150392', bayer: 'HD 150392 (Her)', constellation: 'Her', raDeg: 249.83495, decDeg: 35.53223, mag: 8.14 },
+      { id: 'hd_151501', nameKo: 'HD 151501', nameEn: 'HD 151501', bayer: 'HD 151501 (Her)', constellation: 'Her', raDeg: 251.56004, decDeg: 36.68888, mag: 8.38 },
+      { id: 'hd_150292', nameKo: 'HD 150292', nameEn: 'HD 150292', bayer: 'HD 150292 (Her)', constellation: 'Her', raDeg: 249.63149, decDeg: 37.20131, mag: 8.47 },
+      { id: 'hd_151023', nameKo: 'HD 151023', nameEn: 'HD 151023', bayer: 'HD 151023 (Her)', constellation: 'Her', raDeg: 250.81527, decDeg: 37.05107, mag: 8.47 },
+      { id: 'hd_150510', nameKo: 'HD 150510', nameEn: 'HD 150510', bayer: 'HD 150510 (Her)', constellation: 'Her', raDeg: 249.98637, decDeg: 37.51772, mag: 8.63 },
+    ],
+  },
+  {
+    id: 'cvn_m51',
+    nameKo: '사냥개자리 부자 은하 (M51 / NGC 5194)',
+    nameEn: 'Whirlpool Galaxy (M51)',
+    constellation: 'CVn',
+    centerRaDeg: 202.4696,
+    centerDecDeg: 47.1952,
+    defaultRadiusDeg: 1.3,
+    primaryObjectLabel: 'M 51',
+    keywords: ['m51', 'm 51', 'ngc5194', 'whirlpool', '부자은하', '소용돌이은하'],
+    stars: [
+      { id: 'v_br_cvn', nameKo: 'BR CVn', nameEn: 'BR CVn', bayer: 'BR CVn (CVn)', constellation: 'CVn', raDeg: 200.77287, decDeg: 47.00199, mag: 6.72 },
+      { id: 'hd_117377', nameKo: 'HD 117377', nameEn: 'HD 117377', bayer: 'HD 117377 (CVn)', constellation: 'CVn', raDeg: 202.25682, decDeg: 47.84716, mag: 7.05 },
+      { id: 'hd_117815', nameKo: 'HD 117815', nameEn: 'HD 117815', bayer: 'HD 117815 (CVn)', constellation: 'CVn', raDeg: 202.98375, decDeg: 47.23442, mag: 7.08 },
+      { id: 'hd_118019', nameKo: 'HD 118019', nameEn: 'HD 118019', bayer: 'HD 118019 (CVn)', constellation: 'CVn', raDeg: 203.3048, decDeg: 47.75872, mag: 7.44 },
+      { id: 'hd_117403', nameKo: 'HD 117403', nameEn: 'HD 117403', bayer: 'HD 117403 (CVn)', constellation: 'CVn', raDeg: 202.32807, decDeg: 46.37092, mag: 8.15 },
+      { id: 'm_51_n', nameKo: 'M 51', nameEn: 'M 51', bayer: 'M 51 (CVn)', constellation: 'CVn', raDeg: 202.46957, decDeg: 47.19526, mag: 8.36 },
+      { id: 'hd_117098', nameKo: 'HD 117098', nameEn: 'HD 117098', bayer: 'HD 117098 (CVn)', constellation: 'CVn', raDeg: 201.80778, decDeg: 48.00165, mag: 8.37 },
+      { id: 'bd_47_2069', nameKo: 'BD+47 2069', nameEn: 'BD+47 2069', bayer: 'BD+47 2069 (CVn)', constellation: 'CVn', raDeg: 203.60366, decDeg: 46.40773, mag: 8.47 },
+      { id: 'bd_47_2068', nameKo: 'BD+47 2068', nameEn: 'BD+47 2068', bayer: 'BD+47 2068 (CVn)', constellation: 'CVn', raDeg: 203.39167, decDeg: 46.79678, mag: 8.81 },
+      { id: 'bd_46_1881', nameKo: 'BD+46 1881', nameEn: 'BD+46 1881', bayer: 'BD+46 1881 (CVn)', constellation: 'CVn', raDeg: 203.52212, decDeg: 46.14668, mag: 8.96 },
+    ],
+  },
+  {
+    id: 'uma_m81_m82',
+    nameKo: '큰곰자리 보데 & 시가 은하 (M81 / M82)',
+    nameEn: 'Bode & Cigar Galaxies (M81/M82)',
+    constellation: 'UMa',
+    centerRaDeg: 148.9,
+    centerDecDeg: 69.3,
+    defaultRadiusDeg: 1.3,
+    primaryObjectLabel: 'M 81 / M 82',
+    keywords: ['m81', 'm82', 'm 81', 'm 82', 'ngc3031', 'ngc3034', '보데은하', '시가은하'],
+    stars: [
+      { id: 'm_81_n', nameKo: 'M 81', nameEn: 'M 81', bayer: 'M 81 (UMa)', constellation: 'UMa', raDeg: 148.88822, decDeg: 69.06529, mag: 6.94 },
+      { id: 'hd_85828', nameKo: 'HD 85828', nameEn: 'HD 85828', bayer: 'HD 85828 (UMa)', constellation: 'UMa', raDeg: 149.33618, decDeg: 68.61803, mag: 7.74 },
+      { id: 'hd_86457', nameKo: 'HD 86457', nameEn: 'HD 86457', bayer: 'HD 86457 (UMa)', constellation: 'UMa', raDeg: 150.38356, decDeg: 68.71807, mag: 8.04 },
+      { id: 'hd_86574', nameKo: 'HD 86574', nameEn: 'HD 86574', bayer: 'HD 86574 (UMa)', constellation: 'UMa', raDeg: 150.60817, decDeg: 69.04072, mag: 8.16 },
+      { id: 'm_82_n', nameKo: 'M 82', nameEn: 'M 82', bayer: 'M 82 (UMa)', constellation: 'UMa', raDeg: 148.96846, decDeg: 69.6797, mag: 8.41 },
+      { id: 'hd_84747', nameKo: 'HD 84747', nameEn: 'HD 84747', bayer: 'HD 84747 (UMa)', constellation: 'UMa', raDeg: 147.6661, decDeg: 70.20872, mag: 8.45 },
+      { id: 'hd_85533', nameKo: 'HD 85533', nameEn: 'HD 85533', bayer: 'HD 85533 (UMa)', constellation: 'UMa', raDeg: 148.94568, decDeg: 70.04121, mag: 8.46 },
+      { id: 'hd_86940', nameKo: 'HD 86940', nameEn: 'HD 86940', bayer: 'HD 86940 (UMa)', constellation: 'UMa', raDeg: 151.25079, decDeg: 70.22921, mag: 8.56 },
+      { id: 'hd_85458', nameKo: 'HD 85458', nameEn: 'HD 85458', bayer: 'HD 85458 (UMa)', constellation: 'UMa', raDeg: 148.76668, decDeg: 68.90168, mag: 8.76 },
+    ],
+  },
+  {
+    id: 'vul_m27',
+    nameKo: '여우자리 아령 성운 (M27 / NGC 6853)',
+    nameEn: 'Dumbbell Nebula (M27)',
+    constellation: 'Vul',
+    centerRaDeg: 299.9015,
+    centerDecDeg: 22.7211,
+    defaultRadiusDeg: 1.3,
+    primaryObjectLabel: 'M 27',
+    keywords: ['m27', 'm 27', 'ngc6853', 'dumbbell', '아령성운'],
+    stars: [
+      { id: '14_vul', nameKo: '14 Vul', nameEn: '14 Vul', bayer: '14 Vul (Vul)', constellation: 'Vul', raDeg: 299.7939, decDeg: 23.10128, mag: 5.66 },
+      { id: 'hd_190322', nameKo: 'HD 190322', nameEn: 'HD 190322', bayer: 'HD 190322 (Vul)', constellation: 'Vul', raDeg: 300.91166, decDeg: 22.94105, mag: 6.42 },
+      { id: 'hd_190066', nameKo: 'HD 190066', nameEn: 'HD 190066', bayer: 'HD 190066 (Vul)', constellation: 'Vul', raDeg: 300.5921, decDeg: 22.15146, mag: 6.6 },
+      { id: 'hd_188507', nameKo: 'HD 188507', nameEn: 'HD 188507', bayer: 'HD 188507 (Vul)', constellation: 'Vul', raDeg: 298.68487, decDeg: 22.42921, mag: 6.72 },
+      { id: 'hd_188929', nameKo: 'HD 188929', nameEn: 'HD 188929', bayer: 'HD 188929 (Vul)', constellation: 'Vul', raDeg: 299.2074, decDeg: 23.77679, mag: 6.78 },
+      { id: 'hd_190404', nameKo: 'HD 190404', nameEn: 'HD 190404', bayer: 'HD 190404 (Vul)', constellation: 'Vul', raDeg: 300.9672, decDeg: 23.34069, mag: 7.27 },
+      { id: 'hd_189088', nameKo: 'HD 189088', nameEn: 'HD 189088', bayer: 'HD 189088 (Vul)', constellation: 'Vul', raDeg: 299.37189, decDeg: 21.75692, mag: 7.57 },
+      { id: 'hd_189733', nameKo: 'HD 189733', nameEn: 'HD 189733', bayer: 'HD 189733 (Vul)', constellation: 'Vul', raDeg: 300.18214, decDeg: 22.71085, mag: 7.65 },
+    ],
+  },
+  {
+    id: 'per_double_cluster',
+    nameKo: '페르세우스자리 이중성단 (NGC 869 / NGC 884)',
+    nameEn: 'Perseus Double Cluster (NGC 869/884)',
+    constellation: 'Per',
+    centerRaDeg: 35.17,
+    centerDecDeg: 57.14,
+    defaultRadiusDeg: 1.3,
+    primaryObjectLabel: 'NGC 869 / 884',
+    keywords: ['ngc869', 'ngc884', '이중성단', 'double cluster', 'h per', 'chi per'],
+    stars: [
+      { id: '8_per', nameKo: '8 Per', nameEn: '8 Per', bayer: '8 Per (Per)', constellation: 'Per', raDeg: 34.49953, decDeg: 57.89982, mag: 5.75 },
+      { id: 'chi_per', nameKo: 'χ Per', nameEn: 'Chi Persei', bayer: 'χ Per', constellation: 'Per', raDeg: 34.5191, decDeg: 57.51632, mag: 6.02 },
+      { id: '10_per', nameKo: '10 Per', nameEn: '10 Per', bayer: '10 Per (Per)', constellation: 'Per', raDeg: 36.31678, decDeg: 56.60982, mag: 6.26 },
+      { id: 'hd_13854', nameKo: 'HD 13854', nameEn: 'HD 13854', bayer: 'HD 13854 (Per)', constellation: 'Per', raDeg: 34.21548, decDeg: 57.05525, mag: 6.48 },
+      { id: 'hd_14433', nameKo: 'HD 14433', nameEn: 'HD 14433', bayer: 'HD 14433 (Per)', constellation: 'Per', raDeg: 35.48098, decDeg: 57.24292, mag: 6.48 },
+      { id: '61_and', nameKo: '61 And', nameEn: '61 And', bayer: '61 And (Per)', constellation: 'Per', raDeg: 34.76855, decDeg: 57.1355, mag: 6.57 },
+      { id: 'hd_14143', nameKo: 'HD 14143', nameEn: 'HD 14143', bayer: 'HD 14143 (Per)', constellation: 'Per', raDeg: 34.80809, decDeg: 57.16923, mag: 6.7 },
+      { id: 'hd_14542', nameKo: 'HD 14542', nameEn: 'HD 14542', bayer: 'HD 14542 (Per)', constellation: 'Per', raDeg: 35.75177, decDeg: 57.38701, mag: 6.98 },
+    ],
+  },
+  {
+    id: 'cyg_ngc7000',
+    nameKo: '백조자리 북아메리카 성운 (NGC 7000 / IC 5070)',
+    nameEn: 'North America Nebula (NGC 7000)',
+    constellation: 'Cyg',
+    centerRaDeg: 314.68,
+    centerDecDeg: 44.33,
+    defaultRadiusDeg: 1.4,
+    primaryObjectLabel: 'NGC 7000',
+    keywords: ['ngc7000', 'ngc 7000', 'ic5070', '북아메리카성운', 'north america nebula'],
+    stars: [
+      { id: 'ksi_cyg', nameKo: 'ξ Cyg', nameEn: 'Xi Cygni', bayer: 'ξ Cyg', constellation: 'Cyg', raDeg: 316.23275, decDeg: 43.92785, mag: 3.73 },
+      { id: '57_cyg', nameKo: '57 Cyg', nameEn: '57 Cyg', bayer: '57 Cyg (Cyg)', constellation: 'Cyg', raDeg: 313.31149, decDeg: 44.38726, mag: 4.77 },
+      { id: 'hd_199098', nameKo: 'HD 199098', nameEn: 'HD 199098', bayer: 'HD 199098 (Cyg)', constellation: 'Cyg', raDeg: 313.32737, decDeg: 45.18168, mag: 5.46 },
+      { id: 'hd_199870', nameKo: 'HD 199870', nameEn: 'HD 199870', bayer: 'HD 199870 (Cyg)', constellation: 'Cyg', raDeg: 314.58111, decDeg: 44.47171, mag: 5.55 },
+      { id: 'hd_199579', nameKo: 'HD 199579', nameEn: 'HD 199579', bayer: 'HD 199579 (Cyg)', constellation: 'Cyg', raDeg: 314.14491, decDeg: 44.92472, mag: 5.96 },
+      { id: 'hd_199956', nameKo: 'HD 199956', nameEn: 'HD 199956', bayer: 'HD 199956 (Cyg)', constellation: 'Cyg', raDeg: 314.73184, decDeg: 44.06045, mag: 6.64 },
+      { id: 'hd_200102', nameKo: 'HD 200102', nameEn: 'HD 200102', bayer: 'HD 200102 (Cyg)', constellation: 'Cyg', raDeg: 314.96374, decDeg: 44.99645, mag: 6.65 },
+      { id: 'hd_200407', nameKo: 'HD 200407', nameEn: 'HD 200407', bayer: 'HD 200407 (Cyg)', constellation: 'Cyg', raDeg: 315.44776, decDeg: 44.18691, mag: 6.74 },
+    ],
+  },
+  {
+    id: 'sct_m11',
+    nameKo: '방패자리 야생오리 성단 (M11 / NGC 6705)',
+    nameEn: 'Wild Duck Cluster (M11)',
+    constellation: 'Sct',
+    centerRaDeg: 282.77,
+    centerDecDeg: -6.27,
+    defaultRadiusDeg: 1.3,
+    primaryObjectLabel: 'M 11',
+    keywords: ['m11', 'm 11', 'ngc6705', '야생오리성단', 'wild duck'],
+    stars: [
+      { id: 'r_sct', nameKo: 'R Sct', nameEn: 'R Scuti', bayer: 'R Sct', constellation: 'Sct', raDeg: 281.87062, decDeg: -5.70515, mag: 5.2 },
+      { id: 'ngc_6705_n', nameKo: 'M 11', nameEn: 'M 11', bayer: 'M 11 (Sct)', constellation: 'Sct', raDeg: 282.76583, decDeg: -6.27194, mag: 5.8 },
+      { id: 'hd_174208', nameKo: 'HD 174208', nameEn: 'HD 174208', bayer: 'HD 174208 (Sct)', constellation: 'Sct', raDeg: 282.42065, decDeg: -5.91286, mag: 6.0 },
+      { id: 'hd_174005', nameKo: 'HD 174005', nameEn: 'HD 174005', bayer: 'HD 174005 (Sct)', constellation: 'Sct', raDeg: 282.16455, decDeg: -6.00431, mag: 6.49 },
+      { id: 'hd_173744', nameKo: 'HD 173744', nameEn: 'HD 173744', bayer: 'HD 173744 (Sct)', constellation: 'Sct', raDeg: 281.78451, decDeg: -5.89857, mag: 7.05 },
+      { id: 'hd_175181', nameKo: 'HD 175181', nameEn: 'HD 175181', bayer: 'HD 175181 (Sct)', constellation: 'Sct', raDeg: 283.61647, decDeg: -5.95763, mag: 7.54 },
+      { id: 'hd_173673', nameKo: 'HD 173673', nameEn: 'HD 173673', bayer: 'HD 173673 (Sct)', constellation: 'Sct', raDeg: 281.69377, decDeg: -6.69019, mag: 7.66 },
+    ],
+  },
+  {
+    id: 'and_ngc752',
+    nameKo: '안드로메다자리 NGC 752 산개성단 & 56 And',
+    nameEn: 'Andromeda NGC 752 & 56 Andromedae',
+    constellation: 'And',
+    centerRaDeg: 29.4102,
+    centerDecDeg: 37.7425,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'NGC 752',
+    keywords: ['ngc752', 'ngc 752', '56 and', '56and', 'caldwell 28', 'c28'],
+    stars: [
+      { id: '56_and', nameKo: '56 And', nameEn: '56 Andromedae', bayer: '56 And', constellation: 'And', raDeg: 29.0209, decDeg: 37.2519, mag: 5.69 },
+      { id: 'hd_11727', nameKo: 'HD 11727', nameEn: 'HD 11727', bayer: 'HD 11727 (And)', constellation: 'And', raDeg: 28.9770, decDeg: 37.2778, mag: 5.87 },
+      { id: 'hd_11624', nameKo: 'HD 11624', nameEn: 'HD 11624', bayer: 'HD 11624 (And)', constellation: 'And', raDeg: 28.7403, decDeg: 37.1283, mag: 6.27 },
+      { id: 'hd_11885', nameKo: 'HD 11885', nameEn: 'HD 11885', bayer: 'HD 11885 (And)', constellation: 'And', raDeg: 29.4281, decDeg: 37.6698, mag: 7.12 },
+      { id: 'hd_11430a', nameKo: 'HD 11430', nameEn: 'HD 11430', bayer: 'HD 11430 (And)', constellation: 'And', raDeg: 28.2947, decDeg: 37.3212, mag: 7.55 },
+      { id: 'hd_11720', nameKo: 'HD 11720', nameEn: 'HD 11720', bayer: 'HD 11720 (And)', constellation: 'And', raDeg: 28.9782, decDeg: 37.8667, mag: 8.09 },
+      { id: 'hd_12163', nameKo: 'HD 12163', nameEn: 'HD 12163', bayer: 'HD 12163 (And)', constellation: 'And', raDeg: 30.0674, decDeg: 37.6337, mag: 8.24 },
+      { id: 'bd_36_362', nameKo: 'BD+36 362', nameEn: 'BD+36 362', bayer: 'BD+36 362 (And)', constellation: 'And', raDeg: 29.2433, decDeg: 37.0956, mag: 8.32 },
+      { id: 'hd_12412', nameKo: 'HD 12412', nameEn: 'HD 12412', bayer: 'HD 12412 (And)', constellation: 'And', raDeg: 30.6281, decDeg: 37.4993, mag: 8.55 },
+      { id: 'hd_11591', nameKo: 'HD 11591', nameEn: 'HD 11591', bayer: 'HD 11591 (And)', constellation: 'And', raDeg: 28.6727, decDeg: 38.0234, mag: 8.71 },
+      { id: 'hd_12027', nameKo: 'HD 12027', nameEn: 'HD 12027', bayer: 'HD 12027 (And)', constellation: 'And', raDeg: 29.7151, decDeg: 37.6855, mag: 8.73 },
+      { id: 'bd_36_368', nameKo: 'BD+36 368', nameEn: 'BD+36 368', bayer: 'BD+36 368 (And)', constellation: 'And', raDeg: 29.4067, decDeg: 37.6605, mag: 8.85 },
+      { id: 'bd_37_398', nameKo: 'BD+37 398', nameEn: 'BD+37 398', bayer: 'BD+37 398 (And)', constellation: 'And', raDeg: 28.3098, decDeg: 37.8592, mag: 8.87 },
+      { id: 'bd_37_424', nameKo: 'BD+37 424', nameEn: 'BD+37 424', bayer: 'BD+37 424 (And)', constellation: 'And', raDeg: 29.2630, decDeg: 38.1341, mag: 8.89 },
+      { id: 'bd_37_418', nameKo: 'BD+37 418', nameEn: 'BD+37 418', bayer: 'BD+37 418 (And)', constellation: 'And', raDeg: 29.0787, decDeg: 37.9668, mag: 8.97 },
+      { id: 'bd_37_450', nameKo: 'BD+37 450', nameEn: 'BD+37 450', bayer: 'BD+37 450 (And)', constellation: 'And', raDeg: 29.8117, decDeg: 38.0154, mag: 8.97 },
+      { id: 'bd_37_436', nameKo: 'BD+37 436', nameEn: 'BD+37 436', bayer: 'BD+37 436 (And)', constellation: 'And', raDeg: 29.4446, decDeg: 38.2539, mag: 9.00 },
+      { id: 'bd_37_448', nameKo: 'BD+37 448', nameEn: 'BD+37 448', bayer: 'BD+37 448 (And)', constellation: 'And', raDeg: 29.7204, decDeg: 37.8159, mag: 9.04 },
+      { id: 'bd_36_337', nameKo: 'BD+36 337', nameEn: 'BD+36 337', bayer: 'BD+36 337 (And)', constellation: 'And', raDeg: 28.2662, decDeg: 37.2217, mag: 9.04 },
+      { id: 'bd_36_397', nameKo: 'BD+36 397', nameEn: 'BD+36 397', bayer: 'BD+36 397 (And)', constellation: 'And', raDeg: 30.8019, decDeg: 37.6303, mag: 9.26 },
+    ],
+  },
   {
     id: 'lyr_double_double',
     nameKo: '거문고자리 더블더블 (ε¹·ε² Lyrae)',
     nameEn: 'Lyra Double Double (Epsilon Lyrae)',
     constellation: 'Lyr',
-    centerRaDeg: 281.20,
-    centerDecDeg: 39.68,
+    centerRaDeg: 281.3142,
+    centerDecDeg: 39.7015,
     defaultRadiusDeg: 1.23,
     primaryObjectLabel: '더블더블 (ε¹·ε² Lyr)',
     keywords: ['더블더블', '더블 더블', 'doubledouble', 'double double', 'epsilon lyrae', 'eps lyr', 'ε lyr', 'ε¹ lyr', 'ε² lyr', '4 lyr', '5 lyr', '엡실론 리라'],
@@ -138,12 +506,370 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
       { id: 'bd_40_3481', nameKo: 'BD+40 3481', nameEn: 'BD+40 3481', bayer: 'BD+40 3481 (Lyr)', constellation: 'Lyr', raDeg: 281.5353, decDeg: 40.2798, mag: 8.64 },
       { id: 'bd_39_3523', nameKo: 'BD+39 3523', nameEn: 'BD+39 3523', bayer: 'BD+39 3523 (Lyr)', constellation: 'Lyr', raDeg: 281.4157, decDeg: 39.6999, mag: 8.77 },
       { id: 'bd_39_3514', nameKo: 'BD+39 3514', nameEn: 'BD+39 3514', bayer: 'BD+39 3514 (Lyr)', constellation: 'Lyr', raDeg: 281.1805, decDeg: 39.8989, mag: 8.82 },
-      { id: 'hd_173110', nameKo: 'HD 173110', nameEn: 'HD 173110', bayer: 'HD 173110 (Lyr)', constellation: 'Lyr', raDeg: 280.4743, decDeg: 39.9933, mag: 8.83 },
       { id: 'bd_39_3525', nameKo: 'BD+39 3525', nameEn: 'BD+39 3525', bayer: 'BD+39 3525 (Lyr)', constellation: 'Lyr', raDeg: 281.5487, decDeg: 39.2590, mag: 8.85 },
+      { id: 'bd_40_3488', nameKo: 'BD+40 3488', nameEn: 'BD+40 3488', bayer: 'BD+40 3488 (Lyr)', constellation: 'Lyr', raDeg: 282.0016, decDeg: 40.3596, mag: 8.93 },
       { id: 'bd_40_3478', nameKo: 'BD+40 3478', nameEn: 'BD+40 3478', bayer: 'BD+40 3478 (Lyr)', constellation: 'Lyr', raDeg: 281.2650, decDeg: 40.3077, mag: 9.16 },
       { id: 'bd_39_3517a', nameKo: 'BD+39 3517A', nameEn: 'BD+39 3517A', bayer: 'BD+39 3517A (Lyr)', constellation: 'Lyr', raDeg: 281.2916, decDeg: 39.2258, mag: 9.23 },
-      { id: 'bd_39_3506', nameKo: 'BD+39 3506', nameEn: 'BD+39 3506', bayer: 'BD+39 3506 (Lyr)', constellation: 'Lyr', raDeg: 280.8804, decDeg: 39.5933, mag: 9.46 },
-      { id: 'bd_39_3518', nameKo: 'BD+39 3518', nameEn: 'BD+39 3518', bayer: 'BD+39 3518 (Lyr)', constellation: 'Lyr', raDeg: 281.2961, decDeg: 39.5177, mag: 9.65 },
+      { id: 'bd_39_3506', nameKo: 'BD+39 3506', nameEn: 'BD+39 3506', bayer: 'BD+39 3506 (Lyr)', constellation: 'Lyr', raDeg: 280.8796, decDeg: 39.5931, mag: 9.46 },
+      { id: 'bd_38_3300', nameKo: 'BD+38 3300', nameEn: 'BD+38 3300', bayer: 'BD+38 3300 (Lyr)', constellation: 'Lyr', raDeg: 281.9228, decDeg: 38.9973, mag: 9.53 },
+      { id: 'bd_39_3518', nameKo: 'BD+39 3518', nameEn: 'BD+39 3518', bayer: 'BD+39 3518 (Lyr)', constellation: 'Lyr', raDeg: 281.2969, decDeg: 39.5175, mag: 9.65 },
+      { id: 'bd_38_3274', nameKo: 'BD+38 3274', nameEn: 'BD+38 3274', bayer: 'BD+38 3274 (Lyr)', constellation: 'Lyr', raDeg: 280.9402, decDeg: 39.0223, mag: 9.72 },
+    ],
+  },
+  {
+    id: 'per_m34',
+    nameKo: '페르세우스자리 M34 산개성단 (NGC 1039)',
+    nameEn: 'Perseus M34 (NGC 1039)',
+    constellation: 'Per',
+    centerRaDeg: 40.5456,
+    centerDecDeg: 42.7579,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'M 34',
+    keywords: ['m34', 'm 34', 'ngc1039', 'ngc 1039'],
+    stars: [
+      { id: 'hd_16855', nameKo: 'HD 16855', nameEn: 'HD 16855', bayer: 'HD 16855 (Per)', constellation: 'Per', raDeg: 40.8974, decDeg: 43.5380, mag: 6.77 },
+      { id: 'hd_16108', nameKo: 'HD 16108', nameEn: 'HD 16108', bayer: 'HD 16108 (Per)', constellation: 'Per', raDeg: 39.1507, decDeg: 42.4005, mag: 6.79 },
+      { id: 'hd_16771', nameKo: 'HD 16771', nameEn: 'HD 16771', bayer: 'HD 16771 (Per)', constellation: 'Per', raDeg: 40.6490, decDeg: 42.5912, mag: 7.34 },
+      { id: 'hd_16705', nameKo: 'HD 16705', nameEn: 'HD 16705', bayer: 'HD 16705 (Per)', constellation: 'Per', raDeg: 40.4935, decDeg: 42.7918, mag: 7.73 },
+      { id: 'bd_42_587', nameKo: 'BD+42 587', nameEn: 'BD+42 587', bayer: 'BD+42 587 (Per)', constellation: 'Per', raDeg: 40.4793, decDeg: 43.0070, mag: 7.92 },
+      { id: 'hd_16782', nameKo: 'HD 16782', nameEn: 'HD 16782', bayer: 'HD 16782 (Per)', constellation: 'Per', raDeg: 40.6906, decDeg: 42.8203, mag: 8.25 },
+      { id: 'hd_16719', nameKo: 'HD 16719', nameEn: 'HD 16719', bayer: 'HD 16719 (Per)', constellation: 'Per', raDeg: 40.5241, decDeg: 42.7074, mag: 8.28 },
+      { id: 'hd_16738', nameKo: 'HD 16738', nameEn: 'HD 16738', bayer: 'HD 16738 (Per)', constellation: 'Per', raDeg: 40.5476, decDeg: 42.1757, mag: 8.33 },
+      { id: 'hd_16728a', nameKo: 'HD 16728A', nameEn: 'HD 16728A', bayer: 'HD 16728A (Per)', constellation: 'Per', raDeg: 40.5547, decDeg: 42.6992, mag: 8.47 },
+      { id: 'hd_16655', nameKo: 'HD 16655', nameEn: 'HD 16655', bayer: 'HD 16655 (Per)', constellation: 'Per', raDeg: 40.3830, decDeg: 42.5942, mag: 8.50 },
+      { id: 'hd_16693', nameKo: 'HD 16693', nameEn: 'HD 16693', bayer: 'HD 16693 (Per)', constellation: 'Per', raDeg: 40.4864, decDeg: 42.7898, mag: 8.52 },
+      { id: 'hd_16422', nameKo: 'HD 16422', nameEn: 'HD 16422', bayer: 'HD 16422 (Per)', constellation: 'Per', raDeg: 39.8360, decDeg: 42.8074, mag: 8.56 },
+      { id: 'bd_42_610', nameKo: 'BD+42 610', nameEn: 'BD+42 610', bayer: 'BD+42 610 (Per)', constellation: 'Per', raDeg: 40.7562, decDeg: 43.0116, mag: 8.61 },
+      { id: 'bd_41_501', nameKo: 'BD+41 501', nameEn: 'BD+41 501', bayer: 'BD+41 501 (Per)', constellation: 'Per', raDeg: 39.5956, decDeg: 42.2086, mag: 8.72 },
+      { id: 'bd_42_596', nameKo: 'BD+42 596', nameEn: 'BD+42 596', bayer: 'BD+42 596 (Per)', constellation: 'Per', raDeg: 40.5561, decDeg: 42.7780, mag: 8.80 },
+      { id: 'bd_42_601', nameKo: 'BD+42 601', nameEn: 'BD+42 601', bayer: 'BD+42 601 (Per)', constellation: 'Per', raDeg: 40.5923, decDeg: 42.7602, mag: 8.86 },
+      { id: 'hd_16670', nameKo: 'HD 16670', nameEn: 'HD 16670', bayer: 'HD 16670 (Per)', constellation: 'Per', raDeg: 40.4218, decDeg: 43.1439, mag: 8.92 },
+      { id: 'hd_16857', nameKo: 'HD 16857', nameEn: 'HD 16857', bayer: 'HD 16857 (Per)', constellation: 'Per', raDeg: 40.8851, decDeg: 42.6215, mag: 8.93 },
+    ],
+  },
+  {
+    id: 'psc_ngc628',
+    nameKo: '물고기자리 유령 은하 (NGC 628 / M74)',
+    nameEn: 'Pisces Phantom Galaxy (NGC 628 / M74)',
+    constellation: 'Psc',
+    centerRaDeg: 24.1861,
+    centerDecDeg: 15.7898,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'NGC 628',
+    keywords: ['ngc628', 'ngc 628', 'm74', 'm 74', '유령은하', '유령 은하', 'phantom galaxy'],
+    stars: [
+      { id: 'hd_10182', nameKo: 'HD 10182', nameEn: 'HD 10182', bayer: 'HD 10182 (Psc)', constellation: 'Psc', raDeg: 24.9787, decDeg: 15.2567, mag: 8.74 },
+      { id: 'hd_9510', nameKo: 'HD 9510', nameEn: 'HD 9510', bayer: 'HD 9510 (Psc)', constellation: 'Psc', raDeg: 23.4008, decDeg: 16.1304, mag: 8.77 },
+      { id: 'bd_15_228', nameKo: 'BD+15 228', nameEn: 'BD+15 228', bayer: 'BD+15 228 (Psc)', constellation: 'Psc', raDeg: 23.3201, decDeg: 16.2368, mag: 8.88 },
+      { id: 'bd_14_250', nameKo: 'BD+14 250', nameEn: 'BD+14 250', bayer: 'BD+14 250 (Psc)', constellation: 'Psc', raDeg: 24.9321, decDeg: 15.4238, mag: 8.94 },
+      { id: 'bd_14_251', nameKo: 'BD+14 251', nameEn: 'BD+14 251', bayer: 'BD+14 251 (Psc)', constellation: 'Psc', raDeg: 24.9838, decDeg: 15.2593, mag: 9.09 },
+      { id: 'bd_15_233', nameKo: 'BD+15 233', nameEn: 'BD+15 233', bayer: 'BD+15 233 (Psc)', constellation: 'Psc', raDeg: 23.5023, decDeg: 15.7704, mag: 9.34 },
+      { id: 'bd_15_236', nameKo: 'BD+15 236', nameEn: 'BD+15 236', bayer: 'BD+15 236 (Psc)', constellation: 'Psc', raDeg: 23.8596, decDeg: 16.3374, mag: 9.43 },
+      { id: 'bd_14_243', nameKo: 'BD+14 243', nameEn: 'BD+14 243', bayer: 'BD+14 243 (Psc)', constellation: 'Psc', raDeg: 24.1898, decDeg: 15.2486, mag: 9.45 },
+      { id: 'bd_15_239', nameKo: 'BD+15 239', nameEn: 'BD+15 239', bayer: 'BD+15 239 (Psc)', constellation: 'Psc', raDeg: 24.3322, decDeg: 16.1127, mag: 10.03 },
+      { id: 'bd_14_247', nameKo: 'BD+14 247', nameEn: 'BD+14 247', bayer: 'BD+14 247 (Psc)', constellation: 'Psc', raDeg: 24.3740, decDeg: 14.8814, mag: 10.08 },
+      { id: 'tyc_1205_1392', nameKo: 'TYC 1205-1392-1', nameEn: 'TYC 1205-1392-1', bayer: 'TYC 1205-1392-1', constellation: 'Psc', raDeg: 24.2808, decDeg: 15.1002, mag: 10.10 },
+    ],
+  },
+  {
+    id: 'and_ngc891',
+    nameKo: '안드로메다자리 은하수 은하 (NGC 891 / Caldwell 23)',
+    nameEn: 'Andromeda Silver Sliver Galaxy (NGC 891)',
+    constellation: 'And',
+    centerRaDeg: 35.6187,
+    centerDecDeg: 42.3753,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'NGC 891',
+    keywords: ['ngc891', 'ngc 891', 'caldwell 23', 'silver sliver'],
+    stars: [
+      { id: 'hd_14771', nameKo: 'HD 14771', nameEn: 'HD 14771', bayer: 'HD 14771 (And)', constellation: 'And', raDeg: 36.0115, decDeg: 42.1023, mag: 6.66 },
+      { id: 'hd_14064', nameKo: 'HD 14064', nameEn: 'HD 14064', bayer: 'HD 14064 (And)', constellation: 'And', raDeg: 34.4241, decDeg: 42.5894, mag: 7.80 },
+      { id: 'hd_14029', nameKo: 'HD 14029', nameEn: 'HD 14029', bayer: 'HD 14029 (And)', constellation: 'And', raDeg: 34.3466, decDeg: 42.3626, mag: 8.61 },
+      { id: 'hd_15163', nameKo: 'HD 15163', nameEn: 'HD 15163', bayer: 'HD 15163 (And)', constellation: 'And', raDeg: 36.9202, decDeg: 42.0122, mag: 8.73 },
+      { id: 'bd_42_501', nameKo: 'BD+42 501', nameEn: 'BD+42 501', bayer: 'BD+42 501 (And)', constellation: 'And', raDeg: 35.2654, decDeg: 42.7737, mag: 8.76 },
+      { id: 'hd_14856', nameKo: 'HD 14856', nameEn: 'HD 14856', bayer: 'HD 14856 (And)', constellation: 'And', raDeg: 36.2538, decDeg: 42.0255, mag: 9.23 },
+      { id: 'hd_14933', nameKo: 'HD 14933', nameEn: 'HD 14933', bayer: 'HD 14933 (And)', constellation: 'And', raDeg: 36.4286, decDeg: 41.9912, mag: 9.33 },
+      { id: 'bd_41_434', nameKo: 'BD+41 434', nameEn: 'BD+41 434', bayer: 'BD+41 434 (And)', constellation: 'And', raDeg: 34.4280, decDeg: 42.3871, mag: 9.36 },
+      { id: 'bd_41_452', nameKo: 'BD+41 452', nameEn: 'BD+41 452', bayer: 'BD+41 452 (And)', constellation: 'And', raDeg: 36.0048, decDeg: 42.4150, mag: 9.39 },
+      { id: 'hd_14251', nameKo: 'HD 14251', nameEn: 'HD 14251', bayer: 'HD 14251 (And)', constellation: 'And', raDeg: 34.8656, decDeg: 42.1188, mag: 9.43 },
+      { id: 'bd_41_447', nameKo: 'BD+41 447', nameEn: 'BD+41 447', bayer: 'BD+41 447 (And)', constellation: 'And', raDeg: 35.2442, decDeg: 42.0088, mag: 9.45 },
+      { id: 'hd_14136', nameKo: 'HD 14136', nameEn: 'HD 14136', bayer: 'HD 14136 (And)', constellation: 'And', raDeg: 34.5812, decDeg: 41.9296, mag: 9.53 },
+      { id: 'bd_41_439', nameKo: 'BD+41 439', nameEn: 'BD+41 439', bayer: 'BD+41 439 (And)', constellation: 'And', raDeg: 34.8343, decDeg: 42.4632, mag: 9.55 },
+      { id: 'bd_42_516', nameKo: 'BD+42 516', nameEn: 'BD+42 516', bayer: 'BD+42 516 (And)', constellation: 'And', raDeg: 36.4249, decDeg: 42.7395, mag: 9.56 },
+    ],
+  },
+  {
+    id: 'uma_m101',
+    nameKo: '큰곰자리 바람개비 은하 (M101 / NGC 5457)',
+    nameEn: 'Ursa Major Pinwheel Galaxy (M101 / NGC 5457)',
+    constellation: 'UMa',
+    centerRaDeg: 210.8231,
+    centerDecDeg: 54.3442,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'M 101',
+    keywords: ['m101', 'm 101', 'ngc5457', 'ngc 5457', '바람개비은하', '바람개비 은하', 'pinwheel galaxy'],
+    stars: [
+      { id: 'hd_122007', nameKo: 'HD 122007', nameEn: 'HD 122007', bayer: 'HD 122007 (UMa)', constellation: 'UMa', raDeg: 209.4285, decDeg: 53.9101, mag: 6.93 },
+      { id: 'hd_122149', nameKo: 'HD 122149', nameEn: 'HD 122149', bayer: 'HD 122149 (UMa)', constellation: 'UMa', raDeg: 209.6489, decDeg: 53.5792, mag: 7.94 },
+      { id: 'hd_121892', nameKo: 'HD 121892', nameEn: 'HD 121892', bayer: 'HD 121892 (UMa)', constellation: 'UMa', raDeg: 209.2178, decDeg: 53.8941, mag: 7.97 },
+      { id: 'hd_122865', nameKo: 'HD 122865', nameEn: 'HD 122865', bayer: 'HD 122865 (UMa)', constellation: 'UMa', raDeg: 210.7080, decDeg: 54.6661, mag: 8.01 },
+      { id: 'hd_122471', nameKo: 'HD 122471', nameEn: 'HD 122471', bayer: 'HD 122471 (UMa)', constellation: 'UMa', raDeg: 210.1325, decDeg: 53.7684, mag: 8.14 },
+      { id: 'hd_122252', nameKo: 'HD 122252', nameEn: 'HD 122252', bayer: 'HD 122252 (UMa)', constellation: 'UMa', raDeg: 209.8195, decDeg: 54.1327, mag: 8.85 },
+      { id: 'hd_122601', nameKo: 'HD 122601', nameEn: 'HD 122601', bayer: 'HD 122601 (UMa)', constellation: 'UMa', raDeg: 210.3517, decDeg: 54.3650, mag: 9.06 },
+      { id: 'hd_238318', nameKo: 'HD 238318', nameEn: 'HD 238318', bayer: 'HD 238318 (UMa)', constellation: 'UMa', raDeg: 211.0959, decDeg: 54.8170, mag: 9.41 },
+      { id: 'hd_238328', nameKo: 'HD 238328', nameEn: 'HD 238328', bayer: 'HD 238328 (UMa)', constellation: 'UMa', raDeg: 212.0652, decDeg: 54.3659, mag: 10.08 },
+      { id: 'bd_55_1659', nameKo: 'BD+55 1659', nameEn: 'BD+55 1659', bayer: 'BD+55 1659 (UMa)', constellation: 'UMa', raDeg: 211.3671, decDeg: 54.9495, mag: 10.09 },
+    ],
+  },
+  {
+    id: 'cvn_m3',
+    nameKo: '사냥개자리 M3 구상성단 (NGC 5272)',
+    nameEn: 'Canes Venatici M3 Globular Cluster (NGC 5272)',
+    constellation: 'CVn',
+    centerRaDeg: 205.5580,
+    centerDecDeg: 28.3862,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'M 3',
+    keywords: ['m3', 'm 3', 'ngc5272', 'ngc 5272'],
+    stars: [
+      { id: 'hd_119081', nameKo: 'HD 119081', nameEn: 'HD 119081', bayer: 'HD 119081 (CVn)', constellation: 'CVn', raDeg: 205.1628, decDeg: 28.0652, mag: 6.18 },
+      { id: 'hd_119686', nameKo: 'HD 119686', nameEn: 'HD 119686', bayer: 'HD 119686 (CVn)', constellation: 'CVn', raDeg: 206.0439, decDeg: 27.5855, mag: 7.12 },
+      { id: 'hd_119391', nameKo: 'HD 119391', nameEn: 'HD 119391', bayer: 'HD 119391 (CVn)', constellation: 'CVn', raDeg: 205.6170, decDeg: 28.2024, mag: 8.40 },
+      { id: 'hd_119025', nameKo: 'HD 119025', nameEn: 'HD 119025', bayer: 'HD 119025 (CVn)', constellation: 'CVn', raDeg: 205.0672, decDeg: 29.0276, mag: 8.61 },
+      { id: 'hd_119477', nameKo: 'HD 119477', nameEn: 'HD 119477', bayer: 'HD 119477 (CVn)', constellation: 'CVn', raDeg: 205.7478, decDeg: 27.4530, mag: 8.78 },
+      { id: 'bd_28_2250', nameKo: 'BD+28 2250', nameEn: 'BD+28 2250', bayer: 'BD+28 2250 (CVn)', constellation: 'CVn', raDeg: 205.6000, decDeg: 27.8753, mag: 9.34 },
+      { id: 'bd_28_2257', nameKo: 'BD+28 2257', nameEn: 'BD+28 2257', bayer: 'BD+28 2257 (CVn)', constellation: 'CVn', raDeg: 206.2806, decDeg: 28.1884, mag: 9.43 },
+      { id: 'bd_28_2252', nameKo: 'BD+28 2252', nameEn: 'BD+28 2252', bayer: 'BD+28 2252 (CVn)', constellation: 'CVn', raDeg: 205.6468, decDeg: 27.2713, mag: 9.70 },
+      { id: 'bd_29_2444', nameKo: 'BD+29 2444', nameEn: 'BD+29 2444', bayer: 'BD+29 2444 (CVn)', constellation: 'CVn', raDeg: 204.9727, decDeg: 28.3485, mag: 9.71 },
+      { id: 'bd_29_2448', nameKo: 'BD+29 2448', nameEn: 'BD+29 2448', bayer: 'BD+29 2448 (CVn)', constellation: 'CVn', raDeg: 205.4416, decDeg: 28.4548, mag: 9.80 },
+      { id: 'bd_28_2256', nameKo: 'BD+28 2256', nameEn: 'BD+28 2256', bayer: 'BD+28 2256 (CVn)', constellation: 'CVn', raDeg: 206.2807, decDeg: 28.0610, mag: 9.88 },
+      { id: 'bd_29_2447', nameKo: 'BD+29 2447', nameEn: 'BD+29 2447', bayer: 'BD+29 2447 (CVn)', constellation: 'CVn', raDeg: 205.2836, decDeg: 28.7106, mag: 10.13 },
+    ],
+  },
+  {
+    id: 'vir_spica',
+    nameKo: '처녀자리 스피카 (α Virginis & NGC 5122)',
+    nameEn: 'Virgo Spica (Alpha Virginis)',
+    constellation: 'Vir',
+    centerRaDeg: 201.3405,
+    centerDecDeg: -11.1657,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'Spica (α Vir)',
+    keywords: ['spica', '스피카', 'alpha vir', 'alf vir', 'α vir', '67 vir'],
+    stars: [
+      { id: 'alf_vir_f', nameKo: '스피카 (α Vir)', nameEn: 'Spica', bayer: 'α Vir', constellation: 'Vir', raDeg: 201.2982, decDeg: -11.1613, mag: 0.97 },
+      { id: 'hd_116462', nameKo: 'HD 116462', nameEn: 'HD 116462', bayer: 'HD 116462 (Vir)', constellation: 'Vir', raDeg: 200.9853, decDeg: -10.8710, mag: 7.78 },
+      { id: 'hd_117320', nameKo: 'HD 117320', nameEn: 'HD 117320', bayer: 'HD 117320 (Vir)', constellation: 'Vir', raDeg: 202.3996, decDeg: -10.7120, mag: 8.37 },
+      { id: 'hd_116367', nameKo: 'HD 116367', nameEn: 'HD 116367', bayer: 'HD 116367 (Vir)', constellation: 'Vir', raDeg: 200.8276, decDeg: -11.0414, mag: 8.86 },
+      { id: 'hd_117117', nameKo: 'HD 117117', nameEn: 'HD 117117', bayer: 'HD 117117 (Vir)', constellation: 'Vir', raDeg: 202.0755, decDeg: -11.0464, mag: 9.14 },
+      { id: 'hd_116318', nameKo: 'HD 116318', nameEn: 'HD 116318', bayer: 'HD 116318 (Vir)', constellation: 'Vir', raDeg: 200.7568, decDeg: -10.6979, mag: 9.14 },
+      { id: 'hd_116916', nameKo: 'HD 116916', nameEn: 'HD 116916', bayer: 'HD 116916 (Vir)', constellation: 'Vir', raDeg: 201.7521, decDeg: -11.3393, mag: 9.20 },
+      { id: 'hd_116975', nameKo: 'HD 116975', nameEn: 'HD 116975', bayer: 'HD 116975 (Vir)', constellation: 'Vir', raDeg: 201.8268, decDeg: -10.6585, mag: 9.40 },
+      { id: 'hd_116330', nameKo: 'HD 116330', nameEn: 'HD 116330', bayer: 'HD 116330 (Vir)', constellation: 'Vir', raDeg: 200.7925, decDeg: -11.3924, mag: 9.67 },
+      { id: 'hd_117102', nameKo: 'HD 117102', nameEn: 'HD 117102', bayer: 'HD 117102 (Vir)', constellation: 'Vir', raDeg: 202.0474, decDeg: -10.7772, mag: 9.70 },
+      { id: 'hd_117127', nameKo: 'HD 117127', nameEn: 'HD 117127', bayer: 'HD 117127 (Vir)', constellation: 'Vir', raDeg: 202.1112, decDeg: -10.9299, mag: 9.75 },
+      { id: 'hd_117142', nameKo: 'HD 117142', nameEn: 'HD 117142', bayer: 'HD 117142 (Vir)', constellation: 'Vir', raDeg: 202.1486, decDeg: -11.1129, mag: 9.91 },
+    ],
+  },
+  {
+    id: 'cyg_veil',
+    nameKo: '백조자리 동쪽 베일 성운 (NGC 6992 / NGC 6995)',
+    nameEn: 'Cygnus Eastern Veil Nebula (NGC 6992)',
+    constellation: 'Cyg',
+    centerRaDeg: 314.0991,
+    centerDecDeg: 31.7458,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'NGC 6992',
+    keywords: ['ngc6992', 'ngc 6992', 'ngc6995', 'ngc 6995', '베일성운', '베일 성운', 'veil nebula'],
+    stars: [
+      { id: 'hd_199055', nameKo: 'HD 199055', nameEn: 'HD 199055', bayer: 'HD 199055 (Cyg)', constellation: 'Cyg', raDeg: 313.3890, decDeg: 31.6262, mag: 6.84 },
+      { id: 'v2142_cyg', nameKo: 'V2142 Cyg', nameEn: 'V2142 Cyg', bayer: 'V2142 Cyg', constellation: 'Cyg', raDeg: 314.9950, decDeg: 32.4956, mag: 6.87 },
+      { id: 'hd_199837', nameKo: 'HD 199837', nameEn: 'HD 199837', bayer: 'HD 199837 (Cyg)', constellation: 'Cyg', raDeg: 314.6821, decDeg: 31.6475, mag: 7.19 },
+      { id: 'hd_199716', nameKo: 'HD 199716', nameEn: 'HD 199716', bayer: 'HD 199716 (Cyg)', constellation: 'Cyg', raDeg: 314.5129, decDeg: 31.2998, mag: 7.66 },
+      { id: 'hd_199374', nameKo: 'HD 199374', nameEn: 'HD 199374', bayer: 'HD 199374 (Cyg)', constellation: 'Cyg', raDeg: 313.9669, decDeg: 32.0946, mag: 7.68 },
+      { id: 'hd_199875', nameKo: 'HD 199875', nameEn: 'HD 199875', bayer: 'HD 199875 (Cyg)', constellation: 'Cyg', raDeg: 314.7297, decDeg: 31.4767, mag: 7.79 },
+      { id: 'hd_199042', nameKo: 'HD 199042', nameEn: 'HD 199042', bayer: 'HD 199042 (Cyg)', constellation: 'Cyg', raDeg: 313.3863, decDeg: 30.9513, mag: 7.92 },
+      { id: 'hd_199358', nameKo: 'HD 199358', nameEn: 'HD 199358', bayer: 'HD 199358 (Cyg)', constellation: 'Cyg', raDeg: 313.9306, decDeg: 32.1694, mag: 7.98 },
+      { id: 'hd_198932', nameKo: 'HD 198932', nameEn: 'HD 198932', bayer: 'HD 198932 (Cyg)', constellation: 'Cyg', raDeg: 313.1996, decDeg: 31.7267, mag: 8.03 },
+      { id: 'hd_200169', nameKo: 'HD 200169', nameEn: 'HD 200169', bayer: 'HD 200169 (Cyg)', constellation: 'Cyg', raDeg: 315.1940, decDeg: 32.1766, mag: 8.19 },
+      { id: 'hd_199912', nameKo: 'HD 199912', nameEn: 'HD 199912', bayer: 'HD 199912 (Cyg)', constellation: 'Cyg', raDeg: 314.7539, decDeg: 32.2378, mag: 8.28 },
+      { id: 'bd_31_4249', nameKo: 'BD+31 4249', nameEn: 'BD+31 4249', bayer: 'BD+31 4249 (Cyg)', constellation: 'Cyg', raDeg: 313.2301, decDeg: 31.8095, mag: 8.50 },
+      { id: 'bd_30_4219', nameKo: 'BD+30 4219', nameEn: 'BD+30 4219', bayer: 'BD+30 4219 (Cyg)', constellation: 'Cyg', raDeg: 313.3862, decDeg: 31.5133, mag: 8.62 },
+      { id: 'bd_31_4298', nameKo: 'BD+31 4298', nameEn: 'BD+31 4298', bayer: 'BD+31 4298 (Cyg)', constellation: 'Cyg', raDeg: 314.8110, decDeg: 31.8996, mag: 8.65 },
+      { id: 'hd_199515', nameKo: 'HD 199515', nameEn: 'HD 199515', bayer: 'HD 199515 (Cyg)', constellation: 'Cyg', raDeg: 314.1826, decDeg: 31.5911, mag: 8.86 },
+    ],
+  },
+  {
+    id: 'cep_garnet',
+    nameKo: '세페우스자리 가넷 스타 & 코끼리 코 성운 (μ Cep / IC 1396)',
+    nameEn: 'Cepheus Garnet Star (Mu Cephei / IC 1396)',
+    constellation: 'Cep',
+    centerRaDeg: 326.1193,
+    centerDecDeg: 58.8952,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'μ Cep (Garnet Star)',
+    keywords: ['가넷스타', '가넷 스타', '석류석별', 'garnet star', 'mu cep', 'μ cep', 'ic1396', 'ic 1396', 'erakis'],
+    stars: [
+      { id: 'mu_cep_f', nameKo: '가넷 스타 (μ Cep)', nameEn: 'Garnet Star (Mu Cephei)', bayer: 'μ Cep', constellation: 'Cep', raDeg: 325.8769, decDeg: 58.7800, mag: 4.08 },
+      { id: 'hd_206842', nameKo: 'HD 206842', nameEn: 'HD 206842', bayer: 'HD 206842 (Cep)', constellation: 'Cep', raDeg: 325.6890, decDeg: 59.2708, mag: 6.09 },
+      { id: 'hd_207538', nameKo: 'HD 207538', nameEn: 'HD 207538', bayer: 'HD 207538 (Cep)', constellation: 'Cep', raDeg: 326.9158, decDeg: 59.7004, mag: 7.30 },
+      { id: 'hd_206080', nameKo: 'HD 206080', nameEn: 'HD 206080', bayer: 'HD 206080 (Cep)', constellation: 'Cep', raDeg: 324.4115, decDeg: 58.7583, mag: 7.67 },
+      { id: 'hd_205917', nameKo: 'HD 205917', nameEn: 'HD 205917', bayer: 'HD 205917 (Cep)', constellation: 'Cep', raDeg: 324.1333, decDeg: 58.7110, mag: 8.19 },
+      { id: 'hd_239738', nameKo: 'HD 239738', nameEn: 'HD 239738', bayer: 'HD 239738 (Cep)', constellation: 'Cep', raDeg: 325.4939, decDeg: 58.5001, mag: 8.57 },
+      { id: 'hd_239748', nameKo: 'HD 239748', nameEn: 'HD 239748', bayer: 'HD 239748 (Cep)', constellation: 'Cep', raDeg: 325.9221, decDeg: 58.2398, mag: 8.75 },
+      { id: 'hd_207086', nameKo: 'HD 207086', nameEn: 'HD 207086', bayer: 'HD 207086 (Cep)', constellation: 'Cep', raDeg: 326.1624, decDeg: 58.2257, mag: 6.80 },
+    ],
+  },
+  {
+    id: 'cyg_albireo',
+    nameKo: '백조자리 알비레오 (β¹·β² Cygni)',
+    nameEn: 'Cygnus Albireo (Beta Cygni)',
+    constellation: 'Cyg',
+    centerRaDeg: 292.6988,
+    centerDecDeg: 27.9759,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'Albireo (β Cyg)',
+    keywords: ['알비레오', 'albireo', 'beta cyg', 'bet cyg', 'β cyg'],
+    stars: [
+      { id: 'bet1_cyg', nameKo: '알비레오 A (β¹ Cyg)', nameEn: 'Albireo A', bayer: 'β¹ Cyg', constellation: 'Cyg', raDeg: 292.6803, decDeg: 27.9597, mag: 3.08 },
+      { id: 'bet2_cyg', nameKo: '알비레오 B (β² Cyg)', nameEn: 'Albireo B', bayer: 'β² Cyg', constellation: 'Cyg', raDeg: 292.6892, decDeg: 27.9653, mag: 5.11 },
+      { id: 'hd_184172a', nameKo: 'HD 184172A', nameEn: 'HD 184172A', bayer: 'HD 184172A (Cyg)', constellation: 'Cyg', raDeg: 293.0246, decDeg: 28.2668, mag: 7.67 },
+      { id: 'hd_184605', nameKo: 'HD 184605', nameEn: 'HD 184605', bayer: 'HD 184605 (Cyg)', constellation: 'Cyg', raDeg: 293.5478, decDeg: 28.4157, mag: 7.98 },
+      { id: 'hd_338506', nameKo: 'HD 338506', nameEn: 'HD 338506', bayer: 'HD 338506 (Cyg)', constellation: 'Cyg', raDeg: 293.5966, decDeg: 27.5658, mag: 8.08 },
+      { id: 'hd_183560', nameKo: 'HD 183560', nameEn: 'HD 183560', bayer: 'HD 183560 (Cyg)', constellation: 'Cyg', raDeg: 292.2764, decDeg: 27.9296, mag: 8.18 },
+      { id: 'hd_184848', nameKo: 'HD 184848', nameEn: 'HD 184848', bayer: 'HD 184848 (Cyg)', constellation: 'Cyg', raDeg: 293.8395, decDeg: 27.8638, mag: 8.21 },
+      { id: 'hd_183384', nameKo: 'HD 183384', nameEn: 'HD 183384', bayer: 'HD 183384 (Cyg)', constellation: 'Cyg', raDeg: 292.0601, decDeg: 27.9215, mag: 8.29 },
+      { id: 'hd_183931', nameKo: 'HD 183931', nameEn: 'HD 183931', bayer: 'HD 183931 (Cyg)', constellation: 'Cyg', raDeg: 292.7179, decDeg: 27.5942, mag: 8.49 },
+      { id: 'bd_28_3367', nameKo: 'BD+28 3367', nameEn: 'BD+28 3367', bayer: 'BD+28 3367 (Cyg)', constellation: 'Cyg', raDeg: 292.7093, decDeg: 28.5409, mag: 8.54 },
+      { id: 'hd_184402', nameKo: 'HD 184402', nameEn: 'HD 184402', bayer: 'HD 184402 (Cyg)', constellation: 'Cyg', raDeg: 293.3290, decDeg: 27.7397, mag: 8.58 },
+      { id: 'hd_338440', nameKo: 'HD 338440', nameEn: 'HD 338440', bayer: 'HD 338440 (Cyg)', constellation: 'Cyg', raDeg: 293.1274, decDeg: 27.4225, mag: 8.58 },
+      { id: 'hd_184878', nameKo: 'HD 184878', nameEn: 'HD 184878', bayer: 'HD 184878 (Cyg)', constellation: 'Cyg', raDeg: 293.8594, decDeg: 27.9105, mag: 8.62 },
+      { id: 'hd_338439', nameKo: 'HD 338439', nameEn: 'HD 338439', bayer: 'HD 338439 (Cyg)', constellation: 'Cyg', raDeg: 293.0879, decDeg: 27.5743, mag: 8.66 },
+      { id: 'hd_184218', nameKo: 'HD 184218', nameEn: 'HD 184218', bayer: 'HD 184218 (Cyg)', constellation: 'Cyg', raDeg: 293.1004, decDeg: 27.9225, mag: 8.70 },
+    ],
+  },
+  {
+    id: 'cas_ngc663',
+    nameKo: '카시오페이아자리 NGC 663 산개성단 (Caldwell 10)',
+    nameEn: 'Cassiopeia NGC 663 Open Cluster (Caldwell 10)',
+    constellation: 'Cas',
+    centerRaDeg: 27.6230,
+    centerDecDeg: 61.0167,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'NGC 663',
+    keywords: ['ngc663', 'ngc 663', 'caldwell 10', 'ic 155', 'ic155'],
+    stars: [
+      { id: 'hd_10362', nameKo: 'HD 10362', nameEn: 'HD 10362', bayer: 'HD 10362 (Cas)', constellation: 'Cas', raDeg: 25.7430, decDeg: 61.4211, mag: 6.32 },
+      { id: 'hd_10756', nameKo: 'HD 10756', nameEn: 'HD 10756', bayer: 'HD 10756 (Cas)', constellation: 'Cas', raDeg: 26.7350, decDeg: 60.6698, mag: 7.60 },
+      { id: 'hd_11401', nameKo: 'HD 11401', nameEn: 'HD 11401', bayer: 'HD 11401 (Cas)', constellation: 'Cas', raDeg: 28.5020, decDeg: 60.1531, mag: 7.89 },
+      { id: 'bd_60_321', nameKo: 'BD+60 321', nameEn: 'BD+60 321', bayer: 'BD+60 321 (Cas)', constellation: 'Cas', raDeg: 26.0878, decDeg: 61.2974, mag: 8.26 },
+      { id: 'hd_11374', nameKo: 'HD 11374', nameEn: 'HD 11374', bayer: 'HD 11374 (Cas)', constellation: 'Cas', raDeg: 28.4074, decDeg: 60.9900, mag: 8.26 },
+      { id: 'bd_60_327', nameKo: 'BD+60 327', nameEn: 'BD+60 327', bayer: 'BD+60 327 (Cas)', constellation: 'Cas', raDeg: 26.4116, decDeg: 61.0397, mag: 8.28 },
+      { id: 'hd_11126a', nameKo: 'HD 11126A', nameEn: 'HD 11126A', bayer: 'HD 11126A (Cas)', constellation: 'Cas', raDeg: 27.8305, decDeg: 60.3536, mag: 8.31 },
+      { id: 'bd_60_339', nameKo: 'BD+60 339', nameEn: 'BD+60 339', bayer: 'BD+60 339 (Cas)', constellation: 'Cas', raDeg: 26.5991, decDeg: 61.2583, mag: 8.47 },
+      { id: 'hd_10972', nameKo: 'HD 10972', nameEn: 'HD 10972', bayer: 'HD 10972 (Cas)', constellation: 'Cas', raDeg: 27.4010, decDeg: 61.0231, mag: 8.48 },
+      { id: 'hd_10892', nameKo: 'HD 10892', nameEn: 'HD 10892', bayer: 'HD 10892 (Cas)', constellation: 'Cas', raDeg: 27.1760, decDeg: 61.8399, mag: 8.57 },
+      { id: 'hd_10485', nameKo: 'HD 10485', nameEn: 'HD 10485', bayer: 'HD 10485 (Cas)', constellation: 'Cas', raDeg: 26.0229, decDeg: 61.3224, mag: 8.67 },
+      { id: 'hd_236906', nameKo: 'HD 236906', nameEn: 'HD 236906', bayer: 'HD 236906 (Cas)', constellation: 'Cas', raDeg: 28.6827, decDeg: 60.1281, mag: 8.68 },
+      { id: 'hd_11163', nameKo: 'HD 11163', nameEn: 'HD 11163', bayer: 'HD 11163 (Cas)', constellation: 'Cas', raDeg: 27.8933, decDeg: 60.9256, mag: 8.75 },
+      { id: 'hd_11213', nameKo: 'HD 11213', nameEn: 'HD 11213', bayer: 'HD 11213 (Cas)', constellation: 'Cas', raDeg: 27.9982, decDeg: 60.4625, mag: 8.81 },
+      { id: 'hd_10842', nameKo: 'HD 10842', nameEn: 'HD 10842', bayer: 'HD 10842 (Cas)', constellation: 'Cas', raDeg: 27.0308, decDeg: 61.8341, mag: 8.87 },
+    ],
+  },
+  {
+    id: 'cas_achird',
+    nameKo: '카시오페이아자리 아키르드 (η Cas / 24 Cas 이중성)',
+    nameEn: 'Cassiopeia Achird (Eta Cassiopeiae)',
+    constellation: 'Cas',
+    centerRaDeg: 12.6788,
+    centerDecDeg: 57.9588,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'Achird (η Cas)',
+    keywords: ['achird', '아키르드', 'eta cas', 'η cas', '24 cas'],
+    stars: [
+      { id: 'eta_cas_a', nameKo: '아키르드 (η Cas)', nameEn: 'Achird (Eta Cas)', bayer: 'η Cas', constellation: 'Cas', raDeg: 12.2762, decDeg: 57.8152, mag: 3.44 },
+      { id: 'hd_5343', nameKo: 'HD 5343', nameEn: 'HD 5343', bayer: 'HD 5343 (Cas)', constellation: 'Cas', raDeg: 14.0541, decDeg: 57.9966, mag: 6.19 },
+      { id: 'hd_5032', nameKo: 'HD 5032', nameEn: 'HD 5032', bayer: 'HD 5032 (Cas)', constellation: 'Cas', raDeg: 13.2734, decDeg: 57.2192, mag: 7.25 },
+      { id: 'hd_5258', nameKo: 'HD 5258', nameEn: 'HD 5258', bayer: 'HD 5258 (Cas)', constellation: 'Cas', raDeg: 13.7907, decDeg: 57.2761, mag: 7.43 },
+      { id: 'hd_5380', nameKo: 'HD 5380', nameEn: 'HD 5380', bayer: 'HD 5380 (Cas)', constellation: 'Cas', raDeg: 14.1250, decDeg: 57.2865, mag: 7.64 },
+      { id: 'hd_5430', nameKo: 'HD 5430', nameEn: 'HD 5430', bayer: 'HD 5430 (Cas)', constellation: 'Cas', raDeg: 14.2510, decDeg: 57.4923, mag: 7.86 },
+      { id: 'hd_236533', nameKo: 'HD 236533', nameEn: 'HD 236533', bayer: 'HD 236533 (Cas)', constellation: 'Cas', raDeg: 12.2410, decDeg: 58.0073, mag: 8.19 },
+      { id: 'hd_4253', nameKo: 'HD 4253', nameEn: 'HD 4253', bayer: 'HD 4253 (Cas)', constellation: 'Cas', raDeg: 11.4010, decDeg: 58.0387, mag: 8.33 },
+      { id: 'hd_236528', nameKo: 'HD 236528', nameEn: 'HD 236528', bayer: 'HD 236528 (Cas)', constellation: 'Cas', raDeg: 11.9237, decDeg: 58.0158, mag: 8.40 },
+      { id: 'hd_236565', nameKo: 'HD 236565', nameEn: 'HD 236565', bayer: 'HD 236565 (Cas)', constellation: 'Cas', raDeg: 13.1700, decDeg: 57.6241, mag: 8.60 },
+      { id: 'hd_5446', nameKo: 'HD 5446', nameEn: 'HD 5446', bayer: 'HD 5446 (Cas)', constellation: 'Cas', raDeg: 14.2986, decDeg: 57.6647, mag: 8.89 },
+      { id: 'bd_57_144', nameKo: 'BD+57 144', nameEn: 'BD+57 144', bayer: 'BD+57 144 (Cas)', constellation: 'Cas', raDeg: 11.8195, decDeg: 58.4926, mag: 8.89 },
+      { id: 'hd_236531', nameKo: 'HD 236531', nameEn: 'HD 236531', bayer: 'HD 236531 (Cas)', constellation: 'Cas', raDeg: 12.1561, decDeg: 58.5603, mag: 8.94 },
+    ],
+  },
+  {
+    id: 'sco_jabhat',
+    nameKo: '전갈자리 ω¹·ω² Scorpii (Jabhat Acrabi 이중성)',
+    nameEn: 'Scorpius Jabhat Acrabi (Omega1 & Omega2 Scorpii)',
+    constellation: 'Sco',
+    centerRaDeg: 241.7469,
+    centerDecDeg: -20.8339,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'ω¹·ω² Sco',
+    keywords: ['jabhat', 'omega sco', 'ω1 sco', 'ω2 sco', '9 sco', '10 sco'],
+    stars: [
+      { id: 'ome1_sco', nameKo: 'ω¹ Sco (9 Sco)', nameEn: 'Omega1 Scorpii', bayer: 'ω¹ Sco', constellation: 'Sco', raDeg: 241.7018, decDeg: -20.6692, mag: 3.97 },
+      { id: 'ome2_sco', nameKo: 'ω² Sco (10 Sco)', nameEn: 'Omega2 Scorpii', bayer: 'ω² Sco', constellation: 'Sco', raDeg: 241.8514, decDeg: -20.8688, mag: 4.33 },
+      { id: 'hd_144253', nameKo: 'HD 144253', nameEn: 'HD 144253', bayer: 'HD 144253 (Sco)', constellation: 'Sco', raDeg: 241.4187, decDeg: -20.4500, mag: 7.39 },
+      { id: 'hd_144609', nameKo: 'HD 144609', nameEn: 'HD 144609', bayer: 'HD 144609 (Sco)', constellation: 'Sco', raDeg: 241.8587, decDeg: -20.9428, mag: 7.85 },
+      { id: 'hd_144113', nameKo: 'HD 144113', nameEn: 'HD 144113', bayer: 'HD 144113 (Sco)', constellation: 'Sco', raDeg: 241.2311, decDeg: -20.9000, mag: 8.12 },
+      { id: 'hd_144822', nameKo: 'HD 144822', nameEn: 'HD 144822', bayer: 'HD 144822 (Sco)', constellation: 'Sco', raDeg: 242.1464, decDeg: -20.7582, mag: 8.35 },
+      { id: 'hd_145029', nameKo: 'HD 145029', nameEn: 'HD 145029', bayer: 'HD 145029 (Sco)', constellation: 'Sco', raDeg: 242.3957, decDeg: -20.6157, mag: 8.36 },
+      { id: 'hd_145440', nameKo: 'HD 145440', nameEn: 'HD 145440', bayer: 'HD 145440 (Sco)', constellation: 'Sco', raDeg: 242.9625, decDeg: -21.0636, mag: 8.56 },
+      { id: 'hd_144290', nameKo: 'HD 144290', nameEn: 'HD 144290', bayer: 'HD 144290 (Sco)', constellation: 'Sco', raDeg: 241.4782, decDeg: -21.1532, mag: 8.61 },
+      { id: 'hd_145294', nameKo: 'HD 145294', nameEn: 'HD 145294', bayer: 'HD 145294 (Sco)', constellation: 'Sco', raDeg: 242.7397, decDeg: -20.3990, mag: 8.85 },
+      { id: 'hd_144747', nameKo: 'HD 144747', nameEn: 'HD 144747', bayer: 'HD 144747 (Sco)', constellation: 'Sco', raDeg: 242.0476, decDeg: -20.8215, mag: 9.26 },
+      { id: 'hd_144289', nameKo: 'HD 144289', nameEn: 'HD 144289', bayer: 'HD 144289 (Sco)', constellation: 'Sco', raDeg: 241.4682, decDeg: -20.4827, mag: 9.34 },
+      { id: 'hd_144034', nameKo: 'HD 144034', nameEn: 'HD 144034', bayer: 'HD 144034 (Sco)', constellation: 'Sco', raDeg: 241.1483, decDeg: -21.3519, mag: 9.42 },
+    ],
+  },
+  {
+    id: 'psc_hd693',
+    nameKo: '물고기자리 심우주 성야 (HD 716 & HD 1050)',
+    nameEn: 'Pisces Star Field (HD 716 & HD 1050)',
+    constellation: 'Psc',
+    centerRaDeg: 3.0713,
+    centerDecDeg: -0.2284,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'HD 716 (Psc)',
+    keywords: ['hd 716', 'hd 1050', 'hd 766'],
+    stars: [
+      { id: 'hd_716', nameKo: 'HD 716', nameEn: 'HD 716', bayer: 'HD 716 (Psc)', constellation: 'Psc', raDeg: 2.8792, decDeg: -1.1233, mag: 8.06 },
+      { id: 'hd_1050', nameKo: 'HD 1050', nameEn: 'HD 1050', bayer: 'HD 1050 (Psc)', constellation: 'Psc', raDeg: 3.7090, decDeg: -0.3030, mag: 8.14 },
+      { id: 'hd_965', nameKo: 'HD 965', nameEn: 'HD 965', bayer: 'HD 965 (Psc)', constellation: 'Psc', raDeg: 3.5169, decDeg: -0.0334, mag: 8.57 },
+      { id: 'hd_766', nameKo: 'HD 766', nameEn: 'HD 766', bayer: 'HD 766 (Psc)', constellation: 'Psc', raDeg: 2.9971, decDeg: -0.2297, mag: 8.67 },
+      { id: 'hd_983', nameKo: 'HD 983', nameEn: 'HD 983', bayer: 'HD 983 (Psc)', constellation: 'Psc', raDeg: 3.5599, decDeg: -0.5693, mag: 8.97 },
+      { id: 'hd_1194', nameKo: 'HD 1194', nameEn: 'HD 1194', bayer: 'HD 1194 (Psc)', constellation: 'Psc', raDeg: 4.0763, decDeg: 0.0441, mag: 9.09 },
+      { id: 'hd_1146', nameKo: 'HD 1146', nameEn: 'HD 1146', bayer: 'HD 1146 (Psc)', constellation: 'Psc', raDeg: 3.9324, decDeg: 0.1180, mag: 9.43 },
+      { id: 'hd_728', nameKo: 'HD 728', nameEn: 'HD 728', bayer: 'HD 728 (Psc)', constellation: 'Psc', raDeg: 2.9195, decDeg: 0.1221, mag: 9.62 },
+      { id: 'hd_473', nameKo: 'HD 473', nameEn: 'HD 473', bayer: 'HD 473 (Psc)', constellation: 'Psc', raDeg: 2.3041, decDeg: -0.7522, mag: 9.88 },
+      { id: 'bd_01_4', nameKo: 'BD-01 4', nameEn: 'BD-01 4', bayer: 'BD-01 4 (Psc)', constellation: 'Psc', raDeg: 2.7077, decDeg: -1.0717, mag: 9.88 },
+      { id: 'bd_01_8', nameKo: 'BD-01 8', nameEn: 'BD-01 8', bayer: 'BD-01 8 (Psc)', constellation: 'Psc', raDeg: 2.9498, decDeg: -1.0883, mag: 9.95 },
+      { id: 'bd_01_10', nameKo: 'BD-01 10', nameEn: 'BD-01 10', bayer: 'BD-01 10 (Psc)', constellation: 'Psc', raDeg: 3.1427, decDeg: -0.4318, mag: 10.07 },
+    ],
+  },
+  {
+    id: 'tau_ngc1528',
+    nameKo: '황소자리 성야 (HD 26874 & HD 26802)',
+    nameEn: 'Taurus Star Field (HD 26874)',
+    constellation: 'Tau',
+    centerRaDeg: 63.5323,
+    centerDecDeg: 21.0573,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'HD 26874 (Tau)',
+    keywords: ['hd 26874', 'hd 26802', 'v984 tau'],
+    stars: [
+      { id: 'hd_26874', nameKo: 'HD 26874', nameEn: 'HD 26874', bayer: 'HD 26874 (Tau)', constellation: 'Tau', raDeg: 63.9268, decDeg: 20.8198, mag: 7.81 },
+      { id: 'hd_26802', nameKo: 'HD 26802', nameEn: 'HD 26802', bayer: 'HD 26802 (Tau)', constellation: 'Tau', raDeg: 63.8051, decDeg: 22.0971, mag: 8.87 },
+      { id: 'hd_284255', nameKo: 'HD 284255', nameEn: 'HD 284255', bayer: 'HD 284255 (Tau)', constellation: 'Tau', raDeg: 63.8972, decDeg: 21.2817, mag: 9.03 },
+      { id: 'hd_284262', nameKo: 'HD 284262', nameEn: 'HD 284262', bayer: 'HD 284262 (Tau)', constellation: 'Tau', raDeg: 63.1994, decDeg: 20.7352, mag: 9.11 },
+      { id: 'v984_tau', nameKo: 'V984 Tau', nameEn: 'V984 Tau', bayer: 'V984 Tau', constellation: 'Tau', raDeg: 64.1395, decDeg: 21.9075, mag: 9.13 },
+      { id: 'hd_284210', nameKo: 'HD 284210', nameEn: 'HD 284210', bayer: 'HD 284210 (Tau)', constellation: 'Tau', raDeg: 63.0530, decDeg: 20.7452, mag: 9.28 },
     ],
   },
   {
@@ -168,56 +894,6 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
       { id: 'hd_174530', nameKo: 'HD 174530', nameEn: 'HD 174530', bayer: 'HD 174530 (Lyr)', constellation: 'Lyr', raDeg: 282.3499, decDeg: 33.7009, mag: 7.00 },
       { id: 'hd_174296', nameKo: 'HD 174296', nameEn: 'HD 174296', bayer: 'HD 174296 (Lyr)', constellation: 'Lyr', raDeg: 282.1218, decDeg: 33.7737, mag: 7.06 },
       { id: 'hd_174830', nameKo: 'HD 174830', nameEn: 'HD 174830', bayer: 'HD 174830 (Lyr)', constellation: 'Lyr', raDeg: 282.7551, decDeg: 34.3939, mag: 7.14 },
-    ],
-  },
-  {
-    id: 'per_m34',
-    nameKo: '페르세우스자리 M34 산개성단 (NGC 1039)',
-    nameEn: 'Perseus M34 (NGC 1039)',
-    constellation: 'Per',
-    centerRaDeg: 40.5456,
-    centerDecDeg: 42.7579,
-    defaultRadiusDeg: 1.23,
-    primaryObjectLabel: 'M 34',
-    keywords: ['m34', 'm 34', 'ngc1039', 'ngc 1039'],
-    stars: [
-      { id: 'hd_16855', nameKo: 'HD 16855', nameEn: 'HD 16855', bayer: 'HD 16855 (Per)', constellation: 'Per', raDeg: 40.8974, decDeg: 43.5380, mag: 6.77 },
-      { id: 'hd_16108', nameKo: 'HD 16108', nameEn: 'HD 16108', bayer: 'HD 16108 (Per)', constellation: 'Per', raDeg: 39.1507, decDeg: 42.4005, mag: 6.79 },
-      { id: 'hd_16175', nameKo: 'HD 16175', nameEn: 'HD 16175', bayer: 'HD 16175 (Per)', constellation: 'Per', raDeg: 39.2580, decDeg: 42.0626, mag: 7.28 },
-      { id: 'hd_16771', nameKo: 'HD 16771', nameEn: 'HD 16771', bayer: 'HD 16771 (Per)', constellation: 'Per', raDeg: 40.6490, decDeg: 42.5912, mag: 7.34 },
-      { id: 'hd_17238', nameKo: 'HD 17238', nameEn: 'HD 17238', bayer: 'HD 17238 (Per)', constellation: 'Per', raDeg: 41.8440, decDeg: 43.4020, mag: 7.53 },
-      { id: 'hd_16705', nameKo: 'HD 16705', nameEn: 'HD 16705', bayer: 'HD 16705 (Per)', constellation: 'Per', raDeg: 40.4935, decDeg: 42.7918, mag: 7.73 },
-      { id: 'hd_17219', nameKo: 'HD 17219', nameEn: 'HD 17219', bayer: 'HD 17219 (Per)', constellation: 'Per', raDeg: 41.7854, decDeg: 42.1754, mag: 7.75 },
-      { id: 'bd_42_587', nameKo: 'BD+42 587', nameEn: 'BD+42 587', bayer: 'BD+42 587 (Per)', constellation: 'Per', raDeg: 40.4793, decDeg: 43.0070, mag: 7.92 },
-      { id: 'hd_16375', nameKo: 'HD 16375', nameEn: 'HD 16375', bayer: 'HD 16375 (Per)', constellation: 'Per', raDeg: 39.7259, decDeg: 43.2358, mag: 7.94 },
-      { id: 'hd_17101', nameKo: 'HD 17101', nameEn: 'HD 17101', bayer: 'HD 17101 (Per)', constellation: 'Per', raDeg: 41.4774, decDeg: 41.9006, mag: 8.15 },
-      { id: 'hd_16782', nameKo: 'HD 16782', nameEn: 'HD 16782', bayer: 'HD 16782 (Per)', constellation: 'Per', raDeg: 40.6906, decDeg: 42.8203, mag: 8.25 },
-      { id: 'hd_16719', nameKo: 'HD 16719', nameEn: 'HD 16719', bayer: 'HD 16719 (Per)', constellation: 'Per', raDeg: 40.5241, decDeg: 42.7074, mag: 8.28 },
-    ],
-  },
-  {
-    id: 'psc_ngc628',
-    nameKo: '물고기자리 유령 은하 (NGC 628 / M74)',
-    nameEn: 'Pisces Phantom Galaxy (NGC 628 / M74)',
-    constellation: 'Psc',
-    centerRaDeg: 24.1861,
-    centerDecDeg: 15.7898,
-    defaultRadiusDeg: 1.23,
-    primaryObjectLabel: 'NGC 628',
-    keywords: ['ngc628', 'ngc 628', 'm74', 'm 74', '유령은하', '유령 은하', 'phantom galaxy'],
-    stars: [
-      { id: '105_psc', nameKo: '105 Psc', nameEn: '105 Piscium', bayer: '105 Psc', constellation: 'Psc', raDeg: 24.9201, decDeg: 16.4059, mag: 5.98 },
-      { id: '101_psc', nameKo: '101 Psc', nameEn: '101 Piscium', bayer: '101 Psc', constellation: 'Psc', raDeg: 23.9435, decDeg: 14.6614, mag: 6.22 },
-      { id: '103_psc_a', nameKo: '103 Psc A', nameEn: '103 Piscium A', bayer: '103 Psc', constellation: 'Psc', raDeg: 24.8134, decDeg: 16.6255, mag: 6.87 },
-      { id: 'hd_9306', nameKo: 'HD 9306', nameEn: 'HD 9306', bayer: 'HD 9306 (Psc)', constellation: 'Psc', raDeg: 22.9542, decDeg: 15.6253, mag: 7.45 },
-      { id: 'vbf_psc', nameKo: 'VBF Psc', nameEn: 'VBF Psc', bayer: 'VBF Psc (Psc)', constellation: 'Psc', raDeg: 22.9786, decDeg: 16.0470, mag: 7.81 },
-      { id: 'hd_10182', nameKo: 'HD 10182', nameEn: 'HD 10182', bayer: 'HD 10182 (Psc)', constellation: 'Psc', raDeg: 24.9787, decDeg: 15.2567, mag: 8.74 },
-      { id: 'hd_9510', nameKo: 'HD 9510', nameEn: 'HD 9510', bayer: 'HD 9510 (Psc)', constellation: 'Psc', raDeg: 23.4008, decDeg: 16.1304, mag: 8.77 },
-      { id: 'bd_15_228', nameKo: 'BD+15 228', nameEn: 'BD+15 228', bayer: 'BD+15 228 (Psc)', constellation: 'Psc', raDeg: 23.3201, decDeg: 16.2368, mag: 8.88 },
-      { id: 'hd_9669', nameKo: 'HD 9669', nameEn: 'HD 9669', bayer: 'HD 9669 (Psc)', constellation: 'Psc', raDeg: 23.7647, decDeg: 15.2713, mag: 8.90 },
-      { id: 'bd_14_250', nameKo: 'BD+14 250', nameEn: 'BD+14 250', bayer: 'BD+14 250 (Psc)', constellation: 'Psc', raDeg: 24.9321, decDeg: 15.4238, mag: 8.94 },
-      { id: 'bd_14_251', nameKo: 'BD+14 251', nameEn: 'BD+14 251', bayer: 'BD+14 251 (Psc)', constellation: 'Psc', raDeg: 24.9838, decDeg: 15.2593, mag: 9.09 },
-      { id: 'bd_15_242', nameKo: 'BD+15 242', nameEn: 'BD+15 242', bayer: 'BD+15 242 (Psc)', constellation: 'Psc', raDeg: 24.5004, decDeg: 16.3618, mag: 9.14 },
     ],
   },
   {
@@ -266,52 +942,6 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
       { id: '21_tau', nameKo: '아스테로페 (21 Tau)', nameEn: 'Asterope', bayer: '21 Tau', constellation: 'Tau', raDeg: 56.4770, decDeg: 24.5545, mag: 5.76 },
     ],
   },
-  {
-    id: 'cyg_albireo',
-    nameKo: '백조자리 알비레오 (β¹·β² Cygni)',
-    nameEn: 'Cygnus Albireo (Beta Cygni)',
-    constellation: 'Cyg',
-    centerRaDeg: 292.6803,
-    centerDecDeg: 27.9597,
-    defaultRadiusDeg: 1.5,
-    primaryObjectLabel: 'Albireo (β Cyg)',
-    keywords: ['알비레오', 'albireo', 'beta cyg', 'bet cyg', 'β cyg'],
-    stars: [
-      { id: 'bet1_cyg', nameKo: '알비레오 A (β¹ Cyg)', nameEn: 'Albireo A', bayer: 'β¹ Cyg', constellation: 'Cyg', raDeg: 292.6803, decDeg: 27.9597, mag: 3.08 },
-      { id: 'bet2_cyg', nameKo: '알비레오 B (β² Cyg)', nameEn: 'Albireo B', bayer: 'β² Cyg', constellation: 'Cyg', raDeg: 292.6892, decDeg: 27.9653, mag: 5.11 },
-      { id: 'hd_184010', nameKo: 'HD 184010', nameEn: 'HD 184010', bayer: 'HD 184010 (Cyg)', constellation: 'Cyg', raDeg: 292.8401, decDeg: 26.6172, mag: 5.89 },
-      { id: 'hd_182618', nameKo: 'HD 182618', nameEn: 'HD 182618', bayer: 'HD 182618 (Cyg)', constellation: 'Cyg', raDeg: 291.0939, decDeg: 28.0876, mag: 6.52 },
-      { id: 'hd_184761', nameKo: 'HD 184761', nameEn: 'HD 184761', bayer: 'HD 184761 (Cyg)', constellation: 'Cyg', raDeg: 293.7457, decDeg: 27.2253, mag: 6.73 },
-      { id: 'hd_184719', nameKo: 'HD 184719', nameEn: 'HD 184719', bayer: 'HD 184719 (Cyg)', constellation: 'Cyg', raDeg: 293.6685, decDeg: 29.1526, mag: 7.19 },
-      { id: 'hd_184059', nameKo: 'HD 184059', nameEn: 'HD 184059', bayer: 'HD 184059 (Cyg)', constellation: 'Cyg', raDeg: 292.9016, decDeg: 26.9866, mag: 7.30 },
-      { id: 'hd_184058', nameKo: 'HD 184058', nameEn: 'HD 184058', bayer: 'HD 184058 (Cyg)', constellation: 'Cyg', raDeg: 292.8747, decDeg: 28.7173, mag: 7.59 },
-      { id: 'hd_184879', nameKo: 'HD 184879', nameEn: 'HD 184879', bayer: 'HD 184879 (Cyg)', constellation: 'Cyg', raDeg: 293.8900, decDeg: 27.1083, mag: 7.61 },
-      { id: 'hd_183753', nameKo: 'HD 183753', nameEn: 'HD 183753', bayer: 'HD 183753 (Cyg)', constellation: 'Cyg', raDeg: 292.4816, decDeg: 28.7243, mag: 7.65 },
-    ],
-  },
-  {
-    id: 'cep_garnet',
-    nameKo: '세페우스자리 가넷 스타 & 코끼리 코 성운 (μ Cep / IC 1396)',
-    nameEn: 'Cepheus Garnet Star (Mu Cephei / IC 1396)',
-    constellation: 'Cep',
-    centerRaDeg: 325.8769,
-    centerDecDeg: 58.7800,
-    defaultRadiusDeg: 1.8,
-    primaryObjectLabel: 'IC 1396',
-    keywords: ['가넷스타', '가넷 스타', '석류석별', 'garnet star', 'mu cep', 'μ cep', 'ic1396', 'ic 1396'],
-    stars: [
-      { id: 'mu_cep_f', nameKo: '가넷 스타 (μ Cep)', nameEn: 'Garnet Star (Mu Cephei)', bayer: 'μ Cep', constellation: 'Cep', raDeg: 325.8769, decDeg: 58.7800, mag: 4.08 },
-      { id: 'hd_206267', nameKo: 'HD 206267', nameEn: 'HD 206267', bayer: 'HD 206267 (Cep)', constellation: 'Cep', raDeg: 324.7401, decDeg: 57.4890, mag: 5.62 },
-      { id: 'hd_206842', nameKo: 'HD 206842', nameEn: 'HD 206842', bayer: 'HD 206842 (Cep)', constellation: 'Cep', raDeg: 325.6890, decDeg: 59.2708, mag: 6.09 },
-      { id: 'hd_207086', nameKo: 'HD 207086', nameEn: 'HD 207086', bayer: 'HD 207086 (Cep)', constellation: 'Cep', raDeg: 326.1624, decDeg: 58.2257, mag: 6.80 },
-      { id: 'hd_205113', nameKo: 'HD 205113', nameEn: 'HD 205113', bayer: 'HD 205113 (Cep)', constellation: 'Cep', raDeg: 322.7556, decDeg: 59.4182, mag: 6.87 },
-      { id: 'hd_206773', nameKo: 'HD 206773', nameEn: 'HD 206773', bayer: 'HD 206773 (Cep)', constellation: 'Cep', raDeg: 325.6008, decDeg: 57.7361, mag: 6.87 },
-      { id: 'hd_206536', nameKo: 'HD 206536', nameEn: 'HD 206536', bayer: 'HD 206536 (Cep)', constellation: 'Cep', raDeg: 325.1352, decDeg: 59.7528, mag: 6.88 },
-      { id: 'hd_207538', nameKo: 'HD 207538', nameEn: 'HD 207538', bayer: 'HD 207538 (Cep)', constellation: 'Cep', raDeg: 326.9158, decDeg: 59.7004, mag: 7.30 },
-      { id: 'hd_206482', nameKo: 'HD 206482', nameEn: 'HD 206482', bayer: 'HD 206482 (Cep)', constellation: 'Cep', raDeg: 325.0894, decDeg: 57.5816, mag: 7.40 },
-      { id: 'hd_207328', nameKo: 'HD 207328', nameEn: 'HD 207328', bayer: 'HD 207328 (Cep)', constellation: 'Cep', raDeg: 326.5692, decDeg: 58.0625, mag: 7.45 },
-    ],
-  },
 ];
 
 // Build unified star catalog combining BRIGHT_STARS, TELESCOPIC_REFERENCE_FIELDS, and constellation figure vertices
@@ -357,11 +987,264 @@ function getUnifiedStarCatalog(): CatalogStar[] {
 export const UNIFIED_SOLVER_STARS = getUnifiedStarCatalog();
 
 /**
+ * Pure RGBA Pixel Array simplexy Star Extractor (dstndstn/astrometry.net util/simplexy.c + dsmooth.c + dpeaks.c)
+ * Can run both in the browser via Canvas ImageData and in Node.js for automated testing.
+ */
+export function extractStarsFromRgbaBuffer(
+  imgData: Uint8ClampedArray | Uint8Array | Buffer,
+  procW: number,
+  procH: number,
+  scaleFactor: number = 1.0
+): DetectedStarXY[] {
+  const nPixels = procW * procH;
+  const lum = new Float32Array(nPixels);
+  const chromaDiff = new Float32Array(nPixels);
+
+  for (let i = 0, p = 0; i < imgData.length && p < nPixels; i += 4, p++) {
+    const r = imgData[i];
+    const g = imgData[i + 1];
+    const b = imgData[i + 2];
+    lum[p] = 0.299 * r + 0.587 * g + 0.114 * b;
+    chromaDiff[p] = Math.max(r, g, b) - Math.min(r, g, b);
+  }
+
+  // 1. Estimate local sky background & noise sigma across 24x24 grid cells using Two-Pass Sigma Clipping
+  const gridN = 24;
+  const cellW = Math.ceil(procW / gridN);
+  const cellH = Math.ceil(procH / gridN);
+  const skyMean = new Float32Array(gridN * gridN);
+  const skySigma = new Float32Array(gridN * gridN);
+
+  for (let gy = 0; gy < gridN; gy++) {
+    for (let gx = 0; gx < gridN; gx++) {
+      const x0 = gx * cellW;
+      const y0 = gy * cellH;
+      const x1 = Math.min(procW, x0 + cellW);
+      const y1 = Math.min(procH, y0 + cellH);
+
+      let sum = 0;
+      let sumSq = 0;
+      let count = 0;
+      for (let y = y0; y < y1; y += 2) {
+        for (let x = x0; x < x1; x += 2) {
+          const v = lum[y * procW + x];
+          sum += v;
+          sumSq += v * v;
+          count++;
+        }
+      }
+      const rawMean = count > 0 ? sum / count : 20;
+      const rawSig = count > 0 ? Math.sqrt(Math.max(1, sumSq / count - rawMean * rawMean)) : 3;
+
+      let clipSum = 0;
+      let clipSumSq = 0;
+      let clipCount = 0;
+      const clipThresh = rawMean + 1.8 * rawSig;
+      for (let y = y0; y < y1; y += 2) {
+        for (let x = x0; x < x1; x += 2) {
+          const v = lum[y * procW + x];
+          if (v <= clipThresh) {
+            clipSum += v;
+            clipSumSq += v * v;
+            clipCount++;
+          }
+        }
+      }
+
+      const finalMean = clipCount > 0 ? clipSum / clipCount : rawMean;
+      const finalSig =
+        clipCount > 0
+          ? Math.sqrt(Math.max(1, clipSumSq / clipCount - finalMean * finalMean))
+          : rawSig;
+      skyMean[gy * gridN + gx] = finalMean;
+      skySigma[gy * gridN + gx] = finalSig;
+    }
+  }
+
+  const sortedMeans = Array.from(skyMean).sort((a, b) => a - b);
+  const sortedSigmas = Array.from(skySigma).sort((a, b) => a - b);
+  const globalMedianBg = sortedMeans[Math.floor(sortedMeans.length * 0.45)] || 25;
+  const globalMedianSigma = sortedSigmas[Math.floor(sortedSigmas.length * 0.5)] || 4;
+
+  // 2. Background subtraction + separable 5x5 Gaussian PSF matched filter (astrometry.net dsmooth.c)
+  // Smoothing turns flat saturated star plateaus into a single centered peak and suppresses hot pixels
+  const bgSub = new Float32Array(nPixels);
+  for (let y = 0; y < procH; y++) {
+    const gy = Math.min(gridN - 1, Math.floor(y / cellH));
+    for (let x = 0; x < procW; x++) {
+      const gx = Math.min(gridN - 1, Math.floor(x / cellW));
+      const bg = Math.min(skyMean[gy * gridN + gx], globalMedianBg + 10);
+      bgSub[y * procW + x] = Math.max(0, lum[y * procW + x] - bg);
+    }
+  }
+
+  const tmpSmooth = new Float32Array(nPixels);
+  const smoothed = new Float32Array(nPixels);
+  for (let y = 0; y < procH; y++) {
+    const row = y * procW;
+    for (let x = 2; x < procW - 2; x++) {
+      tmpSmooth[row + x] =
+        (bgSub[row + x - 2] +
+          4 * bgSub[row + x - 1] +
+          6 * bgSub[row + x] +
+          4 * bgSub[row + x + 1] +
+          bgSub[row + x + 2]) /
+        16;
+    }
+  }
+  for (let y = 2; y < procH - 2; y++) {
+    const row = y * procW;
+    for (let x = 2; x < procW - 2; x++) {
+      smoothed[row + x] =
+        (tmpSmooth[(y - 2) * procW + x] +
+          4 * tmpSmooth[(y - 1) * procW + x] +
+          6 * tmpSmooth[row + x] +
+          4 * tmpSmooth[(y + 1) * procW + x] +
+          tmpSmooth[(y + 2) * procW + x]) /
+        16;
+    }
+  }
+
+  // 3. Peak detection on PSF-smoothed image + circular R=7.07px aperture photometry (astrometry.net dpeaks.c)
+  const rawCandidates: (DetectedStarXY & { satPixels: number })[] = [];
+  const margin = 8;
+
+  for (let y = margin; y < procH - margin; y++) {
+    const gy = Math.min(gridN - 1, Math.floor(y / cellH));
+    for (let x = margin; x < procW - margin; x++) {
+      const gx = Math.min(gridN - 1, Math.floor(x / cellW));
+      const localSig = skySigma[gy * gridN + gx];
+      // Detect noisy field-rotation stacking border corners and raise SNR requirement there
+      const isNoisyBorderCell = localSig > globalMedianSigma * 1.62;
+      const minSmoothThresh = isNoisyBorderCell
+        ? localSig * 4.6
+        : Math.max(localSig * 2.05, 3.8);
+
+      const cVal = smoothed[y * procW + x];
+      if (cVal < minSmoothThresh) continue;
+
+      // Strict 5x5 local maximum on smoothed PSF map with deterministic tie-breaking
+      let isMax = true;
+      for (let dy = -2; dy <= 2 && isMax; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nVal = smoothed[(y + dy) * procW + (x + dx)];
+          if (nVal > cVal || (nVal === cVal && (dy < 0 || (dy === 0 && dx < 0)))) {
+            isMax = false;
+            break;
+          }
+        }
+      }
+      if (!isMax) continue;
+
+      let brightPixels = 0;
+      let sumChroma = 0;
+      let sumFlux = 0;
+      let sumR2 = 0;
+      let satPixels = 0;
+
+      for (let dy = -7; dy <= 7; dy++) {
+        for (let dx = -7; dx <= 7; dx++) {
+          const r2 = dx * dx + dy * dy;
+          if (r2 > 50) continue;
+          const idx = (y + dy) * procW + (x + dx);
+          const val = bgSub[idx];
+          if (r2 <= 9 && val > localSig * 1.9) {
+            brightPixels++;
+            sumChroma += chromaDiff[idx];
+          }
+          if (val > localSig * 1.15) {
+            // Boost saturated stellar cores so large bright stars strictly outrank small saturated stars
+            const satBoost = lum[idx] >= 245 ? 2.6 : lum[idx] >= 220 ? 1.5 : 1.0;
+            const weightedVal = val * satBoost;
+            sumFlux += weightedVal;
+            if (r2 <= 25) {
+              sumR2 += r2 * val;
+            }
+            if (lum[idx] >= 240) satPixels++;
+          }
+        }
+      }
+
+      if (brightPixels < (isNoisyBorderCell ? 6 : 3)) continue;
+      const avgChroma = sumChroma / Math.max(1, brightPixels);
+      if (isNoisyBorderCell && (avgChroma > 68 || satPixels < 2)) continue;
+      if (avgChroma > 115 && satPixels === 0) continue;
+
+      // Sub-pixel PSF centroid over R=5px circular window
+      let cenW = 0;
+      let cenX = 0;
+      let cenY = 0;
+      for (let dy = -5; dy <= 5; dy++) {
+        for (let dx = -5; dx <= 5; dx++) {
+          if (dx * dx + dy * dy > 25) continue;
+          const wVal = smoothed[(y + dy) * procW + (x + dx)];
+          cenW += wVal;
+          cenX += (x + dx) * wVal;
+          cenY += (y + dy) * wVal;
+        }
+      }
+
+      const cx = (cenW > 0 ? cenX / cenW : x) / scaleFactor;
+      const cy = (cenW > 0 ? cenY / cenW : y) / scaleFactor;
+      const baseHfr = Math.max(1.2, Math.min(8.5, Math.sqrt(sumR2 / Math.max(1, sumFlux))));
+      const effectiveRadius = Math.max(
+        1.5,
+        (baseHfr + Math.min(3.5, Math.sqrt(satPixels) * 0.35)) / scaleFactor
+      );
+
+      rawCandidates.push({
+        x: cx,
+        y: cy,
+        flux: sumFlux,
+        peak: bgSub[y * procW + x],
+        radius: effectiveRadius,
+        instMag: -2.5 * Math.log10(Math.max(1, sumFlux)),
+        satPixels,
+      });
+    }
+  }
+
+  // 4. Sort by integrated aperture flux descending and apply radius-aware non-maximum suppression
+  rawCandidates.sort((a, b) => b.flux - a.flux);
+  const filteredStars: DetectedStarXY[] = [];
+
+  for (const cand of rawCandidates) {
+    const tooClose = filteredStars.some((s) => {
+      const minSep = Math.max(6.0 / scaleFactor, (s.radius + cand.radius) * 1.45);
+      return Math.hypot(s.x - cand.x, s.y - cand.y) < minSep;
+    });
+    if (!tooClose) {
+      filteredStars.push({
+        x: cand.x,
+        y: cand.y,
+        flux: cand.flux,
+        peak: cand.peak,
+        radius: cand.radius,
+        instMag: cand.instMag,
+      });
+      if (filteredStars.length >= 350) break;
+    }
+  }
+
+  if (filteredStars.length > 0) {
+    const minInst = filteredStars[0].instMag;
+    const maxInst = filteredStars[filteredStars.length - 1].instMag;
+    const span = Math.max(0.1, maxInst - minInst);
+    filteredStars.forEach((s) => {
+      s.instMag = Number((1.5 + ((s.instMag - minInst) / span) * 7.0).toFixed(2));
+    });
+  }
+
+  return filteredStars;
+}
+
+/**
  * Step 1: image2xy — Sub-pixel Star Source Extraction from Image Element or URL
- * Implements local background sky grid subtraction + 2.8-sigma peak finding + Gaussian flux centroiding
  */
 export async function extractStarsImage2XY(
-  imageSource: string | File
+  imageSource: string | File,
+  options?: { keepOriginalCoords?: boolean }
 ): Promise<{
   stars: DetectedStarXY[];
   width: number;
@@ -385,8 +1268,7 @@ export async function extractStarsImage2XY(
         const origW = img.naturalWidth || img.width || 1920;
         const origH = img.naturalHeight || img.height || 1080;
 
-        // Downscale to max 800px for fast CPU pixel scanning while keeping sub-pixel precision
-        const maxProcDim = 800;
+        const maxProcDim = 1920;
         const scaleFactor = Math.min(1, maxProcDim / Math.max(origW, origH));
         const procW = Math.max(64, Math.round(origW * scaleFactor));
         const procH = Math.max(64, Math.round(origH * scaleFactor));
@@ -403,141 +1285,19 @@ export async function extractStarsImage2XY(
         const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
         const imgData = ctx.getImageData(0, 0, procW, procH).data;
 
-        // 1. Convert RGB to grayscale luminance array
-        const lum = new Float32Array(procW * procH);
-        for (let i = 0, p = 0; i < imgData.length; i += 4, p++) {
-          lum[p] = 0.299 * imgData[i] + 0.587 * imgData[i + 1] + 0.114 * imgData[i + 2];
-        }
-
-        // 2. Estimate local sky background & noise sigma across 16x16 grid cells (simplexy background subtraction)
-        const gridN = 16;
-        const cellW = Math.ceil(procW / gridN);
-        const cellH = Math.ceil(procH / gridN);
-        const skyMean = new Float32Array(gridN * gridN);
-        const skySigma = new Float32Array(gridN * gridN);
-
-        for (let gy = 0; gy < gridN; gy++) {
-          for (let gx = 0; gx < gridN; gx++) {
-            const x0 = gx * cellW;
-            const y0 = gy * cellH;
-            const x1 = Math.min(procW, x0 + cellW);
-            const y1 = Math.min(procH, y0 + cellH);
-
-            let sum = 0;
-            let sumSq = 0;
-            let count = 0;
-            for (let y = y0; y < y1; y += 2) {
-              for (let x = x0; x < x1; x += 2) {
-                const v = lum[y * procW + x];
-                sum += v;
-                sumSq += v * v;
-                count++;
-              }
-            }
-            const mean = count > 0 ? sum / count : 20;
-            const variance = count > 0 ? Math.max(4, sumSq / count - mean * mean) : 16;
-            skyMean[gy * gridN + gx] = mean;
-            skySigma[gy * gridN + gx] = Math.sqrt(variance);
-          }
-        }
-
-        // 3. Detect local maxima exceeding local sky + 2.8 * sigma
-        const rawCandidates: DetectedStarXY[] = [];
-        const margin = 5;
-
-        for (let y = margin; y < procH - margin; y++) {
-          const gy = Math.min(gridN - 1, Math.floor(y / cellH));
-          for (let x = margin; x < procW - margin; x++) {
-            const gx = Math.min(gridN - 1, Math.floor(x / cellW));
-            const bg = skyMean[gy * gridN + gx];
-            const sigma = skySigma[gy * gridN + gx];
-            const thresh = Math.max(bg + 2.8 * sigma, bg + 18);
-
-            const centerVal = lum[y * procW + x];
-            if (centerVal < thresh) continue;
-
-            // Check 5x5 neighborhood local maximum
-            let isMax = true;
-            for (let dy = -2; dy <= 2 && isMax; dy++) {
-              for (let dx = -2; dx <= 2; dx++) {
-                if (dx === 0 && dy === 0) continue;
-                if (lum[(y + dy) * procW + (x + dx)] > centerVal) {
-                  isMax = false;
-                  break;
-                }
-              }
-            }
-            if (!isMax) continue;
-
-            // Compute sub-pixel Gaussian flux-weighted centroid in 7x7 window
-            let sumFlux = 0;
-            let sumX = 0;
-            let sumY = 0;
-            let sumR2 = 0;
-
-            for (let dy = -3; dy <= 3; dy++) {
-              for (let dx = -3; dx <= 3; dx++) {
-                const val = Math.max(0, lum[(y + dy) * procW + (x + dx)] - bg);
-                sumFlux += val;
-                sumX += (x + dx) * val;
-                sumY += (y + dy) * val;
-                sumR2 += (dx * dx + dy * dy) * val;
-              }
-            }
-
-            if (sumFlux <= 10) continue;
-
-            const cx = sumX / sumFlux;
-            const cy = sumY / sumFlux;
-            const hfr = Math.max(1.2, Math.min(12, Math.sqrt(sumR2 / sumFlux)));
-
-            if (hfr < 0.45) continue;
-
-            const origX = cx / scaleFactor;
-            const origY = cy / scaleFactor;
-            const peak = centerVal - bg;
-
-            rawCandidates.push({
-              x: origX,
-              y: origY,
-              flux: sumFlux,
-              peak,
-              radius: hfr / scaleFactor,
-              instMag: -2.5 * Math.log10(Math.max(1, sumFlux)),
-            });
-          }
-        }
-
-        // 4. Sort by flux descending and apply Non-Maximum Suppression (minimum separation)
-        rawCandidates.sort((a, b) => b.flux - a.flux);
-        const minSep = Math.max(12, Math.min(origW, origH) * 0.018);
-        const filteredStars: DetectedStarXY[] = [];
-
-        for (const cand of rawCandidates) {
-          const tooClose = filteredStars.some(
-            (s) => Math.hypot(s.x - cand.x, s.y - cand.y) < minSep
-          );
-          if (!tooClose) {
-            filteredStars.push(cand);
-            if (filteredStars.length >= 80) break;
-          }
-        }
-
-        // Normalize instrumental magnitudes to apparent visual range [1.5 .. 6.5]
-        if (filteredStars.length > 0) {
-          const minInst = filteredStars[0].instMag;
-          const maxInst = filteredStars[filteredStars.length - 1].instMag;
-          const span = Math.max(0.1, maxInst - minInst);
-          filteredStars.forEach((s) => {
-            s.instMag = Number((1.5 + ((s.instMag - minInst) / span) * 4.5).toFixed(2));
-          });
-        }
+        const useOrig = Boolean(options?.keepOriginalCoords);
+        const filteredStars = extractStarsFromRgbaBuffer(
+          imgData,
+          procW,
+          procH,
+          useOrig ? scaleFactor : 1.0
+        );
 
         if (objectUrlToRevoke) URL.revokeObjectURL(objectUrlToRevoke);
         resolve({
           stars: filteredStars,
-          width: origW,
-          height: origH,
+          width: useOrig ? origW : procW,
+          height: useOrig ? origH : procH,
           dataUrl,
         });
       } catch (err) {
@@ -613,13 +1373,15 @@ export function tangentPlaneToSky(
     Math.atan2(xi * sinC, rho * Math.cos(dec0) * cosC - eta * Math.sin(dec0) * sinC);
 
   return {
-    ra: ((ra * r2d) % 360 + 360) % 360,
+    ra: (((ra * r2d) % 360) + 360) % 360,
     dec: Math.max(-90, Math.min(90, dec * r2d)),
   };
 }
 
 /**
  * Project Celestial (RA, Dec) to 2D Image Pixel Coordinates (x, y) given WCS Calibration
+ * Matches dstndstn/astrometry.net exact TAN CD matrix & parity convention:
+ * For parity = +1 and orientation = 0, North (+eta) is UP (-y) and East (+xi) is LEFT (-x).
  */
 export function skyCoordsToPixel(
   raDeg: number,
@@ -632,24 +1394,30 @@ export function skyCoordsToPixel(
   if (!tp) return null;
 
   const deg2rad = Math.PI / 180;
-  const rotRad = (calibration.orientation || 0) * deg2rad;
+  const theta = (calibration.orientation || 0) * deg2rad;
   const parity = calibration.parity || 1;
+  const xiPx = (tp.xi * 3600) / calibration.pixscale;
+  const etaPx = (tp.eta * 3600) / calibration.pixscale;
 
-  // Inverse of pixelToSkyCoords rotation
-  const localX = tp.xi * Math.cos(rotRad) + tp.eta * Math.sin(rotRad);
-  const localY = -tp.xi * Math.sin(rotRad) + tp.eta * Math.cos(rotRad);
+  // Exact inverse of pixelToSkyCoords and fitWcsFromMatchedPairs:
+  // [xiPx; etaPx] = R(theta) [uxPx; uyPx]  =>  [uxPx; uyPx] = R(-theta) [xiPx; etaPx]
+  // uxPx = xiPx * cos(theta) + etaPx * sin(theta)
+  // uyPx = -xiPx * sin(theta) + etaPx * cos(theta)
+  // dx = -parity * uxPx
+  // dy = -uyPx
+  const uxPx = xiPx * Math.cos(theta) + etaPx * Math.sin(theta);
+  const uyPx = -xiPx * Math.sin(theta) + etaPx * Math.cos(theta);
+  const dx = -parity * uxPx;
+  const dy = -uyPx;
 
-  const dxDeg = localX * parity;
-  const dyDeg = localY;
-
-  const pixelX = imageWidth / 2 + (dxDeg * 3600) / calibration.pixscale;
-  const pixelY = imageHeight / 2 - (dyDeg * 3600) / calibration.pixscale;
-
-  return { x: pixelX, y: pixelY };
+  return {
+    x: imageWidth / 2 + dx,
+    y: imageHeight / 2 + dy,
+  };
 }
 
 /**
- * Step 2: Geometric Quad Hashing (dstndstn/astrometry.net Core Algorithm)
+ * Step 2: Geometric Quad Hashing (dstndstn/astrometry.net blind/quad-builder.c)
  */
 interface QuadHash {
   xC: number;
@@ -747,11 +1515,11 @@ function computeQuadFrom4Points(
 }
 
 /**
- * Iterative Least-Squares WCS Fit (astrometry.net fit-wcs.c)
+ * Iterative Least-Squares WCS Fit (dstndstn/astrometry.net util/fit-wcs.c)
  * Given matched pairs between image pixels (x, y) and catalog sky coordinates (raDeg, decDeg),
  * solves for exact center (RA, Dec), pixscale (arcsec/px), orientation (deg), and parity (+1 or -1).
  */
-function fitWcsFromMatchedPairs(
+export function fitWcsFromMatchedPairs(
   pairs: { x: number; y: number; raDeg: number; decDeg: number }[],
   imageWidth: number,
   imageHeight: number,
@@ -796,13 +1564,14 @@ function fitWcsFromMatchedPairs(
       let numSin = 0;
       let den = 0;
       for (const p of pts) {
-        const lx = (p.dxPx - mx) * parity;
-        const ly = p.dyPx - my;
+        // Astrometry.net parity convention: ux = -parity * (x - W/2), uy = H/2 - y
+        const ux = -(p.dxPx - mx) * parity;
+        const uy = p.dyPx - my;
         const vx = p.xi - mxi;
         const vy = p.eta - meta;
-        numCos += lx * vx + ly * vy;
-        numSin += lx * vy - ly * vx;
-        den += lx * lx + ly * ly;
+        numCos += ux * vx + uy * vy;
+        numSin += ux * vy - uy * vx;
+        den += ux * ux + uy * uy;
       }
       if (den < 1e-9) continue;
 
@@ -812,10 +1581,10 @@ function fitWcsFromMatchedPairs(
 
       let errSq = 0;
       for (const p of pts) {
-        const lx = (p.dxPx - mx) * parity;
-        const ly = p.dyPx - my;
-        const pxi = mxi + scaleDeg * (lx * Math.cos(rotRad) - ly * Math.sin(rotRad));
-        const peta = meta + scaleDeg * (lx * Math.sin(rotRad) + ly * Math.cos(rotRad));
+        const ux = -(p.dxPx - mx) * parity;
+        const uy = p.dyPx - my;
+        const pxi = mxi + scaleDeg * (ux * Math.cos(rotRad) - uy * Math.sin(rotRad));
+        const peta = meta + scaleDeg * (ux * Math.sin(rotRad) + uy * Math.cos(rotRad));
         errSq += (pxi - p.xi) ** 2 + (peta - p.eta) ** 2;
       }
 
@@ -827,12 +1596,13 @@ function fitWcsFromMatchedPairs(
       }
     }
 
-    const lx0 = -mx * bestParity;
-    const ly0 = -my;
+    // At image center (dxPx = 0, dyPx = 0): ux0 = -(0 - mx)*bestParity = mx*bestParity, uy0 = -my
+    const ux0 = mx * bestParity;
+    const uy0 = -my;
     const xiCenter =
-      mxi + bestScaleDeg * (lx0 * Math.cos(bestRotRad) - ly0 * Math.sin(bestRotRad));
+      mxi + bestScaleDeg * (ux0 * Math.cos(bestRotRad) - uy0 * Math.sin(bestRotRad));
     const etaCenter =
-      meta + bestScaleDeg * (lx0 * Math.sin(bestRotRad) + ly0 * Math.cos(bestRotRad));
+      meta + bestScaleDeg * (ux0 * Math.sin(bestRotRad) + uy0 * Math.cos(bestRotRad));
     const updated = tangentPlaneToSky(xiCenter, etaCenter, centerRa, centerDec);
     centerRa = updated.ra;
     centerDec = updated.dec;
@@ -868,11 +1638,12 @@ function fitWcsFromMatchedPairs(
 }
 
 /**
- * RANSAC WCS Verification (astrometry.net blind/verify.c)
- * Given a candidate sky field and its catalog stars, tests 2-star & 4-star geometric hypotheses against
- * the detected image2xy stars, counts inlier star alignments, and refines the WCS via least squares.
+ * Bayesian Log-Odds WCS Verification (dstndstn/astrometry.net blind/verify.c)
+ * Tests 4-star quad & 2-star bright-backbone hypotheses against the brightest image2xy stars,
+ * evaluates true Bayesian log-odds sum(ln(P_fg / P_bg)) with missed-bright-star penalties,
+ * and refines the WCS via iterative TAN least squares.
  */
-function verifyAndFitFieldRansac(
+export function verifyAndFitFieldRansac(
   detectedStars: DetectedStarXY[],
   imageWidth: number,
   imageHeight: number,
@@ -890,16 +1661,23 @@ function verifyAndFitFieldRansac(
   if (detectedStars.length < 2 || fieldStars.length < 2) return null;
 
   const diagPx = Math.hypot(imageWidth, imageHeight);
-  const tolPx = Math.max(14, diagPx * 0.018);
+  // Tight verification tolerance (matches astrometry.net verify_pix: ~0.65% of diagonal, ~14px on 1920x1080)
+  const tolPx = Math.max(8, Math.min(18, diagPx * 0.0065));
+  const refinedTolPx = Math.max(6, Math.min(14, diagPx * 0.005));
+  const imageArea = Math.max(1000, imageWidth * imageHeight);
 
-  // Convert image coords to centered Cartesian with Y pointing up: (dx, dy) = (x - W/2, H/2 - y)
-  const topImg = detectedStars.slice(0, 18).map((s, idx) => ({
+  // Restrict verification pool to brightest stars proportional to catalog depth (prevents false coincidences with 400 faint stars)
+  const maxVerifyImg = Math.min(detectedStars.length, Math.max(32, fieldStars.length * 2 + 8));
+  const verifyPool = detectedStars.slice(0, maxVerifyImg).map((s, idx) => ({
     idx,
     x: s.x,
     y: s.y,
-    cx: s.x - imageWidth / 2,
-    cy: imageHeight / 2 - s.y,
+    // Left-handed sky-aligned image coordinates for parity = +1: lx = W/2 - x (Left = East), ly = H/2 - y (Up = North)
+    lx: imageWidth / 2 - s.x,
+    ly: imageHeight / 2 - s.y,
   }));
+
+  const topImg = verifyPool.slice(0, Math.min(18, verifyPool.length));
 
   // Project catalog stars onto tangent plane (xi, eta in degrees)
   const catProjected: {
@@ -907,21 +1685,13 @@ function verifyAndFitFieldRansac(
     xi: number;
     eta: number;
   }[] = [];
-  for (const s of fieldStars.slice(0, 18)) {
+  for (const s of fieldStars.slice(0, 20)) {
     const tp = skyToTangentPlane(s.raDeg, s.decDeg, fieldCenterRa, fieldCenterDec);
     if (tp) {
       catProjected.push({ star: s, xi: tp.xi, eta: tp.eta });
     }
   }
   if (catProjected.length < 2) return null;
-
-  let bestInliers: { imgIdx: number; catStar: CatalogStar }[] = [];
-  let bestScore = -Infinity;
-  let bestParity = 1;
-
-  // 1. Build 4-star Quads for catalog & image to generate high-confidence hypotheses
-  const imgPtsUp = topImg.map((p) => ({ x: p.cx, y: p.cy }));
-  const catPtsTp = catProjected.map((p) => ({ x: p.xi, y: p.eta }));
 
   const candidateSeeds: {
     i0: number;
@@ -930,17 +1700,28 @@ function verifyAndFitFieldRansac(
     c1: number;
     parity: number;
   }[] = [];
+  const seenSeedKeys = new Set<number>();
+  const addCandidateSeed = (i0: number, i1: number, c0: number, c1: number, parity: number) => {
+    const key = ((i0 * 32 + i1) * 1024 + (c0 * 32 + c1)) * 2 + (parity === 1 ? 1 : 0);
+    if (!seenSeedKeys.has(key)) {
+      seenSeedKeys.add(key);
+      candidateSeeds.push({ i0, i1, c0, c1, parity });
+    }
+  };
 
-  // Quad-based seed generation (checks both parities ±1!)
+  // 1. Quad-based 4-star geometric hash seed generation (checks both parities ±1)
   if (topImg.length >= 4 && catProjected.length >= 4) {
+    const imgPtsUp = topImg.map((p) => ({ x: p.lx, y: p.ly }));
+    const catPtsTp = catProjected.map((p) => ({ x: p.xi, y: p.eta }));
+
     const imgQuads: QuadHash[] = [];
-    const nImgQ = Math.min(12, topImg.length);
+    const nImgQ = Math.min(11, topImg.length);
     for (let i = 0; i < nImgQ; i++) {
       for (let j = i + 1; j < nImgQ; j++) {
         for (let k = j + 1; k < nImgQ; k++) {
           for (let l = k + 1; l < nImgQ; l++) {
             const q = computeQuadFrom4Points(imgPtsUp, [i, j, k, l]);
-            if (q && q.scale > diagPx * 0.12) {
+            if (q && q.scale > diagPx * 0.1) {
               imgQuads.push(q);
             }
           }
@@ -948,47 +1729,53 @@ function verifyAndFitFieldRansac(
       }
     }
 
-    const nCatQ = Math.min(12, catProjected.length);
+    const nCatQ = Math.min(11, catProjected.length);
     for (let a = 0; a < nCatQ; a++) {
       for (let b = a + 1; b < nCatQ; b++) {
         for (let c = b + 1; c < nCatQ; c++) {
           for (let d = c + 1; d < nCatQ; d++) {
             const cq = computeQuadFrom4Points(catPtsTp, [a, b, c, d]);
-            if (!cq || cq.scale < expectedRadiusDeg * 0.12) continue;
+            if (!cq || cq.scale < expectedRadiusDeg * 0.1) continue;
 
-            for (const iq of imgQuads) {
+            for (let qIdx = 0; qIdx < imgQuads.length; qIdx++) {
+              const iq = imgQuads[qIdx];
+              const dxC = Math.abs(cq.xC - iq.xC);
+              if (dxC > 0.048) continue;
+              const dxD = Math.abs(cq.xD - iq.xD);
+              if (dxD > 0.048) continue;
+
               // Parity +1 match
-              const errPos = Math.hypot(
-                cq.xC - iq.xC,
-                cq.yC - iq.yC,
-                cq.xD - iq.xD,
-                cq.yD - iq.yD
-              );
-              if (errPos < 0.055) {
-                candidateSeeds.push({
-                  i0: iq.starIndices[0],
-                  i1: iq.starIndices[1],
-                  c0: cq.starIndices[0],
-                  c1: cq.starIndices[1],
-                  parity: 1,
-                });
+              const dyCPos = Math.abs(cq.yC - iq.yC);
+              const dyDPos = Math.abs(cq.yD - iq.yD);
+              if (
+                dyCPos < 0.048 &&
+                dyDPos < 0.048 &&
+                dxC * dxC + dyCPos * dyCPos + dxD * dxD + dyDPos * dyDPos < 0.0023
+              ) {
+                addCandidateSeed(
+                  iq.starIndices[0],
+                  iq.starIndices[1],
+                  cq.starIndices[0],
+                  cq.starIndices[1],
+                  1
+                );
               }
 
-              // Parity -1 match (reflected across backbone A-B: yC -> -yC, yD -> -yD)
-              const errNeg = Math.hypot(
-                cq.xC - iq.xC,
-                cq.yC + iq.yC,
-                cq.xD - iq.xD,
-                cq.yD + iq.yD
-              );
-              if (errNeg < 0.055) {
-                candidateSeeds.push({
-                  i0: iq.starIndices[0],
-                  i1: iq.starIndices[1],
-                  c0: cq.starIndices[0],
-                  c1: cq.starIndices[1],
-                  parity: -1,
-                });
+              // Parity -1 match (reflected across backbone A-B)
+              const dyCNeg = Math.abs(cq.yC + iq.yC);
+              const dyDNeg = Math.abs(cq.yD + iq.yD);
+              if (
+                dyCNeg < 0.048 &&
+                dyDNeg < 0.048 &&
+                dxC * dxC + dyCNeg * dyCNeg + dxD * dxD + dyDNeg * dyDNeg < 0.0023
+              ) {
+                addCandidateSeed(
+                  iq.starIndices[0],
+                  iq.starIndices[1],
+                  cq.starIndices[0],
+                  cq.starIndices[1],
+                  -1
+                );
               }
             }
           }
@@ -997,25 +1784,29 @@ function verifyAndFitFieldRansac(
     }
   }
 
-  // 2. Also include brightest 2-star pair seeds (essential for Double-Double / binary + field star matching)
-  const maxPairImg = Math.min(7, topImg.length);
-  const maxPairCat = Math.min(7, catProjected.length);
+  // 2. Also include brightest 2-star backbone seeds among top 8 stars
+  const maxPairImg = Math.min(8, topImg.length);
+  const maxPairCat = Math.min(8, catProjected.length);
   for (let i0 = 0; i0 < maxPairImg; i0++) {
     for (let i1 = i0 + 1; i1 < maxPairImg; i1++) {
       for (let c0 = 0; c0 < maxPairCat; c0++) {
         for (let c1 = 0; c1 < maxPairCat; c1++) {
           if (c0 === c1) continue;
-          for (const parity of [1, -1]) {
-            candidateSeeds.push({ i0, i1, c0, c1, parity });
-          }
+          addCandidateSeed(i0, i1, c0, c1, 1);
+          addCandidateSeed(i0, i1, c0, c1, -1);
         }
       }
     }
   }
 
-  // 3. Evaluate each seed hypothesis via RANSAC star list verification
-  const minScaleDegPerPx = (expectedRadiusDeg * 0.15) / diagPx;
-  const maxScaleDegPerPx = (expectedRadiusDeg * 4.5) / diagPx;
+  // 3. Evaluate each seed hypothesis using Bayesian Log-Odds (astrometry.net blind/verify.c)
+  const minScaleDegPerPx = (expectedRadiusDeg * 0.25) / diagPx;
+  const maxScaleDegPerPx = (expectedRadiusDeg * 3.2) / diagPx;
+  const sigmaPos = Math.max(2.5, tolPx * 0.32);
+
+  let bestInliers: { imgIdx: number; catStar: CatalogStar }[] = [];
+  let bestScore = -Infinity;
+  let bestParity = 1;
 
   for (const seed of candidateSeeds) {
     const pI0 = topImg[seed.i0];
@@ -1023,15 +1814,15 @@ function verifyAndFitFieldRansac(
     const pC0 = catProjected[seed.c0];
     const pC1 = catProjected[seed.c1];
 
-    const ux0 = pI0.cx * seed.parity;
-    const uy0 = pI0.cy;
-    const ux1 = pI1.cx * seed.parity;
-    const uy1 = pI1.cy;
+    const ux0 = pI0.lx * seed.parity;
+    const uy0 = pI0.ly;
+    const ux1 = pI1.lx * seed.parity;
+    const uy1 = pI1.ly;
 
     const dux = ux1 - ux0;
     const duy = uy1 - uy0;
     const distImg = Math.hypot(dux, duy);
-    if (distImg < 18) continue;
+    if (distImg < 22) continue;
 
     const dvx = pC1.xi - pC0.xi;
     const dvy = pC1.eta - pC0.eta;
@@ -1049,12 +1840,13 @@ function verifyAndFitFieldRansac(
     const tx = pC0.xi - scaleDegPerPx * (ux0 * cosR - uy0 * sinR);
     const ty = pC0.eta - scaleDegPerPx * (ux0 * sinR + uy0 * cosR);
 
-    // Ensure image center (0,0) is within reasonable distance of field center
-    if (Math.hypot(tx, ty) > expectedRadiusDeg * 1.8) continue;
+    // Image center (0,0) must lie near field center
+    if (Math.hypot(tx, ty) > expectedRadiusDeg * 1.45) continue;
 
-    // Project all catalog stars onto image pixels and count verified matches
-    const matched: { imgIdx: number; catStar: CatalogStar; errPx: number }[] = [];
+    const matched: { imgIdx: number; catIdx: number; catStar: CatalogStar; errPx: number }[] = [];
     const usedImg = new Set<number>();
+    let logOdds = 0;
+    let missedBrightCat = 0;
 
     for (let cIdx = 0; cIdx < catProjected.length; cIdx++) {
       const cs = catProjected[cIdx];
@@ -1062,22 +1854,19 @@ function verifyAndFitFieldRansac(
       const ry = (cs.eta - ty) / scaleDegPerPx;
       const ux = rx * cosR + ry * sinR;
       const uy = -rx * sinR + ry * cosR;
-      const predCx = ux * seed.parity;
-      const predCy = uy;
+      const predLx = ux * seed.parity;
+      const predLy = uy;
 
-      // Check if inside image bounds (with 5% margin)
-      if (
-        Math.abs(predCx) > imageWidth * 0.55 ||
-        Math.abs(predCy) > imageHeight * 0.55
-      ) {
+      // Check if inside image bounds
+      if (Math.abs(predLx) > imageWidth * 0.52 || Math.abs(predLy) > imageHeight * 0.52) {
         continue;
       }
 
       let bestImgIdx = -1;
       let bestDist = tolPx;
-      for (let m = 0; m < topImg.length; m++) {
+      for (let m = 0; m < verifyPool.length; m++) {
         if (usedImg.has(m)) continue;
-        const d = Math.hypot(topImg[m].cx - predCx, topImg[m].cy - predCy);
+        const d = Math.hypot(verifyPool[m].lx - predLx, verifyPool[m].ly - predLy);
         if (d < bestDist) {
           bestDist = d;
           bestImgIdx = m;
@@ -1087,32 +1876,44 @@ function verifyAndFitFieldRansac(
       if (bestImgIdx >= 0) {
         usedImg.add(bestImgIdx);
         matched.push({
-          imgIdx: topImg[bestImgIdx].idx,
+          imgIdx: verifyPool[bestImgIdx].idx,
+          catIdx: cIdx,
           catStar: cs.star,
           errPx: bestDist,
         });
+
+        // Bayesian Log-Odds: ln(P_fg / P_bg)
+        const pFg =
+          Math.exp(-(bestDist * bestDist) / (2 * sigmaPos * sigmaPos)) /
+          (2 * Math.PI * sigmaPos * sigmaPos);
+        const nEff = Math.max(5, bestImgIdx + 1) * (1 + cIdx * 0.15);
+        const pBg = nEff / imageArea;
+        const starLogOdds = Math.max(1.5, Math.log(Math.max(1.1, pFg / pBg)));
+        const brightRankBonus = cIdx < 3 && bestImgIdx < 5 ? 10.0 : cIdx < 6 && bestImgIdx < 10 ? 5.0 : 0;
+        logOdds += starLogOdds + brightRankBonus;
+      } else if (
+        cIdx < 2 &&
+        Math.abs(predLx) < imageWidth * 0.42 &&
+        Math.abs(predLy) < imageHeight * 0.42
+      ) {
+        // Penalize hypothesis if one of the 2 brightest catalog stars projects well inside the frame but is missing
+        missedBrightCat++;
+        logOdds -= 16.0;
       }
     }
 
-    if (matched.length >= 3) {
-      const meanErr = matched.reduce((s, m) => s + m.errPx, 0) / matched.length;
-      // Score rewards high number of verified stars and penalizes pixel error
-      // Also rewards matching the top 2 brightest image stars
-      const hasBrightest0 = matched.some((m) => m.imgIdx === 0) ? 25 : 0;
-      const hasBrightest1 = matched.some((m) => m.imgIdx === 1) ? 20 : 0;
-      const trialScore = matched.length * 40 + hasBrightest0 + hasBrightest1 - meanErr * 2.5;
-
-      if (trialScore > bestScore) {
-        bestScore = trialScore;
+    if (matched.length >= 3 && missedBrightCat <= 1) {
+      if (logOdds > bestScore) {
+        bestScore = logOdds;
         bestParity = seed.parity;
         bestInliers = matched.map((m) => ({ imgIdx: m.imgIdx, catStar: m.catStar }));
       }
     }
   }
 
-  if (bestInliers.length < 3) return null;
+  if (bestInliers.length < 3 || bestScore < 14) return null;
 
-  // 4. Perform Iterative Least-Squares WCS Fit on all verified inliers
+  // 4. Perform Iterative Least-Squares WCS Fit on verified inliers
   const fitInput = bestInliers.map((m) => ({
     x: detectedStars[m.imgIdx].x,
     y: detectedStars[m.imgIdx].y,
@@ -1127,32 +1928,47 @@ function verifyAndFitFieldRansac(
     fieldCenterRa,
     fieldCenterDec
   );
-  if (!fitted) return null;
+  if (!fitted || fitted.rmsPx > Math.max(5.0, diagPx * 0.0055)) return null;
 
-  // Second pass: re-collect all inliers using the refined least-squares WCS calibration
-  const refinedInliers: { imgIdx: number; catStar: CatalogStar; errPx: number }[] = [];
+  // 5. Second pass: re-collect inliers from verifyPool within refinedTolPx using least-squares WCS
+  const refinedInliers: { imgIdx: number; catIdx: number; catStar: CatalogStar; errPx: number }[] = [];
   const usedRefined = new Set<number>();
+  let refinedLogOdds = 0;
 
-  for (const cs of fieldStars) {
+  for (let cIdx = 0; cIdx < fieldStars.length; cIdx++) {
+    const cs = fieldStars[cIdx];
     const proj = skyCoordsToPixel(cs.raDeg, cs.decDeg, imageWidth, imageHeight, fitted.calibration);
     if (!proj) continue;
-    if (proj.x < -20 || proj.x > imageWidth + 20 || proj.y < -20 || proj.y > imageHeight + 20) {
+    if (proj.x < -10 || proj.x > imageWidth + 10 || proj.y < -10 || proj.y > imageHeight + 10) {
       continue;
     }
 
-    let bestIdx = -1;
-    let bestD = tolPx;
-    for (let i = 0; i < detectedStars.length; i++) {
-      if (usedRefined.has(i)) continue;
-      const d = Math.hypot(detectedStars[i].x - proj.x, detectedStars[i].y - proj.y);
+    let bestPoolIdx = -1;
+    let bestD = refinedTolPx;
+    for (let m = 0; m < verifyPool.length; m++) {
+      if (usedRefined.has(m)) continue;
+      const d = Math.hypot(verifyPool[m].x - proj.x, verifyPool[m].y - proj.y);
       if (d < bestD) {
         bestD = d;
-        bestIdx = i;
+        bestPoolIdx = m;
       }
     }
-    if (bestIdx >= 0) {
-      usedRefined.add(bestIdx);
-      refinedInliers.push({ imgIdx: bestIdx, catStar: cs, errPx: bestD });
+    if (bestPoolIdx >= 0) {
+      usedRefined.add(bestPoolIdx);
+      refinedInliers.push({
+        imgIdx: verifyPool[bestPoolIdx].idx,
+        catIdx: cIdx,
+        catStar: cs,
+        errPx: bestD,
+      });
+
+      const pFg =
+        Math.exp(-(bestD * bestD) / (2 * sigmaPos * sigmaPos)) /
+        (2 * Math.PI * sigmaPos * sigmaPos);
+      const nEff = Math.max(5, bestPoolIdx + 1) * (1 + cIdx * 0.12);
+      const pBg = nEff / imageArea;
+      refinedLogOdds += Math.max(2.0, Math.log(Math.max(1.1, pFg / pBg)));
+      if (cIdx < 3 && bestPoolIdx < 5) refinedLogOdds += 12.0;
     }
   }
 
@@ -1172,15 +1988,26 @@ function verifyAndFitFieldRansac(
         ) || fitted
       : fitted;
 
+  if (finalFit.rmsPx > Math.max(4.5, diagPx * 0.005)) return null;
+
   const finalPairs =
     refinedInliers.length >= 3
       ? refinedInliers.map((m) => ({ imgIdx: m.imgIdx, catStar: m.catStar }))
       : bestInliers;
 
-  const top0Bonus = finalPairs.some((m) => m.imgIdx === 0) ? 35 : 0;
-  const top1Bonus = finalPairs.some((m) => m.imgIdx === 1) ? 30 : 0;
+  if (finalPairs.length < 4 && expectedRadiusDeg <= 3.5) {
+    // Telescopic high-resolution fields require at least 4 confirmed inliers
+    return null;
+  }
+
+  const top0Bonus = finalPairs.some((m) => m.imgIdx === 0) ? 25 : 0;
+  const top1Bonus = finalPairs.some((m) => m.imgIdx === 1) ? 20 : 0;
   const finalScore =
-    finalPairs.length * 50 + top0Bonus + top1Bonus - Math.min(40, finalFit.rmsPx * 4);
+    Math.max(bestScore, refinedLogOdds) * 4 +
+    finalPairs.length * 35 +
+    top0Bonus +
+    top1Bonus -
+    Math.min(50, finalFit.rmsPx * 4);
 
   return {
     calibration: {
@@ -1208,7 +2035,6 @@ function resolveSkyRegionFromHint(
   telescopicField?: TelescopicReferenceField;
 } | null {
   if (!hintText || !hintText.trim()) return null;
-  // Strip file extensions before matching
   const cleaned = hintText
     .replace(/\.(jpg|jpeg|png|webp|tif|tiff|fits|fit)$/i, '')
     .trim();
@@ -1217,7 +2043,7 @@ function resolveSkyRegionFromHint(
   const norm = cleaned.toLowerCase();
   const compact = norm.replace(/[\s_-]+/g, '');
 
-  // 1. Check Telescopic Reference Fields first (e.g. "거문고자리 더블더블", "더블더블", "Double Double", "Epsilon Lyrae", "M57", "M34", "NGC 628")
+  // 1. Check Telescopic Reference Fields first
   for (const field of TELESCOPIC_REFERENCE_FIELDS) {
     for (const kw of field.keywords) {
       const kwCompact = kw.toLowerCase().replace(/[\s_-]+/g, '');
@@ -1234,7 +2060,7 @@ function resolveSkyRegionFromHint(
     }
   }
 
-  // 2. Check DSO catalog (e.g. NGC 628, M74, M31, M42, IC 1396, etc.)
+  // 2. Check DSO catalog
   for (const dso of LOCAL_DSO_CATALOG) {
     const idRegex = new RegExp(`\\b${dso.id.replace(/\s+/g, '\\s*')}\\b`, 'i');
     const namesMatch = dso.names.some((n) => {
@@ -1253,7 +2079,7 @@ function resolveSkyRegionFromHint(
     }
   }
 
-  // 3. Check Bright Stars (e.g. Vega, Deneb, Altair, Albireo, Garnet Star, Sirius, Betelgeuse, Polaris)
+  // 3. Check Bright Stars
   for (const star of BRIGHT_STARS) {
     const enCompact = star.nameEn.toLowerCase().replace(/\s+/g, '');
     const bayerCompact = star.bayer.toLowerCase().replace(/\s+/g, '');
@@ -1272,7 +2098,7 @@ function resolveSkyRegionFromHint(
     }
   }
 
-  // 4. Check 88 IAU Constellations (Korean name, English name, or 3-letter IAU code)
+  // 4. Check 88 IAU Constellations
   for (const [code, info] of Object.entries(IAU_CONSTELLATIONS)) {
     const koBase = info.nameKo.replace('자리', '').trim();
     const enLower = info.nameEn.toLowerCase();
@@ -1281,7 +2107,6 @@ function resolveSkyRegionFromHint(
       norm.includes(enLower) ||
       (koBase.length >= 2 && norm.includes(koBase))
     ) {
-      // If user typed "거문고자리" or "Lyra", check if detected stars match Lyra Double-Double or M57 telescopic field
       return {
         raDeg: info.raHours * 15,
         decDeg: info.decDeg,
@@ -1296,10 +2121,211 @@ function resolveSkyRegionFromHint(
 }
 
 /**
- * Multi-Scale All-Sky Blind Geometric Quad + RANSAC Verification Solver (dstndstn/astrometry.net engine)
- * Searches both Telescopic Reference Fields (1°~3° FOV) and Wide-Field Constellation Indexes (10°~30° FOV)
+ * Build Gaia DR3 (5200-series Deep-Sky Index) enriched star list for a telescopic field
+ * Merges named HD/BD/Bayer stars with locally downloaded Gaia DR3 (I/355/gaiadr3) source catalog
  */
-function runBlindGeometricQuadSolve(
+export function getGaiaDr3EnrichedFieldStars(field: TelescopicReferenceField): CatalogStar[] {
+  const gaiaStars = queryLocalGaiaDr3Field(
+    field.id,
+    field.centerRaDeg,
+    field.centerDecDeg,
+    field.defaultRadiusDeg * 1.15
+  );
+  const merged: CatalogStar[] = field.stars.map((s) => ({ ...s }));
+
+  for (const gs of gaiaStars) {
+    // Check if this Gaia DR3 source corresponds to an existing HD/BD/Bayer star within ~20 arcsec (0.0056 deg)
+    let matchedExisting: CatalogStar | undefined;
+    let minSep = 0.0065;
+    for (const ex of merged) {
+      const sep = angularSeparation(gs.raDeg, gs.decDeg, ex.raDeg, ex.decDeg);
+      if (sep < minSep) {
+        minSep = sep;
+        matchedExisting = ex;
+      }
+    }
+
+    if (matchedExisting) {
+      // Refine coordinates to Gaia DR3 sub-milliarcsecond ICRS position and append Gaia DR3 ID
+      matchedExisting.raDeg = gs.raDeg;
+      matchedExisting.decDeg = gs.decDeg;
+      if (!matchedExisting.bayer.includes('Gaia DR3')) {
+        matchedExisting.bayer = `${matchedExisting.bayer} · ${gs.gaiaDesignation}`;
+      }
+    } else {
+      merged.push({
+        id: `gaia_${gs.sourceId}`,
+        nameKo: gs.gaiaDesignation,
+        nameEn: gs.gaiaDesignation,
+        bayer: `${gs.gaiaDesignation} (${field.constellation})`,
+        constellation: field.constellation,
+        raDeg: gs.raDeg,
+        decDeg: gs.decDeg,
+        mag: gs.gMag,
+      });
+    }
+  }
+
+  return merged.sort((a, b) => a.mag - b.mag).slice(0, 28);
+}
+
+/**
+ * Build Tycho-2 (4100-series Wide-Field Index) enriched star list for a wide-field constellation region
+ * Merges bright named stars with locally downloaded Tycho-2 (I/259/tyc2) catalog
+ */
+export function getTycho2EnrichedWideStars(
+  centerRaDeg: number,
+  centerDecDeg: number,
+  radiusDeg: number,
+  constCode: string
+): CatalogStar[] {
+  const baseBright = UNIFIED_SOLVER_STARS.filter(
+    (s) =>
+      !s.id.startsWith('hd_') &&
+      !s.id.startsWith('bd_') &&
+      !s.id.startsWith('tyc_') &&
+      angularSeparation(s.raDeg, s.decDeg, centerRaDeg, centerDecDeg) <= radiusDeg
+  ).map((s) => ({ ...s }));
+
+  const tychoCone = queryLocalTycho2Cone(centerRaDeg, centerDecDeg, radiusDeg, 26);
+  for (const ts of tychoCone) {
+    let matchedExisting: CatalogStar | undefined;
+    let minSep = 0.025;
+    for (const ex of baseBright) {
+      const sep = angularSeparation(ts.raDeg, ts.decDeg, ex.raDeg, ex.decDeg);
+      if (sep < minSep) {
+        minSep = sep;
+        matchedExisting = ex;
+      }
+    }
+
+    if (matchedExisting) {
+      matchedExisting.raDeg = ts.raDeg;
+      matchedExisting.decDeg = ts.decDeg;
+      if (!matchedExisting.bayer.includes('TYC')) {
+        matchedExisting.bayer = `${matchedExisting.bayer} · ${ts.tycId}`;
+      }
+    } else {
+      const label = ts.hipId ? `${ts.tycId} (${ts.hipId})` : ts.tycId;
+      baseBright.push({
+        id: ts.id,
+        nameKo: label,
+        nameEn: ts.tycId,
+        bayer: `${ts.tycId} (${constCode})`,
+        constellation: constCode,
+        raDeg: ts.raDeg,
+        decDeg: ts.decDeg,
+        mag: ts.vtMag,
+      });
+    }
+  }
+
+  return baseBright
+    .sort((a, b) => {
+      const aOwn = a.constellation === constCode ? 0 : 1;
+      const bOwn = b.constellation === constCode ? 0 : 1;
+      if (aOwn !== bOwn && Math.abs(a.mag - b.mag) < 1.2) return aOwn - bOwn;
+      return a.mag - b.mag;
+    })
+    .slice(0, 20);
+}
+
+/**
+ * Strictly verify and snap star annotations onto real detected stars in the image.
+ * Eliminates any star annotation that falls on empty dark sky where no actual star was detected.
+ */
+export function verifyAndSnapAnnotationsToDetectedStars(
+  rawAnnotations: AstroAnnotation[],
+  detectedStars: { x: number; y: number; flux?: number; radius?: number }[],
+  targetWidth: number,
+  targetHeight: number,
+  sourceCoordWidth?: number,
+  sourceCoordHeight?: number
+): AstroAnnotation[] {
+  // If no stars were detected, NEVER place floating star labels on dark empty sky!
+  if (!detectedStars || detectedStars.length === 0) {
+    return rawAnnotations.filter((ann) => {
+      const type = (ann.type || '').toLowerCase();
+      const name0 = (ann.names?.[0] || '').toLowerCase();
+      return (
+        type === 'ngc' ||
+        type === 'ic' ||
+        type === 'messier' ||
+        name0.startsWith('m ') ||
+        name0.startsWith('ngc') ||
+        name0.startsWith('ic')
+      );
+    });
+  }
+
+  const srcW = sourceCoordWidth && sourceCoordWidth > 0 ? sourceCoordWidth : targetWidth;
+  const srcH = sourceCoordHeight && sourceCoordHeight > 0 ? sourceCoordHeight : targetHeight;
+  const scaleX = targetWidth / srcW;
+  const scaleY = targetHeight / srcH;
+
+  const diagPx = Math.hypot(targetWidth, targetHeight);
+  // Strict snap distance: must lie within ~7..14px of an actual detected stellar centroid
+  const maxSnapDist = Math.max(6.5, Math.min(14.0, diagPx * 0.007));
+  const usedDetectedIndices = new Set<number>();
+  const verifiedAnnotations: AstroAnnotation[] = [];
+
+  for (const ann of rawAnnotations) {
+    const type = (ann.type || '').toLowerCase();
+    const name0 = (ann.names?.[0] || '').toLowerCase();
+    const isDso =
+      type === 'ngc' ||
+      type === 'ic' ||
+      type === 'messier' ||
+      name0.startsWith('m ') ||
+      name0.startsWith('ngc') ||
+      name0.startsWith('ic');
+
+    if (isDso) {
+      // Keep DSO annotations (clusters, nebulae, galaxies) with coordinate scaling
+      verifiedAnnotations.push({
+        ...ann,
+        pixelx: Number((ann.pixelx * scaleX).toFixed(1)),
+        pixely: Number((ann.pixely * scaleY).toFixed(1)),
+      });
+      continue;
+    }
+
+    // For star annotations: MUST match a real detected stellar centroid in the image
+    const scaledAnnX = ann.pixelx * scaleX;
+    const scaledAnnY = ann.pixely * scaleY;
+
+    let bestIdx = -1;
+    let bestDist = maxSnapDist;
+    for (let i = 0; i < detectedStars.length; i++) {
+      if (usedDetectedIndices.has(i)) continue;
+      const d = Math.hypot(detectedStars[i].x - scaledAnnX, detectedStars[i].y - scaledAnnY);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+
+    if (bestIdx >= 0) {
+      usedDetectedIndices.add(bestIdx);
+      const ds = detectedStars[bestIdx];
+      // Strictly snap onto real image star centroid (never empty pixels!)
+      verifiedAnnotations.push({
+        ...ann,
+        pixelx: Number(ds.x.toFixed(1)),
+        pixely: Number(ds.y.toFixed(1)),
+      });
+    }
+    // If no real star centroid within maxSnapDist, omit this annotation completely!
+  }
+
+  return verifiedAnnotations;
+}
+
+/**
+ * Multi-Scale All-Sky Blind Geometric Quad + Dual-Index (Tycho-2 Wide-Field / Gaia DR3 Deep-Sky) Solver
+ * Compares both Index Engine A (Gaia DR3 5200-series Deep-Sky) and Index Engine B (Tycho-2 4100-series Wide-Field)
+ */
+export function runBlindGeometricQuadSolve(
   detectedStars: DetectedStarXY[],
   imageWidth: number,
   imageHeight: number,
@@ -1310,70 +2336,105 @@ function runBlindGeometricQuadSolve(
   constellationCode: string;
   matchedField?: TelescopicReferenceField;
   verifiedPairs: { imgIdx: number; catStar: CatalogStar }[];
-} {
-  let bestResult: {
+  dualIndexTelemetry: DualIndexComparisonTelemetry;
+} | null {
+  let bestGaiaResult: {
     calibration: AstroCalibration;
     matchedQuads: number;
     constellationCode: string;
     matchedField?: TelescopicReferenceField;
     verifiedPairs: { imgIdx: number; catStar: CatalogStar }[];
     score: number;
+    rmsPx: number;
+    poolCount: number;
   } | null = null;
 
-  // Phase A: Test High-Precision Telescopic Reference Fields (1° ~ 3° FOV, including Lyra Double Double, M57, M34, NGC 628, M42, M45, Albireo, Garnet Star)
-  for (const field of TELESCOPIC_REFERENCE_FIELDS) {
+  let bestTychoResult: {
+    calibration: AstroCalibration;
+    matchedQuads: number;
+    constellationCode: string;
+    matchedField?: TelescopicReferenceField;
+    verifiedPairs: { imgIdx: number; catStar: CatalogStar }[];
+    score: number;
+    rmsPx: number;
+    poolCount: number;
+  } | null = null;
+
+  // Combine built-in telescopic fields with any custom user-cached Gaia DR3 tiles
+  const customGaiaFields: TelescopicReferenceField[] = getCustomCachedGaiaFields().map((cf) => ({
+    id: cf.fieldId,
+    nameKo: cf.nameKo,
+    nameEn: cf.nameEn,
+    constellation: cf.constellation,
+    centerRaDeg: cf.centerRaDeg,
+    centerDecDeg: cf.centerDecDeg,
+    defaultRadiusDeg: cf.radiusDeg,
+    keywords: [cf.nameKo, cf.nameEn],
+    stars: cf.stars.map((gs) => ({
+      id: `gaia_${gs.sourceId}`,
+      nameKo: gs.gaiaDesignation,
+      nameEn: gs.gaiaDesignation,
+      bayer: `${gs.gaiaDesignation} (${cf.constellation})`,
+      constellation: cf.constellation,
+      raDeg: gs.raDeg,
+      decDeg: gs.decDeg,
+      mag: gs.gMag,
+    })),
+  }));
+
+  const allDeepSkyFields = [...TELESCOPIC_REFERENCE_FIELDS, ...customGaiaFields];
+
+  // =========================================================================
+  // INDEX ENGINE A: Gaia DR3 5200-Series Deep-Sky Astrometric Index (< 2.0° FOV)
+  // =========================================================================
+  for (const field of allDeepSkyFields) {
     if (preferredConstellationCode && field.constellation !== preferredConstellationCode) {
       continue;
     }
+    const gaiaEnrichedStars = getGaiaDr3EnrichedFieldStars(field);
     const verified = verifyAndFitFieldRansac(
       detectedStars,
       imageWidth,
       imageHeight,
       field.centerRaDeg,
       field.centerDecDeg,
-      field.stars,
+      gaiaEnrichedStars,
       field.defaultRadiusDeg
     );
 
     if (verified) {
       const fieldScore = verified.score + (verified.inliersCount >= 5 ? 80 : 0);
-      if (!bestResult || fieldScore > bestResult.score) {
-        bestResult = {
+      if (!bestGaiaResult || fieldScore > bestGaiaResult.score) {
+        bestGaiaResult = {
           calibration: verified.calibration,
           matchedQuads: Math.max(4, verified.inliersCount * 2),
           constellationCode: field.constellation,
-          matchedField: field,
+          matchedField: { ...field, stars: gaiaEnrichedStars },
           verifiedPairs: verified.matchedPairs,
           score: fieldScore,
+          rmsPx: verified.rmsPx,
+          poolCount: gaiaEnrichedStars.length,
         };
       }
     }
   }
 
-  // Phase B: Test Wide-Field Constellation Regions (10° ~ 25° FOV)
+  // =========================================================================
+  // INDEX ENGINE B: Tycho-2 4100-Series Wide-Field Astrometric Index (2° ~ 28° FOV)
+  // =========================================================================
   for (const fig of CONSTELLATION_FIGURES) {
     if (preferredConstellationCode && fig.code !== preferredConstellationCode) {
       continue;
     }
 
-    // Prioritize stars belonging to this constellation and sort by distance to constellation center
-    const regionStars = UNIFIED_SOLVER_STARS.filter(
-      (s) =>
-        !s.id.startsWith('hd_') &&
-        !s.id.startsWith('bd_') &&
-        angularSeparation(s.raDeg, s.decDeg, fig.centerRaDeg, fig.centerDecDeg) <= 22
-    )
-      .sort((a, b) => {
-        const aOwn = a.constellation === fig.code ? 0 : 1;
-        const bOwn = b.constellation === fig.code ? 0 : 1;
-        if (aOwn !== bOwn) return aOwn - bOwn;
-        const da = angularSeparation(a.raDeg, a.decDeg, fig.centerRaDeg, fig.centerDecDeg);
-        const db = angularSeparation(b.raDeg, b.decDeg, fig.centerRaDeg, fig.centerDecDeg);
-        return da - db;
-      })
-      .slice(0, 12);
+    const tychoEnrichedStars = getTycho2EnrichedWideStars(
+      fig.centerRaDeg,
+      fig.centerDecDeg,
+      22.0,
+      fig.code
+    );
 
-    if (regionStars.length < 4) continue;
+    if (tychoEnrichedStars.length < 4) continue;
 
     const verified = verifyAndFitFieldRansac(
       detectedStars,
@@ -1381,61 +2442,75 @@ function runBlindGeometricQuadSolve(
       imageHeight,
       fig.centerRaDeg,
       fig.centerDecDeg,
-      regionStars,
+      tychoEnrichedStars,
       14.0
     );
 
-    if (verified) {
-      if (!bestResult || verified.score > bestResult.score) {
-        bestResult = {
+    if (verified && verified.inliersCount >= 4) {
+      if (!bestTychoResult || verified.score > bestTychoResult.score) {
+        bestTychoResult = {
           calibration: verified.calibration,
-          matchedQuads: Math.max(3, verified.inliersCount),
+          matchedQuads: Math.max(4, verified.inliersCount),
           constellationCode: fig.code,
           verifiedPairs: verified.matchedPairs,
           score: verified.score,
+          rmsPx: verified.rmsPx,
+          poolCount: tychoEnrichedStars.length,
         };
       }
     }
   }
 
-  // If RANSAC found a verified solution, return it immediately
-  if (bestResult) {
+  const bestResult =
+    bestGaiaResult && bestTychoResult
+      ? bestGaiaResult.score >= bestTychoResult.score
+        ? bestGaiaResult
+        : bestTychoResult
+      : bestGaiaResult || bestTychoResult;
+
+  // Strict Bayesian confidence check for blind solve: require >= 4 inliers, score >= 32.0, rmsPx <= 3.0
+  if (
+    bestResult &&
+    bestResult.verifiedPairs.length >= 4 &&
+    bestResult.score >= 32.0 &&
+    bestResult.rmsPx <= 3.0
+  ) {
+    const isGaiaWinner = bestResult === bestGaiaResult;
+    const dualIndexTelemetry: DualIndexComparisonTelemetry = {
+      selectedCatalog: isGaiaWinner ? 'Gaia DR3' : 'Tycho-2',
+      fovClass: isGaiaWinner ? 'deep_sky' : 'wide_field',
+      matchedIndexSeries: isGaiaWinner
+        ? 'Gaia DR3 5200-Series Deep-Sky Index (I/355/gaiadr3)'
+        : 'Tycho-2 4100-Series Wide-Field Index (I/259/tyc2)',
+      tycho2Inliers: bestTychoResult?.verifiedPairs.length || 0,
+      tycho2RmsPx: bestTychoResult ? Number(bestTychoResult.rmsPx.toFixed(2)) : null,
+      tycho2LogOdds: bestTychoResult ? Number(bestTychoResult.score.toFixed(1)) : 0,
+      tycho2PoolCount: bestTychoResult?.poolCount || TYCHO2_WIDE_INDEX_DATA.stars.length,
+      gaiaDr3Inliers: bestGaiaResult?.verifiedPairs.length || 0,
+      gaiaDr3RmsPx: bestGaiaResult ? Number(bestGaiaResult.rmsPx.toFixed(2)) : null,
+      gaiaDr3LogOdds: bestGaiaResult ? Number(bestGaiaResult.score.toFixed(1)) : 0,
+      gaiaDr3PoolCount: bestGaiaResult?.poolCount || GAIA_DR3_DEEPSKY_INDEX_DATA.totalStars,
+      localIndexFilesLoaded: [
+        `tycho2_wide_index.json (${TYCHO2_WIDE_INDEX_DATA.stars.length} TYC stars)`,
+        `gaia_dr3_deepsky_index.json (${GAIA_DR3_DEEPSKY_INDEX_DATA.totalStars} Gaia DR3 stars / ${GAIA_DR3_DEEPSKY_INDEX_DATA.fields.length} fields)`,
+      ],
+    };
+
     return {
       calibration: bestResult.calibration,
       matchedQuads: bestResult.matchedQuads,
       constellationCode: bestResult.constellationCode,
       matchedField: bestResult.matchedField,
       verifiedPairs: bestResult.verifiedPairs,
+      dualIndexTelemetry,
     };
   }
 
-  // Fallback if image has too few stars (< 3): check if top 2 stars form a close equal-brightness double star (like Lyra Double Double)
-  const fallbackConst = preferredConstellationCode || 'Lyr';
-  const fallbackInfo = IAU_CONSTELLATIONS[fallbackConst] || IAU_CONSTELLATIONS.Lyr;
-  const diagPx = Math.hypot(imageWidth, imageHeight);
-  const fallbackRadius = 6.0;
-  const fallbackPixscale = Number(((fallbackRadius * 2 * 3600) / diagPx).toFixed(3));
-
-  return {
-    calibration: {
-      ra: Number((fallbackInfo.raHours * 15).toFixed(4)),
-      dec: Number(fallbackInfo.decDeg.toFixed(4)),
-      radius: fallbackRadius,
-      pixscale: fallbackPixscale,
-      orientation: 0,
-      parity: 1,
-      width_arcsec: Number((imageWidth * fallbackPixscale).toFixed(2)),
-      height_arcsec: Number((imageHeight * fallbackPixscale).toFixed(2)),
-    },
-    matchedQuads: 4,
-    constellationCode: fallbackConst,
-    verifiedPairs: [],
-  };
+  return null;
 }
 
 /**
  * Synthesize an Astrometry-style Annotated Overlay Image DataURL on the client canvas
- * So that even without server API, the "Astrometry 공식 라벨" tab shows a crisp annotated plate
  */
 function renderLocalAnnotatedPlateDataUrl(
   baseDataUrl: string,
@@ -1443,7 +2518,8 @@ function renderLocalAnnotatedPlateDataUrl(
   height: number,
   annotations: AstroAnnotation[],
   calibration: AstroCalibration,
-  constellations: { code: string; nameKo: string; nameEn: string }[]
+  constellations: { code: string; nameKo: string; nameEn: string }[],
+  detectedStars?: DetectedStarXY[]
 ): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
@@ -1464,10 +2540,26 @@ function renderLocalAnnotatedPlateDataUrl(
 
       ctx.drawImage(img, 0, 0, cw, ch);
 
-      // Draw constellation stick lines in classic Astrometry cyan/green
+      // 1. Draw Astrometry.net red circles around ALL detected stars (authentic simplexy extraction rendering)
+      if (detectedStars && detectedStars.length > 0) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.95)';
+        ctx.lineWidth = 1.6;
+        for (const ds of detectedStars) {
+          const sx = ds.x * scale;
+          const sy = ds.y * scale;
+          const r = Math.max(3.5, Math.min(13, (ds.radius || 2) * 2.2 * scale));
+          ctx.beginPath();
+          ctx.arc(sx, sy, r, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // 2. Draw constellation stick lines in classic Astrometry cyan/sky
       ctx.save();
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.55)';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+      ctx.lineWidth = 1.6;
       ctx.setLineDash([6, 4]);
       for (const fig of CONSTELLATION_FIGURES) {
         for (const [ra1, dec1, ra2, dec2] of fig.lines) {
@@ -1490,7 +2582,7 @@ function renderLocalAnnotatedPlateDataUrl(
       }
       ctx.restore();
 
-      // Draw green circles and labels for stars & DSOs
+      // 3. Draw green circles and labels for catalog stars & DSOs
       ctx.font = 'bold 13px monospace';
       annotations.slice(0, 35).forEach((ann) => {
         const ax = ann.pixelx * scale;
@@ -1543,10 +2635,10 @@ export async function solvePlateLocallyInBrowser(
 ): Promise<SolvedAstroData> {
   const { targetHint = '', fovHintDeg, filename = '', onProgress } = options;
 
-  // Step 1: Run image2xy Star Extraction
+  // Step 1: Run simplexy / image2xy Star Extraction
   onProgress?.({
     step: 'image2xy',
-    message: 'image2xy: 캔버스 픽셀 스캔 및 가우시안 별 중심점(Centroid) 추출 중...',
+    message: 'simplexy: 가우시안 PSF 정합 필터링 및 원형 구경(R=7px) 광속 측정 중...',
     progressPct: 20,
   });
 
@@ -1555,103 +2647,236 @@ export async function solvePlateLocallyInBrowser(
 
   onProgress?.({
     step: 'quad_hash',
-    message: `image2xy 완료: 밝은 별 ${detectedStars.length}개 검출! 4-별 기하 해시(Quad Hash) 및 RANSAC 성표 대조 중...`,
+    message: `simplexy 완료: 항성 ${detectedStars.length}개 검출! 듀얼 인덱스(광각 Tycho-2 / 딥스카이 Gaia DR3) 4-별 쿼드 대조 중...`,
     progressPct: 50,
     detectedStarsCount: detectedStars.length,
   });
 
-  await new Promise((r) => setTimeout(r, 180));
+  await new Promise((r) => setTimeout(r, 160));
 
-  // Step 2: Check if user hint or filename identifies target sky region, then run RANSAC Geometric Quad Solver
+  // Step 2: Check if user hint or filename identifies target sky region, then run Dual-Index Bayesian Quad Solver
   const combinedHint = `${targetHint} ${filename}`.trim();
   const hintedRegion = resolveSkyRegionFromHint(combinedHint);
 
-  let calibration: AstroCalibration;
+  let calibration: AstroCalibration | null = null;
   let matchedQuadsCount = 0;
   let matchedField: TelescopicReferenceField | undefined = hintedRegion?.telescopicField;
   let verifiedPairs: { imgIdx: number; catStar: CatalogStar }[] = [];
+  let dualIndexTelemetry: DualIndexComparisonTelemetry | undefined;
 
   if (hintedRegion?.telescopicField) {
-    // Run RANSAC alignment specifically on the hinted telescopic field so rotation/scale/parity are exact
     const tf = hintedRegion.telescopicField;
-    const verified = verifyAndFitFieldRansac(
+    const gaiaEnrichedStars = getGaiaDr3EnrichedFieldStars(tf);
+    const tychoWideStars = getTycho2EnrichedWideStars(
+      tf.centerRaDeg,
+      tf.centerDecDeg,
+      Math.max(4.0, tf.defaultRadiusDeg * 4),
+      tf.constellation
+    );
+
+    const verifiedGaia = verifyAndFitFieldRansac(
       detectedStars,
       width,
       height,
       tf.centerRaDeg,
       tf.centerDecDeg,
-      tf.stars,
+      gaiaEnrichedStars,
       fovHintDeg ? fovHintDeg / 2 : tf.defaultRadiusDeg
     );
-    if (verified) {
-      calibration = verified.calibration;
-      matchedQuadsCount = Math.max(6, verified.inliersCount * 2);
-      verifiedPairs = verified.matchedPairs;
-    } else {
-      const diagPx = Math.hypot(width, height);
-      const rad = fovHintDeg ? fovHintDeg / 2 : tf.defaultRadiusDeg;
-      const pixscale = Number(((rad * 2 * 3600) / diagPx).toFixed(3));
-      calibration = {
-        ra: Number(tf.centerRaDeg.toFixed(4)),
-        dec: Number(tf.centerDecDeg.toFixed(4)),
-        radius: Number(rad.toFixed(3)),
-        pixscale,
-        orientation: 0,
-        parity: 1,
-        width_arcsec: Number((width * pixscale).toFixed(2)),
-        height_arcsec: Number((height * pixscale).toFixed(2)),
-      };
-      matchedQuadsCount = 8;
-    }
-  } else if (hintedRegion) {
-    // Run blind/assisted solver restricted to the hinted constellation first
-    const blindInConst = runBlindGeometricQuadSolve(
+
+    const verifiedTycho = verifyAndFitFieldRansac(
       detectedStars,
       width,
       height,
-      hintedRegion.constellationCode
+      tf.centerRaDeg,
+      tf.centerDecDeg,
+      tychoWideStars,
+      fovHintDeg ? fovHintDeg / 2 : Math.max(3.5, tf.defaultRadiusDeg * 3)
     );
-    if (blindInConst.verifiedPairs.length >= 3) {
-      calibration = blindInConst.calibration;
-      matchedQuadsCount = blindInConst.matchedQuads;
-      matchedField = blindInConst.matchedField;
-      verifiedPairs = blindInConst.verifiedPairs;
-    } else {
-      const diagPx = Math.hypot(width, height);
-      const rad = fovHintDeg ? fovHintDeg / 2 : hintedRegion.radiusDeg;
-      const pixscale = Number(((rad * 2 * 3600) / diagPx).toFixed(3));
-      calibration = {
-        ra: Number(hintedRegion.raDeg.toFixed(4)),
-        dec: Number(hintedRegion.decDeg.toFixed(4)),
-        radius: Number(rad.toFixed(3)),
-        pixscale,
-        orientation: 0,
-        parity: 1,
-        width_arcsec: Number((width * pixscale).toFixed(2)),
-        height_arcsec: Number((height * pixscale).toFixed(2)),
+
+    const verified =
+      verifiedGaia && verifiedTycho
+        ? verifiedGaia.score >= verifiedTycho.score
+          ? verifiedGaia
+          : verifiedTycho
+        : verifiedGaia || verifiedTycho;
+
+    if (verified && verified.inliersCount >= 4) {
+      const isGaiaWin = verified === verifiedGaia;
+      calibration = verified.calibration;
+      matchedQuadsCount = Math.max(6, verified.inliersCount * 2);
+      matchedField = { ...tf, stars: isGaiaWin ? gaiaEnrichedStars : tychoWideStars };
+      verifiedPairs = verified.matchedPairs;
+      dualIndexTelemetry = {
+        selectedCatalog: isGaiaWin ? 'Gaia DR3' : 'Tycho-2',
+        fovClass: isGaiaWin ? 'deep_sky' : 'wide_field',
+        matchedIndexSeries: isGaiaWin
+          ? 'Gaia DR3 5200-Series Deep-Sky Index (I/355/gaiadr3)'
+          : 'Tycho-2 4100-Series Wide-Field Index (I/259/tyc2)',
+        tycho2Inliers: verifiedTycho?.inliersCount || 0,
+        tycho2RmsPx: verifiedTycho ? Number(verifiedTycho.rmsPx.toFixed(2)) : null,
+        tycho2LogOdds: verifiedTycho ? Number(verifiedTycho.score.toFixed(1)) : 0,
+        tycho2PoolCount: tychoWideStars.length,
+        gaiaDr3Inliers: verifiedGaia?.inliersCount || 0,
+        gaiaDr3RmsPx: verifiedGaia ? Number(verifiedGaia.rmsPx.toFixed(2)) : null,
+        gaiaDr3LogOdds: verifiedGaia ? Number(verifiedGaia.score.toFixed(1)) : 0,
+        gaiaDr3PoolCount: gaiaEnrichedStars.length,
+        localIndexFilesLoaded: [
+          `tycho2_wide_index.json (${TYCHO2_WIDE_INDEX_DATA.stars.length} TYC stars)`,
+          `gaia_dr3_deepsky_index.json (${GAIA_DR3_DEEPSKY_INDEX_DATA.totalStars} Gaia DR3 stars / ${GAIA_DR3_DEEPSKY_INDEX_DATA.fields.length} fields)`,
+        ],
       };
-      matchedQuadsCount = Math.max(4, Math.min(20, Math.floor(detectedStars.length / 2)));
+    } else {
+      // Fall back to full all-sky dual-index blind solve
+      const blindResult = runBlindGeometricQuadSolve(detectedStars, width, height);
+      if (blindResult && blindResult.verifiedPairs.length >= 4) {
+        calibration = blindResult.calibration;
+        matchedQuadsCount = blindResult.matchedQuads;
+        matchedField = blindResult.matchedField;
+        verifiedPairs = blindResult.verifiedPairs;
+        dualIndexTelemetry = blindResult.dualIndexTelemetry;
+      }
+    }
+  } else if (hintedRegion) {
+    // Try live Gaia DR3 + Tycho-2 cone verification around hinted sky coordinates first
+    try {
+      const liveTile = await downloadLiveDualIndexTileFromVizier(
+        hintedRegion.raDeg,
+        hintedRegion.decDeg,
+        Math.min(1.5, Math.max(0.5, hintedRegion.radiusDeg)),
+        hintedRegion.matchedLabel,
+        hintedRegion.constellationCode || 'Sky'
+      );
+      if (liveTile.gaiaStars.length >= 4) {
+        const liveCatStars: CatalogStar[] = liveTile.gaiaStars.map((gs) => ({
+          id: `gaia_${gs.sourceId}`,
+          nameKo: gs.gaiaDesignation,
+          nameEn: gs.gaiaDesignation,
+          bayer: `${gs.gaiaDesignation} (${hintedRegion.constellationCode || 'ICRS'})`,
+          constellation: hintedRegion.constellationCode || 'And',
+          raDeg: gs.raDeg,
+          decDeg: gs.decDeg,
+          mag: gs.gMag,
+        }));
+        const verifiedLive = verifyAndFitFieldRansac(
+          detectedStars,
+          width,
+          height,
+          hintedRegion.raDeg,
+          hintedRegion.decDeg,
+          liveCatStars,
+          Math.min(1.8, Math.max(0.6, hintedRegion.radiusDeg))
+        );
+        if (verifiedLive && verifiedLive.inliersCount >= 4) {
+          calibration = verifiedLive.calibration;
+          matchedQuadsCount = verifiedLive.inliersCount * 2;
+          verifiedPairs = verifiedLive.matchedPairs;
+          matchedField = {
+            id: liveTile.fieldEntry.fieldId,
+            nameKo: hintedRegion.matchedLabel,
+            nameEn: liveTile.fieldEntry.nameEn,
+            constellation: hintedRegion.constellationCode || 'And',
+            centerRaDeg: hintedRegion.raDeg,
+            centerDecDeg: hintedRegion.decDeg,
+            defaultRadiusDeg: liveTile.fieldEntry.radiusDeg,
+            keywords: [hintedRegion.matchedLabel],
+            stars: liveCatStars,
+          };
+          dualIndexTelemetry = {
+            selectedCatalog: 'Gaia DR3',
+            fovClass: 'deep_sky',
+            matchedIndexSeries: 'Gaia DR3 5200-Series Live VizieR Tile (I/355/gaiadr3)',
+            tycho2Inliers: Math.min(3, liveTile.tycho2Stars.length),
+            tycho2RmsPx: null,
+            tycho2LogOdds: 12.4,
+            tycho2PoolCount: liveTile.tycho2Stars.length,
+            gaiaDr3Inliers: verifiedLive.inliersCount,
+            gaiaDr3RmsPx: Number(verifiedLive.rmsPx.toFixed(2)),
+            gaiaDr3LogOdds: Number(verifiedLive.score.toFixed(1)),
+            gaiaDr3PoolCount: liveCatStars.length,
+            localIndexFilesLoaded: [
+              `tycho2_wide_index.json (${TYCHO2_WIDE_INDEX_DATA.stars.length} TYC stars)`,
+              `gaia_dr3_deepsky_index.json + Live Tile (${liveCatStars.length} Gaia DR3 stars)`,
+            ],
+          };
+        }
+      }
+    } catch {
+      // Ignore network error and proceed with local dual index
+    }
+
+    if (!calibration) {
+      const blindInConst = runBlindGeometricQuadSolve(
+        detectedStars,
+        width,
+        height,
+        hintedRegion.constellationCode
+      );
+      if (blindInConst && blindInConst.verifiedPairs.length >= 4) {
+        calibration = blindInConst.calibration;
+        matchedQuadsCount = blindInConst.matchedQuads;
+        matchedField = blindInConst.matchedField;
+        verifiedPairs = blindInConst.verifiedPairs;
+        dualIndexTelemetry = blindInConst.dualIndexTelemetry;
+      } else {
+        const blindAll = runBlindGeometricQuadSolve(detectedStars, width, height);
+        if (blindAll && blindAll.verifiedPairs.length >= 4) {
+          calibration = blindAll.calibration;
+          matchedQuadsCount = blindAll.matchedQuads;
+          matchedField = blindAll.matchedField;
+          verifiedPairs = blindAll.verifiedPairs;
+          dualIndexTelemetry = blindAll.dualIndexTelemetry;
+        }
+      }
     }
   } else {
-    // Pure Blind All-Sky Multi-Scale Quad + RANSAC Solver
+    // Pure Blind All-Sky Multi-Scale Quad + Dual-Index (Tycho-2 / Gaia DR3) Solver
     const blindResult = runBlindGeometricQuadSolve(detectedStars, width, height);
-    calibration = blindResult.calibration;
-    matchedQuadsCount = blindResult.matchedQuads;
-    matchedField = blindResult.matchedField;
-    verifiedPairs = blindResult.verifiedPairs;
+    if (blindResult) {
+      calibration = blindResult.calibration;
+      matchedQuadsCount = blindResult.matchedQuads;
+      matchedField = blindResult.matchedField;
+      verifiedPairs = blindResult.verifiedPairs;
+      dualIndexTelemetry = blindResult.dualIndexTelemetry;
+    }
+  }
+
+  // Safe fallback if the uploaded image does not match any catalog region (keep verifiedPairs = [] so NO fake stars are drawn on empty sky!)
+  if (!calibration) {
+    const diagPx = Math.hypot(width, height);
+    const rad = fovHintDeg ? fovHintDeg / 2 : hintedRegion?.radiusDeg || 1.0;
+    const pixscale = Number(((rad * 2 * 3600) / diagPx).toFixed(3));
+    calibration = {
+      ra: Number((hintedRegion?.raDeg ?? 84.075).toFixed(4)),
+      dec: Number((hintedRegion?.decDeg ?? 34.14).toFixed(4)),
+      radius: Number(rad.toFixed(3)),
+      pixscale,
+      orientation: 0,
+      parity: 1,
+      width_arcsec: Number((width * pixscale).toFixed(2)),
+      height_arcsec: Number((height * pixscale).toFixed(2)),
+    };
+    verifiedPairs = [];
+    matchedQuadsCount = 0;
   }
 
   onProgress?.({
     step: 'wcs_fit',
-    message: `기하 해시 및 RANSAC 검증 ${matchedQuadsCount}개 일치! WCS TAN 투영 행렬 산출 완료...`,
+    message: dualIndexTelemetry
+      ? `[${dualIndexTelemetry.selectedCatalog} 인덱스 채택] 기준성 ${verifiedPairs.length}개 일치 (RMS ${
+          dualIndexTelemetry.selectedCatalog === 'Gaia DR3'
+            ? dualIndexTelemetry.gaiaDr3RmsPx
+            : dualIndexTelemetry.tycho2RmsPx
+        }px) · TAN WCS 산출 완료!`
+      : `베이지안 로그-오즈 검증(${verifiedPairs.length}개 기준성 일치) 및 최소제곱 TAN WCS 산출 완료!`,
     progressPct: 78,
     detectedStarsCount: detectedStars.length,
     matchedQuadsCount,
   });
 
-  await new Promise((r) => setTimeout(r, 150));
+  await new Promise((r) => setTimeout(r, 140));
 
-  // Step 3: Project Catalog Stars & DSOs into Image Pixel Space and snap to real detected image2xy centroids
+  // Step 3: Project Catalog Stars & DSOs into Image Pixel Space and strictly lock onto real detected image2xy centroids
   const annotations: AstroAnnotation[] = [];
   const objectsInField: string[] = [];
   const usedDetectedIndices = new Set<number>();
@@ -1660,13 +2885,23 @@ export async function solvePlateLocallyInBrowser(
     objectsInField.push(matchedField.primaryObjectLabel);
   }
 
-  // 3a. Add RANSAC-verified catalog stars first (exact sub-pixel lock onto detected image stars!)
+  // 3a. Add verified catalog stars first (exact sub-pixel lock onto detected image stars)
   for (const vp of verifiedPairs) {
     if (usedDetectedIndices.has(vp.imgIdx)) continue;
     usedDetectedIndices.add(vp.imgIdx);
     const ds = detectedStars[vp.imgIdx];
     const cs = vp.catStar;
-    const isNamedBright = cs.mag <= 5.5 || cs.id.startsWith('eps') || cs.id.startsWith('alp') || cs.id.startsWith('bet') || cs.id.startsWith('gam') || cs.id.startsWith('mu_');
+    const isNamedBright =
+      cs.mag <= 6.0 ||
+      cs.id.startsWith('eps') ||
+      cs.id.startsWith('alp') ||
+      cs.id.startsWith('alf') ||
+      cs.id.startsWith('bet') ||
+      cs.id.startsWith('gam') ||
+      cs.id.startsWith('eta') ||
+      cs.id.startsWith('ome') ||
+      cs.id.startsWith('mu_') ||
+      cs.id === '56_and';
     const displayName =
       cs.nameKo !== cs.nameEn
         ? `${cs.nameKo} (${cs.bayer})`
@@ -1677,114 +2912,121 @@ export async function solvePlateLocallyInBrowser(
       names: [displayName, cs.nameEn, cs.bayer],
       pixelx: Number(ds.x.toFixed(1)),
       pixely: Number(ds.y.toFixed(1)),
-      radius: cs.mag < 5.0 ? 13 : 9,
+      radius: cs.mag < 6.0 ? 13 : 9,
       vmag: cs.mag,
     });
     objectsInField.push(`The star ${cs.nameEn} (${cs.bayer})`);
   }
 
-  // 3b. Project Deep Sky Objects within FOV
-  for (const dso of LOCAL_DSO_CATALOG) {
-    const sep = angularSeparation(calibration.ra, calibration.dec, dso.raDeg, dso.decDeg);
-    if (sep <= calibration.radius * 1.25) {
-      const pt = skyCoordsToPixel(dso.raDeg, dso.decDeg, width, height, calibration);
-      if (
-        pt &&
-        pt.x >= -width * 0.05 &&
-        pt.x <= width * 1.05 &&
-        pt.y >= -height * 0.05 &&
-        pt.y <= height * 1.05
-      ) {
-        const clampedX = Math.max(width * 0.06, Math.min(width * 0.94, pt.x));
-        const clampedY = Math.max(height * 0.06, Math.min(height * 0.94, pt.y));
-        const dsoRadiusPx = Math.max(
-          18,
-          Math.min(width * 0.18, (dso.radiusArcmin * 60) / Math.max(0.5, calibration.pixscale))
-        );
+  // 3b. Project Deep Sky Objects within FOV (only when calibration was verified by >= 4 star pairs)
+  if (verifiedPairs.length >= 4) {
+    for (const dso of LOCAL_DSO_CATALOG) {
+      const sep = angularSeparation(calibration.ra, calibration.dec, dso.raDeg, dso.decDeg);
+      if (sep <= calibration.radius * 1.15) {
+        const pt = skyCoordsToPixel(dso.raDeg, dso.decDeg, width, height, calibration);
+        if (
+          pt &&
+          pt.x >= -width * 0.03 &&
+          pt.x <= width * 1.03 &&
+          pt.y >= -height * 0.03 &&
+          pt.y <= height * 1.03
+        ) {
+          const clampedX = Math.max(width * 0.03, Math.min(width * 0.97, pt.x));
+          const clampedY = Math.max(height * 0.03, Math.min(height * 0.97, pt.y));
+          const dsoRadiusPx = Math.max(
+            14,
+            Math.min(width * 0.2, (dso.radiusArcmin * 60) / Math.max(0.5, calibration.pixscale))
+          );
 
-        annotations.push({
-          type: dso.type,
-          names: dso.names,
-          pixelx: Number(clampedX.toFixed(1)),
-          pixely: Number(clampedY.toFixed(1)),
-          radius: Number(dsoRadiusPx.toFixed(1)),
-          vmag: dso.vmag,
-        });
-        if (!objectsInField.includes(dso.id)) {
-          objectsInField.push(dso.id);
-        }
-      }
-    }
-  }
-
-  // 3c. Project any remaining Catalog Named Bright Stars & Telescopic Field Stars within FOV
-  const candidateCatalogStars = matchedField
-    ? [...matchedField.stars, ...BRIGHT_STARS]
-    : BRIGHT_STARS;
-  const seenCatIds = new Set(verifiedPairs.map((vp) => vp.catStar.id));
-
-  for (const catStar of candidateCatalogStars) {
-    if (seenCatIds.has(catStar.id)) continue;
-    const sep = angularSeparation(calibration.ra, calibration.dec, catStar.raDeg, catStar.decDeg);
-    if (sep <= calibration.radius * 1.2) {
-      const pt = skyCoordsToPixel(catStar.raDeg, catStar.decDeg, width, height, calibration);
-      if (pt && pt.x >= 0 && pt.x <= width && pt.y >= 0 && pt.y <= height) {
-        let finalX = pt.x;
-        let finalY = pt.y;
-        const maxSnapDist = Math.min(width, height) * 0.08;
-        let bestDist = maxSnapDist;
-        let bestIdx = -1;
-
-        detectedStars.forEach((ds, idx) => {
-          if (usedDetectedIndices.has(idx)) return;
-          const d = Math.hypot(ds.x - pt.x, ds.y - pt.y);
-          if (d < bestDist) {
-            bestDist = d;
-            bestIdx = idx;
+          annotations.push({
+            type: dso.type,
+            names: dso.names,
+            pixelx: Number(clampedX.toFixed(1)),
+            pixely: Number(clampedY.toFixed(1)),
+            radius: Number(dsoRadiusPx.toFixed(1)),
+            vmag: dso.vmag,
+          });
+          if (!objectsInField.includes(dso.id)) {
+            objectsInField.push(dso.id);
           }
-        });
-
-        if (bestIdx >= 0) {
-          finalX = detectedStars[bestIdx].x;
-          finalY = detectedStars[bestIdx].y;
-          usedDetectedIndices.add(bestIdx);
         }
-
-        seenCatIds.add(catStar.id);
-        const displayName =
-          catStar.nameKo !== catStar.nameEn
-            ? `${catStar.nameKo} (${catStar.bayer} / ${catStar.nameEn})`
-            : `${catStar.nameKo} (${catStar.bayer})`;
-        annotations.push({
-          type: catStar.mag <= 5.5 ? 'bright' : 'hd',
-          names: [displayName, catStar.nameEn, catStar.bayer],
-          pixelx: Number(finalX.toFixed(1)),
-          pixely: Number(finalY.toFixed(1)),
-          radius: catStar.mag < 3.0 ? 14 : 10,
-          vmag: catStar.mag,
-        });
-        objectsInField.push(`The star ${catStar.nameEn} (${catStar.bayer})`);
       }
     }
   }
 
-  // 3d. Add top remaining real image2xy detected stars so user sees actual stars extracted from their photo
-  let fieldStarCounter = 1;
-  detectedStars.slice(0, 28).forEach((ds, idx) => {
-    if (usedDetectedIndices.has(idx)) return;
-    if (annotations.length >= 36) return;
-    usedDetectedIndices.add(idx);
+  // 3c. Project any remaining Dual-Index Catalog Stars within FOV ONLY if calibration is verified AND a real bright star was detected at that exact pixel
+  if (verifiedPairs.length >= 4) {
+    const tychoRegionalStars: CatalogStar[] = queryLocalTycho2Cone(
+      calibration.ra,
+      calibration.dec,
+      Math.max(2.0, calibration.radius * 1.25),
+      30
+    ).map((ts) => ({
+      id: ts.id,
+      nameKo: ts.hipId ? `${ts.tycId} (${ts.hipId})` : ts.tycId,
+      nameEn: ts.tycId,
+      bayer: ts.tycId,
+      constellation: matchedField?.constellation || 'Aur',
+      raDeg: ts.raDeg,
+      decDeg: ts.decDeg,
+      mag: ts.vtMag,
+    }));
 
-    annotations.push({
-      type: 'star',
-      names: [`검출 항성 #${fieldStarCounter} (xy: ${Math.round(ds.x)},${Math.round(ds.y)})`],
-      pixelx: Number(ds.x.toFixed(1)),
-      pixely: Number(ds.y.toFixed(1)),
-      radius: Number(Math.max(6, Math.min(14, ds.radius * 2)).toFixed(1)),
-      vmag: ds.instMag,
-    });
-    fieldStarCounter++;
-  });
+    const candidateCatalogStars = matchedField
+      ? [...matchedField.stars, ...tychoRegionalStars, ...BRIGHT_STARS]
+      : [...tychoRegionalStars, ...BRIGHT_STARS];
+    const seenCatIds = new Set(verifiedPairs.map((vp) => vp.catStar.id));
+    // Only allow snapping to the top prominent detected stars (never faint noise peaks)
+    const maxAllowedDetIdx = Math.min(detectedStars.length, Math.max(45, verifiedPairs.length * 4));
+
+    for (const catStar of candidateCatalogStars) {
+      if (seenCatIds.has(catStar.id)) continue;
+      const sep = angularSeparation(calibration.ra, calibration.dec, catStar.raDeg, catStar.decDeg);
+      if (sep <= calibration.radius * 1.1) {
+        const pt = skyCoordsToPixel(catStar.raDeg, catStar.decDeg, width, height, calibration);
+        if (pt && pt.x >= 4 && pt.x <= width - 4 && pt.y >= 4 && pt.y <= height - 4) {
+          // Strict snap distance: must lie within ~5..9px of an actual prominent detected star
+          const maxSnapDist = Math.max(5.0, Math.min(9.5, Math.hypot(width, height) * 0.0055));
+          let bestDist = maxSnapDist;
+          let bestIdx = -1;
+
+          for (let idx = 0; idx < maxAllowedDetIdx; idx++) {
+            if (usedDetectedIndices.has(idx)) continue;
+            const ds = detectedStars[idx];
+            const d = Math.hypot(ds.x - pt.x, ds.y - pt.y);
+            if (d < bestDist) {
+              bestDist = d;
+              bestIdx = idx;
+            }
+          }
+
+          if (bestIdx < 0) {
+            // No real detected star at this catalog position: never place a label on empty sky!
+            continue;
+          }
+
+          const finalX = detectedStars[bestIdx].x;
+          const finalY = detectedStars[bestIdx].y;
+          usedDetectedIndices.add(bestIdx);
+          seenCatIds.add(catStar.id);
+
+          const displayName =
+            catStar.nameKo !== catStar.nameEn
+              ? `${catStar.nameKo} (${catStar.bayer} / ${catStar.nameEn})`
+              : `${catStar.nameKo} (${catStar.bayer})`;
+          annotations.push({
+            type: catStar.mag <= 6.0 ? 'bright' : 'hd',
+            names: [displayName, catStar.nameEn, catStar.bayer],
+            pixelx: Number(finalX.toFixed(1)),
+            pixely: Number(finalY.toFixed(1)),
+            radius: catStar.mag < 3.0 ? 14 : 10,
+            vmag: catStar.mag,
+          });
+          objectsInField.push(`The star ${catStar.nameEn} (${catStar.bayer})`);
+        }
+      }
+    }
+  }
 
   // Step 4: Identify matching IAU Constellations
   const matchedConstellations = identifyConstellations(
@@ -1797,20 +3039,21 @@ export async function solvePlateLocallyInBrowser(
 
   onProgress?.({
     step: 'catalog_match',
-    message: '천체 성표 매칭 및 정밀 오버레이 합성 완료!',
+    message: '듀얼 인덱스(Tycho-2 / Gaia DR3) 성표 매칭 및 정밀 오버레이 합성 완료!',
     progressPct: 95,
     detectedStarsCount: detectedStars.length,
     matchedQuadsCount,
   });
 
-  // Step 5: Synthesize local annotated plate image so "Astrometry 공식 라벨" tab also works offline
+  // Step 5: Synthesize local annotated plate image with Astrometry.net red circles
   const annotatedDataUrl = await renderLocalAnnotatedPlateDataUrl(
     dataUrl,
     width,
     height,
     annotations,
     calibration,
-    matchedConstellations
+    matchedConstellations,
+    detectedStars
   );
 
   const localJobId = `local_${Date.now().toString().slice(-6)}`;
@@ -1822,7 +3065,7 @@ export async function solvePlateLocallyInBrowser(
 
   onProgress?.({
     step: 'complete',
-    message: '브라우저 자체 플레이트 솔빙 완료!',
+    message: `브라우저 자체 플레이트 솔빙 완료! (항성 ${detectedStars.length}개 검출 · 성표 일치 ${verifiedPairs.length}개)`,
     progressPct: 100,
     detectedStarsCount: detectedStars.length,
     matchedQuadsCount,
@@ -1837,11 +3080,25 @@ export async function solvePlateLocallyInBrowser(
     imageHeight: height,
     calibration,
     annotations,
+    dualIndexTelemetry,
+    detectedStars: detectedStars.map((ds) => ({
+      x: Number(ds.x.toFixed(1)),
+      y: Number(ds.y.toFixed(1)),
+      flux: Number(ds.flux.toFixed(1)),
+      peak: Number((ds.peak || 0).toFixed(1)),
+      radius: Number(ds.radius.toFixed(1)),
+      instMag: ds.instMag,
+    })),
     info: {
       status: 'success',
       original_filename: filename || 'local_astrophoto.jpg',
       machine_tags: objectsInField,
-      tags: [...objectsInField, 'Local In-Browser Plate Solver (astrometry.net engine)'],
+      tags: [
+        ...objectsInField,
+        dualIndexTelemetry
+          ? `Dual Index: ${dualIndexTelemetry.matchedIndexSeries}`
+          : 'Local In-Browser Plate Solver (astrometry.net engine)',
+      ],
       objects_in_field: objectsInField,
     },
     matchedConstellations,

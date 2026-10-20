@@ -5,6 +5,7 @@ interface NavbarProps {
   onOpenUpload: () => void;
   onOpenJobInput: () => void;
   onOpenAccountJobs: () => void;
+  onOpenDualIndex?: () => void;
   onReset?: () => void;
   accountJobsCount: number;
   hasApiKey: boolean;
@@ -14,6 +15,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenUpload,
   onOpenJobInput,
   onOpenAccountJobs,
+  onOpenDualIndex,
   onReset,
   accountJobsCount,
   hasApiKey,
@@ -49,11 +51,24 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center space-x-2 sm:space-x-3">
+            {/* Dual-Index Catalog & Download Button */}
+            {onOpenDualIndex && (
+              <button
+                onClick={onOpenDualIndex}
+                title="광각 Tycho-2 / 딥스카이 Gaia DR3 듀얼 인덱스 대조 및 로컬 다운로드"
+                className="text-xs px-2.5 sm:px-3 py-2 rounded-lg bg-slate-800/90 hover:bg-indigo-950/80 text-indigo-300 hover:text-white border border-indigo-700/60 flex items-center space-x-1.5 transition-colors cursor-pointer"
+              >
+                <Compass className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="font-medium hidden sm:inline">듀얼 인덱스 (Tycho/Gaia)</span>
+                <span className="font-medium sm:hidden">인덱스</span>
+              </button>
+            )}
+
             {/* My Account Jobs Button */}
             <button
               onClick={onOpenAccountJobs}
               title="Astrometry.net 내 계정 작업 및 기억된 Job 목록 보기"
-              className="text-xs px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center space-x-1.5 transition-colors relative"
+              className="text-xs px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center space-x-1.5 transition-colors relative cursor-pointer"
             >
               <Database className="w-3.5 h-3.5 text-sky-400" />
               <span className="font-medium">내 계정 작업</span>
@@ -68,7 +83,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               onClick={onOpenJobInput}
               title="Astrometry.net Job ID 직접 조회"
-              className="text-xs px-2.5 sm:px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center space-x-1.5 transition-colors"
+              className="text-xs px-2.5 sm:px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center space-x-1.5 transition-colors cursor-pointer"
             >
               <Database className="w-3.5 h-3.5 text-indigo-400" />
               <span>Job ID 조회</span>
@@ -78,7 +93,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               onClick={onOpenUpload}
               title="새로운 천체 사진 선택 및 플레이트 솔빙 분석"
-              className="text-xs px-3.5 py-2 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-medium shadow-md shadow-sky-500/25 flex items-center space-x-1.5 transition-all transform active:scale-95"
+              className="text-xs px-3.5 py-2 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-medium shadow-md shadow-sky-500/25 flex items-center space-x-1.5 transition-all transform active:scale-95 cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5" />
               <span>새 사진분석</span>

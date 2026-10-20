@@ -27,11 +27,17 @@ import { AstroTelemetryPanel } from './components/AstroTelemetryPanel';
 import { SimbadInspectorModal } from './components/SimbadInspectorModal';
 import { UploadPlateSolveModal } from './components/UploadPlateSolveModal';
 import { MyAccountJobsDrawer } from './components/MyAccountJobsDrawer';
+import { DualIndexCatalogModal } from './components/DualIndexCatalogModal';
 import { EmptyState } from './components/EmptyState';
 import { SolvedAstroData, AnalysisHistoryItem } from './types/astronomy';
 import { identifyConstellations, getConstellationObjectTitle } from './utils/constellations';
 import { degToRA_HMS, degToDec_DMS } from './utils/coordinateMath';
 import { SAMPLE_SOLVED_JOBS } from './data/sampleShowcase';
+import {
+  extractStarsImage2XY,
+  verifyAndSnapAnnotationsToDetectedStars,
+} from './utils/localPlateSolver';
+import { buildDualIndexTelemetryForCalibration } from './utils/dualIndexCatalog';
 import {
   getRememberedAccountJobs,
   rememberAccountJob,
@@ -57,6 +63,7 @@ export default function App() {
   // Modals state
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isAccountJobsDrawerOpen, setIsAccountJobsDrawerOpen] = useState(false);
+  const [isDualIndexModalOpen, setIsDualIndexModalOpen] = useState(false);
   const [modalInitialFile, setModalInitialFile] = useState<File | null>(null);
   const [modalInitialUrl, setModalInitialUrl] = useState<string>('');
   const [modalInitialTab, setModalInitialTab] = useState<'upload' | 'url' | 'jobId' | 'myJobs'>('upload');
@@ -72,6 +79,7 @@ export default function App() {
     setLoading(false);
     setIsUploadModalOpen(false);
     setIsAccountJobsDrawerOpen(false);
+    setIsDualIndexModalOpen(false);
     setModalInitialFile(null);
     setModalInitialUrl('');
     setModalInitialTab('upload');
@@ -362,31 +370,82 @@ export default function App() {
 
       const raw = await resp.json();
       const calibration = raw.calibration;
-      const annotations = raw.annotations || [];
+      const rawAnnotations = raw.annotations || [];
       const info = raw.info || {};
-
-      // Match constellations using IAU definitions, Astrometry tags, coordinates, and star annotations
-      const matched = identifyConstellations(
-        info.tags || [],
-        info.objects_in_field || [],
-        calibration?.ra || 0,
-        calibration?.dec || 0,
-        annotations
-      );
 
       // Determine photo URLs: canonical Astrometry image proxies for this specific Job ID
       const resolvedImageUrl = `/api/astrometry/image-proxy/${jobId}/annotated`;
       const resolvedRawImageUrl =
         customImageUrl || `/api/astrometry/image-proxy/${jobId}/original`;
 
-      const calW =
+      // Extract real image dimensions and detected star centroids from the photo so star labels match actual stars and never float in empty space
+      let calW =
         calibration?.width_arcsec && calibration?.pixscale && calibration.pixscale > 0
           ? Math.round(calibration.width_arcsec / calibration.pixscale)
-          : 1920;
-      const calH =
+          : 0;
+      let calH =
         calibration?.height_arcsec && calibration?.pixscale && calibration.pixscale > 0
           ? Math.round(calibration.height_arcsec / calibration.pixscale)
-          : 1080;
+          : 0;
+      let detectedStarsList: SolvedAstroData['detectedStars'] = undefined;
+      let verifiedAnnotations = rawAnnotations;
+
+      try {
+        const ext = await extractStarsImage2XY(resolvedRawImageUrl, { keepOriginalCoords: true });
+        if (ext.width > 0 && ext.height > 0) {
+          if (!calW || !calH) {
+            calW = ext.width;
+            calH = ext.height;
+          }
+          if (calibration && calibration.pixscale > 0) {
+            if (!calibration.width_arcsec) {
+              calibration.width_arcsec = Number((calW * calibration.pixscale).toFixed(2));
+            }
+            if (!calibration.height_arcsec) {
+              calibration.height_arcsec = Number((calH * calibration.pixscale).toFixed(2));
+            }
+          }
+          detectedStarsList = ext.stars.map((ds) => ({
+            x: Number(ds.x.toFixed(1)),
+            y: Number(ds.y.toFixed(1)),
+            flux: Number(ds.flux.toFixed(1)),
+            peak: Number((ds.peak || 0).toFixed(1)),
+            radius: Number(ds.radius.toFixed(1)),
+            instMag: ds.instMag,
+          }));
+          if (ext.stars.length > 0) {
+            verifiedAnnotations = verifyAndSnapAnnotationsToDetectedStars(
+              rawAnnotations,
+              ext.stars,
+              calW,
+              calH
+            );
+          }
+        }
+      } catch {
+        // Fallback if image proxy could not be decoded on canvas
+      }
+
+      if (!calW) calW = 1920;
+      if (!calH) calH = 1080;
+
+      // Match constellations using IAU definitions, Astrometry tags, coordinates, and verified star annotations
+      const matched = identifyConstellations(
+        info.tags || [],
+        info.objects_in_field || [],
+        calibration?.ra || 0,
+        calibration?.dec || 0,
+        verifiedAnnotations
+      );
+
+      const starAnnCount = verifiedAnnotations.filter((a: any) => {
+        const t = (a.type || '').toLowerCase();
+        return t === 'bright' || t === 'hd' || t === 'star';
+      }).length;
+
+      const dualIndexTelemetry = calibration
+        ? buildDualIndexTelemetryForCalibration(calibration, starAnnCount)
+        : undefined;
 
       const solved: SolvedAstroData = {
         jobId,
@@ -396,7 +455,9 @@ export default function App() {
         imageWidth: calW,
         imageHeight: calH,
         calibration,
-        annotations,
+        annotations: verifiedAnnotations,
+        detectedStars: detectedStarsList,
+        dualIndexTelemetry,
         info,
         matchedConstellations: matched,
       };
@@ -478,6 +539,7 @@ export default function App() {
         onOpenUpload={handleOpenNewPhoto}
         onOpenJobInput={handleOpenJobInput}
         onOpenAccountJobs={() => setIsAccountJobsDrawerOpen(true)}
+        onOpenDualIndex={() => setIsDualIndexModalOpen(true)}
         onReset={handleResetHome}
         accountJobsCount={accountJobs.length}
         hasApiKey={hasApiKey}
@@ -527,7 +589,7 @@ export default function App() {
                   )}
                 </button>
 
-                {/* 3. 실시간 전천성도 (마지막 탭) */}
+                {/* 3. 실시간 전천성도 */}
                 <button
                   type="button"
                   onClick={() => setActiveMainTab('chart')}
@@ -541,6 +603,22 @@ export default function App() {
                   <span>실시간 전천성도</span>
                   {activeMainTab === 'chart' && (
                     <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_#fff]" />
+                  )}
+                </button>
+
+                {/* 4. 듀얼 인덱스 (Tycho/Gaia) */}
+                <button
+                  type="button"
+                  onClick={() => setIsDualIndexModalOpen(true)}
+                  className="px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap bg-slate-900/90 hover:bg-indigo-950/80 text-indigo-300 hover:text-white border border-indigo-700/60 hover:border-indigo-500 shadow-sm"
+                  title="광각 Tycho-2 / 딥스카이 Gaia DR3 듀얼 인덱스 대조 및 로컬 파일 다운로드"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>듀얼 인덱스</span>
+                  {solvedData.dualIndexTelemetry && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-indigo-900/80 text-indigo-200 border border-indigo-700">
+                      {solvedData.dualIndexTelemetry.selectedCatalog}
+                    </span>
                   )}
                 </button>
               </nav>
@@ -690,6 +768,7 @@ export default function App() {
             <AstroTelemetryPanel
               data={solvedData}
               onSelectObject={(obj) => setSelectedTargetForSimbad(obj)}
+              onOpenDualIndexModal={() => setIsDualIndexModalOpen(true)}
             />
           </section>
         )}
@@ -867,6 +946,13 @@ export default function App() {
       <SimbadInspectorModal
         targetName={selectedTargetForSimbad}
         onClose={() => setSelectedTargetForSimbad(null)}
+      />
+
+      {/* Dual-Index (Tycho-2 Wide-Field vs Gaia DR3 Deep-Sky) Catalog & Download Modal */}
+      <DualIndexCatalogModal
+        isOpen={isDualIndexModalOpen}
+        onClose={() => setIsDualIndexModalOpen(false)}
+        solvedData={solvedData}
       />
     </div>
   );
