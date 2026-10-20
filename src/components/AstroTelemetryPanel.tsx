@@ -79,7 +79,9 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({
 
   const copyCoordinates = () => {
     if (!cal) return;
-    const str = `RA: ${degToRA_HMS(cal.ra)} (${cal.ra.toFixed(5)}°), Dec: ${degToDec_DMS(cal.dec)} (${cal.dec.toFixed(5)}°)`;
+    const safeRa = typeof cal.ra === 'number' && !isNaN(cal.ra) ? cal.ra : 0;
+    const safeDec = typeof cal.dec === 'number' && !isNaN(cal.dec) ? cal.dec : 0;
+    const str = `RA: ${degToRA_HMS(safeRa)} (${safeRa.toFixed(5)}°), Dec: ${degToDec_DMS(safeDec)} (${safeDec.toFixed(5)}°)`;
     navigator.clipboard.writeText(str);
     setCopiedCoords(true);
     setTimeout(() => setCopiedCoords(false), 2000);
@@ -112,13 +114,13 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({
       `# 작업 ID (Job ID),#${data.jobId}`,
       `# 관측 사진 명칭,"${(data.title || `Job #${data.jobId}`).replace(/"/g, '""')}"`,
       `# 주요 별자리,"${constStr.replace(/"/g, '""')}"`,
-      `# 중앙 적경 (Center RA),"${degToRA_HMS(cal.ra)} (${cal.ra.toFixed(5)}° J2000)"`,
-      `# 중앙 적위 (Center Dec),"${degToDec_DMS(cal.dec)} (${cal.dec.toFixed(5)}° J2000)"`,
-      `# 시야각 반경 (Field Radius),"${cal.radius.toFixed(3)}° (${(cal.radius * 60).toFixed(1)} arcmin)"`,
-      `# 화각 크기 (Field Size),"${cal.width_arcsec && cal.height_arcsec ? `${(cal.width_arcsec / 3600).toFixed(2)}° × ${(cal.height_arcsec / 3600).toFixed(2)}°` : `${(cal.radius * 2).toFixed(2)}°`}"`,
-      `# 픽셀 스케일 (Pixel Scale),"${cal.pixscale.toFixed(3)} arcsec/pixel"`,
-      `# 회전 방위각 (Orientation),"${cal.orientation.toFixed(2)}° (East of North)"`,
-      `# 패리티 (Parity),"${cal.parity > 0 ? '+1 (정방향)' : '-1 (반전)'}"`,
+      `# 중앙 적경 (Center RA),"${degToRA_HMS(cal.ra ?? 0)} (${(typeof cal.ra === 'number' && !isNaN(cal.ra) ? cal.ra : 0).toFixed(5)}° J2000)"`,
+      `# 중앙 적위 (Center Dec),"${degToDec_DMS(cal.dec ?? 0)} (${(typeof cal.dec === 'number' && !isNaN(cal.dec) ? cal.dec : 0).toFixed(5)}° J2000)"`,
+      `# 시야각 반경 (Field Radius),"${(typeof cal.radius === 'number' && !isNaN(cal.radius) ? cal.radius : 1.0).toFixed(3)}° (${((typeof cal.radius === 'number' && !isNaN(cal.radius) ? cal.radius : 1.0) * 60).toFixed(1)} arcmin)"`,
+      `# 화각 크기 (Field Size),"${cal.width_arcsec && cal.height_arcsec ? `${(cal.width_arcsec / 3600).toFixed(2)}° × ${(cal.height_arcsec / 3600).toFixed(2)}°` : `${((typeof cal.radius === 'number' && !isNaN(cal.radius) ? cal.radius : 1.0) * 2).toFixed(2)}°`}"`,
+      `# 픽셀 스케일 (Pixel Scale),"${(typeof cal.pixscale === 'number' && !isNaN(cal.pixscale) ? cal.pixscale : 1.0).toFixed(3)} arcsec/pixel"`,
+      `# 회전 방위각 (Orientation),"${(typeof cal.orientation === 'number' && !isNaN(cal.orientation) ? cal.orientation : 0).toFixed(2)}° (East of North)"`,
+      `# 패리티 (Parity),"${(cal.parity ?? 1) > 0 ? '+1 (정방향)' : '-1 (반전)'}"`,
       `# 분석 이미지 해상도,"${imgW} × ${imgH} px"`,
       `# 검출된 천체 총수,"${annotations.length} 개"`,
       `# 데이터 추출 시각 (UTC),"${nowStr}"`,
@@ -271,30 +273,34 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({
             <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
               <span className="text-[11px] font-semibold text-slate-400 block uppercase">적경 (Center RA)</span>
               <span className="text-sm font-mono font-bold text-sky-400 mt-1 block">
-                {degToRA_HMS(cal.ra)}
+                {degToRA_HMS(cal.ra ?? 0)}
               </span>
-              <span className="text-[10px] text-slate-500 font-mono">{cal.ra.toFixed(4)}° J2000</span>
+              <span className="text-[10px] text-slate-500 font-mono">
+                {(typeof cal.ra === 'number' && !isNaN(cal.ra) ? cal.ra : 0).toFixed(4)}° J2000
+              </span>
             </div>
 
             {/* Center Dec */}
             <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
               <span className="text-[11px] font-semibold text-slate-400 block uppercase">적위 (Center Dec)</span>
               <span className="text-sm font-mono font-bold text-sky-400 mt-1 block">
-                {degToDec_DMS(cal.dec)}
+                {degToDec_DMS(cal.dec ?? 0)}
               </span>
-              <span className="text-[10px] text-slate-500 font-mono">{cal.dec.toFixed(4)}° J2000</span>
+              <span className="text-[10px] text-slate-500 font-mono">
+                {(typeof cal.dec === 'number' && !isNaN(cal.dec) ? cal.dec : 0).toFixed(4)}° J2000
+              </span>
             </div>
 
             {/* Field Radius & FOV */}
             <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
               <span className="text-[11px] font-semibold text-slate-400 block uppercase">시야각 (FOV / Radius)</span>
               <span className="text-sm font-mono font-bold text-indigo-300 mt-1 block">
-                {formatAngularSize(cal.radius)}
+                {formatAngularSize(typeof cal.radius === 'number' && !isNaN(cal.radius) ? cal.radius : 1.0)}
               </span>
               <span className="text-[10px] text-slate-500">
                 {cal.width_arcsec && cal.height_arcsec
                   ? `${(cal.width_arcsec / 3600).toFixed(1)}° × ${(cal.height_arcsec / 3600).toFixed(1)}°`
-                  : `반경 ${cal.radius.toFixed(2)}°`}
+                  : `반경 ${(typeof cal.radius === 'number' && !isNaN(cal.radius) ? cal.radius : 1.0).toFixed(2)}°`}
               </span>
             </div>
 
@@ -302,7 +308,7 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({
             <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
               <span className="text-[11px] font-semibold text-slate-400 block uppercase">픽셀 스케일 (Scale)</span>
               <span className="text-sm font-mono font-bold text-emerald-400 mt-1 block">
-                {cal.pixscale.toFixed(2)}" / px
+                {(typeof cal.pixscale === 'number' && !isNaN(cal.pixscale) ? cal.pixscale : 1.0).toFixed(2)}" / px
               </span>
               <span className="text-[10px] text-slate-500">초각/픽셀 해상도</span>
             </div>
@@ -311,7 +317,7 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({
             <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
               <span className="text-[11px] font-semibold text-slate-400 block uppercase">회전 방위각 (Angle)</span>
               <span className="text-sm font-mono font-bold text-amber-400 mt-1 block">
-                {cal.orientation.toFixed(1)}°
+                {(typeof cal.orientation === 'number' && !isNaN(cal.orientation) ? cal.orientation : 0).toFixed(1)}°
               </span>
               <span className="text-[10px] text-slate-500">북쪽 기준 동향 (E of N)</span>
             </div>
@@ -320,7 +326,7 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({
             <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
               <span className="text-[11px] font-semibold text-slate-400 block uppercase">패리티 (Parity)</span>
               <span className="text-sm font-mono font-bold text-purple-400 mt-1 block">
-                {cal.parity > 0 ? '+1 (정방향)' : '-1 (반전)'}
+                {(cal.parity ?? 1) > 0 ? '+1 (정방향)' : '-1 (반전)'}
               </span>
               <span className="text-[10px] text-slate-500 font-mono">Job #{data.jobId}</span>
             </div>

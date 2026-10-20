@@ -19,6 +19,7 @@ import {
   Plus,
   Camera,
   Activity,
+  RotateCcw,
 } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { StarPhotoViewer } from './components/StarPhotoViewer';
@@ -36,6 +37,7 @@ import { SAMPLE_SOLVED_JOBS } from './data/sampleShowcase';
 import {
   extractStarsImage2XY,
   verifyAndSnapAnnotationsToDetectedStars,
+  solvePlateLocallyInBrowser,
 } from './utils/localPlateSolver';
 import { buildDualIndexTelemetryForCalibration } from './utils/dualIndexCatalog';
 import {
@@ -69,6 +71,8 @@ export default function App() {
   const [modalInitialTab, setModalInitialTab] = useState<'upload' | 'url' | 'jobId' | 'myJobs'>('upload');
   const [selectedTargetForSimbad, setSelectedTargetForSimbad] = useState<string | null>(null);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
+  const [isReAnalyzing, setIsReAnalyzing] = useState(false);
+  const [reAnalyzeStatus, setReAnalyzeStatus] = useState<string | null>(null);
 
   // Reset all state to clean initial home view when AstroPlate logo/brand is clicked
   const handleResetHome = useCallback(() => {
@@ -101,6 +105,56 @@ export default function App() {
     setIsUploadModalOpen(true);
   };
 
+  // Re-run astrophoto plate solve analysis on the current photo
+  const handleReAnalyzeCurrentPhoto = async () => {
+    if (!solvedData) {
+      handleOpenNewPhoto();
+      return;
+    }
+
+    setIsReAnalyzing(true);
+    setReAnalyzeStatus('천체사진 simplexy 항성 추출 및 Equal-Density 듀얼 인덱스 정밀 재분석 중...');
+
+    try {
+      const imgSrc =
+        solvedData.rawImageUrl ||
+        solvedData.imageUrl ||
+        `/api/astrometry/image-proxy/${solvedData.jobId}/original`;
+
+      const primaryConst = solvedData.matchedConstellations[0];
+      const targetHint = primaryConst?.nameKo || '';
+      const fovDeg = solvedData.calibration?.radius ? solvedData.calibration.radius * 2 : undefined;
+
+      const result = await solvePlateLocallyInBrowser(imgSrc, {
+        filename: solvedData.title || `Job #${solvedData.jobId}`,
+        targetHint,
+        fovHintDeg: fovDeg,
+        onProgress: (p) => {
+          if (p.message) setReAnalyzeStatus(p.message);
+        },
+      });
+
+      setSolvedData(result);
+      setActiveJobId(result.jobId);
+      setActiveMainTab('photo');
+      saveToAccountJobs(result, result.rawImageUrl);
+      setErrorNotice(null);
+    } catch (err: any) {
+      console.warn('Direct re-solve fallback to modal:', err);
+      const imgSrc = solvedData.rawImageUrl || solvedData.imageUrl;
+      if (imgSrc && !imgSrc.startsWith('blob:') && !imgSrc.startsWith('data:')) {
+        setModalInitialUrl(imgSrc);
+        setModalInitialTab('url');
+      } else {
+        setModalInitialTab('upload');
+      }
+      setIsUploadModalOpen(true);
+    } finally {
+      setIsReAnalyzing(false);
+      setReAnalyzeStatus(null);
+    }
+  };
+
   // Check API key & load remembered history
   useEffect(() => {
     fetch('/api/astrometry/status')
@@ -119,13 +173,22 @@ export default function App() {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
-          localJobs = parsed.filter(
-            (item) =>
-              item &&
-              item.jobId &&
-              !isJobDeleted(item.jobId) &&
-              !(String(item.jobId).startsWith('local_') && item.raDeg === 280 && item.decDeg === -28)
-          );
+          localJobs = parsed
+            .filter(
+              (item) =>
+                item &&
+                item.jobId &&
+                !isJobDeleted(item.jobId) &&
+                !(String(item.jobId).startsWith('local_') && item.raDeg === 280 && item.decDeg === -28)
+            )
+            .sort((a, b) => {
+              const timeA = typeof a.timestamp === 'number' && !isNaN(a.timestamp) ? a.timestamp : 0;
+              const timeB = typeof b.timestamp === 'number' && !isNaN(b.timestamp) ? b.timestamp : 0;
+              if (timeB !== timeA) return timeB - timeA;
+              const numA = Number(String(a.jobId).replace(/\D/g, '')) || 0;
+              const numB = Number(String(b.jobId).replace(/\D/g, '')) || 0;
+              return numB - numA;
+            });
         }
       }
     } catch (e) {
@@ -206,7 +269,14 @@ export default function App() {
           }
         });
 
-        const combined = Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp);
+        const combined = Array.from(map.values()).sort((a, b) => {
+          const timeA = typeof a.timestamp === 'number' && !isNaN(a.timestamp) ? a.timestamp : 0;
+          const timeB = typeof b.timestamp === 'number' && !isNaN(b.timestamp) ? b.timestamp : 0;
+          if (timeB !== timeA) return timeB - timeA;
+          const numA = Number(String(a.jobId).replace(/\D/g, '')) || 0;
+          const numB = Number(String(b.jobId).replace(/\D/g, '')) || 0;
+          return numB - numA;
+        });
         setAccountJobs(combined);
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(combined));
@@ -309,7 +379,14 @@ export default function App() {
 
     setAccountJobs((prev) => {
       const filtered = prev.filter((h) => String(h.jobId) !== String(solved.jobId));
-      const updated = [newItem, ...filtered];
+      const updated = [newItem, ...filtered].sort((a, b) => {
+        const timeA = typeof a.timestamp === 'number' && !isNaN(a.timestamp) ? a.timestamp : 0;
+        const timeB = typeof b.timestamp === 'number' && !isNaN(b.timestamp) ? b.timestamp : 0;
+        if (timeB !== timeA) return timeB - timeA;
+        const numA = Number(String(a.jobId).replace(/\D/g, '')) || 0;
+        const numB = Number(String(b.jobId).replace(/\D/g, '')) || 0;
+        return numB - numA;
+      });
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       } catch (e) {}
@@ -707,7 +784,7 @@ export default function App() {
                 </span>
                 <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1">
                   <Database className="w-3 h-3 text-sky-400" />
-                  계정 작업에 저장됨
+                  작업 히스토리에 저장됨
                 </span>
               </div>
 
@@ -726,27 +803,41 @@ export default function App() {
                 </span>
                 <span className="text-slate-600">•</span>
                 <span className="font-mono text-slate-300">
-                  RA: <strong className="text-sky-400">{degToRA_HMS(solvedData.calibration.ra)}</strong>
+                  RA: <strong className="text-sky-400">{degToRA_HMS(solvedData?.calibration?.ra ?? 0)}</strong>
                 </span>
                 <span className="text-slate-600">•</span>
                 <span className="font-mono text-slate-300">
-                  Dec: <strong className="text-sky-400">{degToDec_DMS(solvedData.calibration.dec)}</strong>
+                  Dec: <strong className="text-sky-400">{degToDec_DMS(solvedData?.calibration?.dec ?? 0)}</strong>
                 </span>
                 <span className="text-slate-600">•</span>
                 <span>
-                  화각: <strong className="text-indigo-300">{solvedData.calibration.radius.toFixed(2)}°</strong>
+                  화각: <strong className="text-indigo-300">
+                    {typeof solvedData?.calibration?.radius === 'number' && !isNaN(solvedData.calibration.radius)
+                      ? `${solvedData.calibration.radius.toFixed(2)}°`
+                      : '1.00°'}
+                  </strong>
                 </span>
               </div>
             </div>
 
             <div className="flex items-center space-x-2">
               <button
+                type="button"
+                onClick={handleReAnalyzeCurrentPhoto}
+                disabled={isReAnalyzing}
+                className="text-xs px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold border border-sky-400/40 flex items-center space-x-1.5 transition-all shadow-md shadow-sky-500/25 cursor-pointer disabled:opacity-60 hover:scale-[1.02] active:scale-[0.98]"
+                title="현재 천체사진으로 플레이트 솔빙 분석 다시 실행"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${isReAnalyzing ? 'animate-spin' : ''}`} />
+                <span>{isReAnalyzing ? '분석 중...' : '천체사진 다시 분석'}</span>
+              </button>
+              <button
                 onClick={() => setIsAccountJobsDrawerOpen(true)}
                 className="text-xs px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center space-x-1.5 transition-colors shadow-sm cursor-pointer"
-                title="Astrometry.net 내 계정 작업 목록 열기"
+                title="Astrometry.net 및 로컬 솔빙 작업 히스토리 열기"
               >
                 <Database className="w-3.5 h-3.5 text-sky-400" />
-                <span>내 계정 작업 ({accountJobs.length})</span>
+                <span>작업 히스토리 ({accountJobs.length})</span>
               </button>
             </div>
           </div>
@@ -754,10 +845,19 @@ export default function App() {
 
         {/* Tab 1: 천체사진 분석 */}
         {!loading && solvedData && activeMainTab === 'photo' && (
-          <section aria-label="천체사진 분석">
+          <section aria-label="천체사진 분석" className="space-y-3">
+            {reAnalyzeStatus && (
+              <div className="p-3 bg-sky-950/80 border border-sky-700/70 rounded-2xl text-xs text-sky-200 flex items-center space-x-2 shadow-lg animate-pulse">
+                <Loader2 className="w-4 h-4 text-sky-400 animate-spin shrink-0" />
+                <span className="font-medium">{reAnalyzeStatus}</span>
+              </div>
+            )}
             <StarPhotoViewer
               data={solvedData}
               onSelectObject={(obj) => setSelectedTargetForSimbad(obj)}
+              onReAnalyze={handleReAnalyzeCurrentPhoto}
+              onOpenUploadModal={handleOpenNewPhoto}
+              isReAnalyzing={isReAnalyzing}
             />
           </section>
         )}
@@ -803,10 +903,10 @@ export default function App() {
             <button
               onClick={() => setIsAccountJobsDrawerOpen(true)}
               className="hover:text-sky-400 transition-colors flex items-center gap-1 cursor-pointer"
-              title="Astrometry.net 내 계정 작업 목록 열기"
+              title="Astrometry.net 및 로컬 솔빙 작업 히스토리 열기"
             >
               <Database className="w-3 h-3 text-sky-400" />
-              <span>내 계정 작업 ({accountJobs.length})</span>
+              <span>작업 히스토리 ({accountJobs.length})</span>
             </button>
             <a
               href="https://nova.astrometry.net/api_help"
@@ -927,7 +1027,14 @@ export default function App() {
                   });
                 }
               });
-              const combined = Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp);
+              const combined = Array.from(map.values()).sort((a, b) => {
+                const timeA = typeof a.timestamp === 'number' && !isNaN(a.timestamp) ? a.timestamp : 0;
+                const timeB = typeof b.timestamp === 'number' && !isNaN(b.timestamp) ? b.timestamp : 0;
+                if (timeB !== timeA) return timeB - timeA;
+                const numA = Number(String(a.jobId).replace(/\D/g, '')) || 0;
+                const numB = Number(String(b.jobId).replace(/\D/g, '')) || 0;
+                return numB - numA;
+              });
               setAccountJobs(combined);
               try {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(combined));

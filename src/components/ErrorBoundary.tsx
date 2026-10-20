@@ -26,7 +26,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
   private handleReset = () => {
     try {
+      localStorage.removeItem('astroplate_account_jobs');
       localStorage.removeItem('astroplate_user_history');
+      localStorage.removeItem('astro_dual_index_custom_tiles');
     } catch (e) {}
     window.location.reload();
   };

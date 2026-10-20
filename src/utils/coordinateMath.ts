@@ -4,6 +4,7 @@
 
 // Convert RA in degrees (0..360) to Hours, Minutes, Seconds string
 export function degToRA_HMS(deg: number): string {
+  if (typeof deg !== 'number' || isNaN(deg)) return '00h 00m 00.00s';
   let normalized = deg % 360;
   if (normalized < 0) normalized += 360;
   const totalHours = normalized / 15;
@@ -19,6 +20,7 @@ export function degToRA_HMS(deg: number): string {
 
 // Convert Dec in degrees (-90..+90) to Degrees, Arcminutes, Arcseconds string
 export function degToDec_DMS(deg: number): string {
+  if (typeof deg !== 'number' || isNaN(deg)) return '+00° 00\' 00.0"';
   const sign = deg >= 0 ? '+' : '-';
   const abs = Math.abs(deg);
   const d = Math.floor(abs);
@@ -33,6 +35,7 @@ export function degToDec_DMS(deg: number): string {
 
 // Format angular scale in arcseconds or degrees
 export function formatAngularSize(deg: number): string {
+  if (typeof deg !== 'number' || isNaN(deg)) return '0.00°';
   if (deg >= 1) {
     return `${deg.toFixed(2)}°`;
   }

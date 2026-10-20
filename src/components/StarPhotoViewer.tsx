@@ -127,11 +127,20 @@ export const OVERLAY_COLORS: Record<OverlayColor, OverlayColorConfig> = {
 interface StarPhotoViewerProps {
   data: SolvedAstroData;
   onSelectObject: (objectName: string) => void;
+  onReAnalyze?: () => void;
+  onOpenUploadModal?: () => void;
+  isReAnalyzing?: boolean;
 }
 
 type ViewMode = 'vector' | 'annotated' | 'red_green' | 'raw';
 
-export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelectObject }) => {
+export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
+  data,
+  onSelectObject,
+  onReAnalyze,
+  onOpenUploadModal,
+  isReAnalyzing = false,
+}) => {
   const [scale, setScale] = useState(1);
   const [translate, setTranslate] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -448,6 +457,33 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
             원본 사진
           </button>
         </div>
+
+        {/* Center / Action: 천체사진 다시 분석 (Re-analyze Astrophoto) */}
+        {onReAnalyze && (
+          <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl p-1 flex items-center space-x-1 shadow-lg pointer-events-auto">
+            <button
+              type="button"
+              onClick={onReAnalyze}
+              disabled={isReAnalyzing}
+              className="text-xs px-3.5 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 bg-gradient-to-r from-sky-500 via-indigo-600 to-purple-600 hover:from-sky-400 hover:to-indigo-500 text-white shadow-md shadow-sky-500/30 border border-sky-400/50 cursor-pointer hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+              title="현재 천체사진으로 플레이트 솔빙 분석을 다시 수행합니다 (항성 검출 및 성도 매칭 갱신)"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isReAnalyzing ? 'animate-spin text-white' : 'text-sky-200'}`} />
+              <span>{isReAnalyzing ? '천체사진 분석 중...' : '천체사진 다시 분석'}</span>
+            </button>
+            {onOpenUploadModal && (
+              <button
+                type="button"
+                onClick={onOpenUploadModal}
+                className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all flex items-center space-x-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 hover:border-slate-600 cursor-pointer whitespace-nowrap"
+                title="새 천체사진을 업로드하거나 분석 설정을 변경합니다"
+              >
+                <Upload className="w-3.5 h-3.5 text-slate-400" />
+                <span className="hidden sm:inline">새 사진/설정</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Right: Quick Action Controls (+/- Zoom only, Reset, Fullscreen) */}
         <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl p-1 flex items-center space-x-1 shadow-lg pointer-events-auto">
@@ -974,6 +1010,19 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({ data, onSelect
               <span className="w-2.5 h-2.5 rounded-full border border-red-400 inline-block bg-red-500/40" />
               <span>항성 검출 원 ({effectiveDetectedStars.length}개)</span>
             </button>
+
+            {onReAnalyze && (
+              <button
+                type="button"
+                onClick={onReAnalyze}
+                disabled={isReAnalyzing}
+                className="px-2 py-1 rounded transition-colors flex items-center space-x-1 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 hover:text-white border border-sky-500/40 hover:border-sky-400 cursor-pointer disabled:opacity-50"
+                title="천체사진 플레이트 솔빙 분석 다시 실행"
+              >
+                <RotateCcw className={`w-3 h-3 ${isReAnalyzing ? 'animate-spin' : ''}`} />
+                <span>{isReAnalyzing ? '분석 중...' : '천체사진 다시 분석'}</span>
+              </button>
+            )}
 
             <button
               onClick={() => setShowConstellationLines(!showConstellationLines)}

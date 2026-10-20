@@ -70,22 +70,39 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
               filename: r.filename || `Astrometry Job #${r.jobId}`,
               objects: r.objects || [],
               calibration: r.calibration,
+              timestamp: (r as any).timestamp || 0,
             });
           }
         });
-        setMyJobs(Array.from(map.values()));
+        const sorted = Array.from(map.values()).sort((a, b) => {
+          const timeA = typeof a.timestamp === 'number' && !isNaN(a.timestamp) ? a.timestamp : 0;
+          const timeB = typeof b.timestamp === 'number' && !isNaN(b.timestamp) ? b.timestamp : 0;
+          if (timeB !== timeA) return timeB - timeA;
+          const numA = Number(String(a.jobId).replace(/\D/g, '')) || 0;
+          const numB = Number(String(b.jobId).replace(/\D/g, '')) || 0;
+          return numB - numA;
+        });
+        setMyJobs(sorted);
       } else {
-        setMyJobs(
-          remembered
-            .filter((r) => !isJobDeleted(r.jobId))
-            .map((r) => ({
-              jobId: r.jobId,
-              status: r.status || 'success',
-              filename: r.filename || `Astrometry Job #${r.jobId}`,
-              objects: r.objects || [],
-              calibration: r.calibration,
-            }))
-        );
+        const sorted = remembered
+          .filter((r) => !isJobDeleted(r.jobId))
+          .map((r) => ({
+            jobId: r.jobId,
+            status: r.status || 'success',
+            filename: r.filename || `Astrometry Job #${r.jobId}`,
+            objects: r.objects || [],
+            calibration: r.calibration,
+            timestamp: (r as any).timestamp || 0,
+          }))
+          .sort((a, b) => {
+            const timeA = a.timestamp || 0;
+            const timeB = b.timestamp || 0;
+            if (timeB !== timeA) return timeB - timeA;
+            const numA = Number(String(a.jobId).replace(/\D/g, '')) || 0;
+            const numB = Number(String(b.jobId).replace(/\D/g, '')) || 0;
+            return numB - numA;
+          });
+        setMyJobs(sorted);
       }
     } catch (e) {
       console.error('Failed to fetch my jobs:', e);
@@ -185,7 +202,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
             }`}
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>내 Astrometry 계정 작업 ({myJobs.length})</span>
+            <span>작업 히스토리 ({myJobs.length})</span>
           </button>
 
           <button
@@ -266,7 +283,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
             {loadingMyJobs ? (
               <div className="py-12 flex flex-col items-center justify-center space-y-2 text-slate-400">
                 <Loader2 className="w-6 h-6 text-sky-400 animate-spin" />
-                <p className="text-xs">내 Astrometry.net 계정 작업 목록 동기화 중...</p>
+                <p className="text-xs">작업 히스토리 목록 동기화 중...</p>
               </div>
             ) : myJobs.length > 0 ? (
               <div className="max-h-64 overflow-y-auto divide-y divide-slate-800 border border-slate-800 rounded-xl bg-slate-950/60">
@@ -314,7 +331,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
               </div>
             ) : (
               <div className="p-8 text-center text-xs text-slate-400 bg-slate-950/40 rounded-xl border border-slate-800">
-                계정 작업을 불러오는 중이거나 작업이 없습니다. 상단의 새로고침을 눌러보세요.
+                작업 히스토리를 불러오는 중이거나 작업이 없습니다. 상단의 새로고침을 눌러보세요.
               </div>
             )}
 

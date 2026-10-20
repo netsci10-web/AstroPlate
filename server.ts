@@ -87,6 +87,13 @@ async function getAstrometrySession(apiKey?: string): Promise<string> {
 }
 
 // Anti-bot session handler for Astrometry.net Django web views (annotated_display, extraction_image, etc.)
+// Helper to determine if a job ID represents a local browser-solved job vs Astrometry.net job
+function isLocalJobId(jobId: string | number | undefined | null): boolean {
+  if (!jobId) return false;
+  const str = String(jobId).trim();
+  return str.startsWith('local_') || isNaN(Number(str));
+}
+
 let cachedHumanCookie: { cookie: string; expiresAt: number } | null = null;
 
 async function getHumanSessionCookie(forceRefresh = false): Promise<string> {
@@ -101,9 +108,16 @@ async function getHumanSessionCookie(forceRefresh = false): Promise<string> {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
-    });
+      signal: AbortSignal.timeout(3000),
+    }).catch(() => null);
+
+    if (!askResp || !askResp.ok) {
+      cachedHumanCookie = { cookie: '', expiresAt: now + 60000 };
+      return '';
+    }
+
     const setCookie = askResp.headers.get('set-cookie') || '';
-    const html = await askResp.text();
+    const html = await askResp.text().catch(() => '');
     const csrfMatch = html.match(/name="csrfmiddlewaretoken"\s+value="([^"]+)"/);
     const csrf = csrfMatch ? csrfMatch[1] : '';
 
@@ -119,18 +133,26 @@ async function getHumanSessionCookie(forceRefresh = false): Promise<string> {
         },
         body: `csrfmiddlewaretoken=${encodeURIComponent(csrf)}&human=yup&next=/`,
         redirect: 'manual',
-      });
-      const amSetCookie = amResp.headers.get('set-cookie') || '';
-      const combined = [setCookie.split(';')[0], amSetCookie.split(';')[0]].filter(Boolean).join('; ');
-      cachedHumanCookie = {
-        cookie: combined,
-        expiresAt: now + 7 * 24 * 3600 * 1000, // 7 days validity
-      };
-      return combined;
+        signal: AbortSignal.timeout(3000),
+      }).catch(() => null);
+
+      if (amResp) {
+        const amSetCookie = amResp.headers.get('set-cookie') || '';
+        const combined = [setCookie.split(';')[0], amSetCookie.split(';')[0]].filter(Boolean).join('; ');
+        cachedHumanCookie = {
+          cookie: combined,
+          expiresAt: now + 7 * 24 * 3600 * 1000, // 7 days validity
+        };
+        return combined;
+      }
     }
-  } catch (e) {
-    console.error('Failed to get human session cookie:', e);
+  } catch {
+    // If Astrometry.net connection is reset or unavailable, cache empty cookie for 60s
   }
+  cachedHumanCookie = {
+    cookie: '',
+    expiresAt: now + 60000,
+  };
   return '';
 }
 
@@ -244,9 +266,16 @@ app.get('/api/astrometry/my-jobs', async (req: Request, res: Response) => {
     const combinedIds = Array.from(new Set([...extraList, ...accountJobIds]))
       .filter((id) => id && !deletedJobIds.has(String(id)))
       .sort((a, b) => {
-        const numA = Number(a);
-        const numB = Number(b);
-        if (!isNaN(numA) && !isNaN(numB)) return numB - numA;
+        const histA = userHistory.find((h) => String(h.jobId) === String(a));
+        const histB = userHistory.find((h) => String(h.jobId) === String(b));
+        const timeA = histA?.timestamp || (isLocalJobId(a) ? Number(String(a).replace(/\D/g, '')) : 0);
+        const timeB = histB?.timestamp || (isLocalJobId(b) ? Number(String(b).replace(/\D/g, '')) : 0);
+        if (timeA && timeB && timeA !== timeB) {
+          return timeB - timeA; // Newest at top
+        }
+        const numA = Number(String(a).replace(/\D/g, ''));
+        const numB = Number(String(b).replace(/\D/g, ''));
+        if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numB - numA;
         return 0;
       });
 
@@ -257,6 +286,27 @@ app.get('/api/astrometry/my-jobs', async (req: Request, res: Response) => {
         const strId = String(jobId);
         if (jobDetailsCache.has(strId)) {
           return jobDetailsCache.get(strId);
+        }
+
+        // Handle in-browser local jobs without hitting nova.astrometry.net
+        if (isLocalJobId(jobId)) {
+          const hist = userHistory.find((h) => String(h.jobId) === strId);
+          if (hist) {
+            const localDetail = {
+              jobId,
+              status: 'success',
+              filename: hist.title || `Local Job #${jobId}`,
+              objects: hist.objects || [],
+              calibration: hist.solvedData?.calibration || {
+                ra: hist.raDeg,
+                dec: hist.decDeg,
+                radius: hist.radiusDeg,
+              },
+            };
+            jobDetailsCache.set(strId, localDetail);
+            return localDetail;
+          }
+          return { jobId, status: 'success', filename: `Local Job #${jobId}` };
         }
 
         try {
@@ -561,6 +611,9 @@ app.get('/api/astrometry/submissions/:subid', async (req: Request, res: Response
 app.get('/api/astrometry/jobs/:jobId/status', async (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
+    if (isLocalJobId(jobId)) {
+      return res.json({ status: 'success', jobId });
+    }
     const resp = await fetch(`https://nova.astrometry.net/api/jobs/${jobId}/`, {
       headers: { 'User-Agent': 'AstroPlate/1.0' },
     });
@@ -578,6 +631,13 @@ app.get('/api/astrometry/jobs/:jobId/status', async (req: Request, res: Response
 app.get('/api/astrometry/jobs/:jobId/calibration', async (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
+    if (isLocalJobId(jobId)) {
+      const hist = userHistory.find((h) => String(h.jobId) === String(jobId));
+      if (hist && hist.solvedData?.calibration) {
+        return res.json(hist.solvedData.calibration);
+      }
+      return res.status(404).json({ error: `Local job #${jobId} calibration not found.` });
+    }
     const resp = await fetch(`https://nova.astrometry.net/api/jobs/${jobId}/calibration/`, {
       headers: { 'User-Agent': 'AstroPlate/1.0' },
     });
@@ -595,6 +655,10 @@ app.get('/api/astrometry/jobs/:jobId/calibration', async (req: Request, res: Res
 app.get('/api/astrometry/jobs/:jobId/annotations', async (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
+    if (isLocalJobId(jobId)) {
+      const hist = userHistory.find((h) => String(h.jobId) === String(jobId));
+      return res.json({ annotations: hist?.solvedData?.annotations || [] });
+    }
     const resp = await fetch(`https://nova.astrometry.net/api/jobs/${jobId}/annotations/`, {
       headers: { 'User-Agent': 'AstroPlate/1.0' },
     });
@@ -612,6 +676,14 @@ app.get('/api/astrometry/jobs/:jobId/annotations', async (req: Request, res: Res
 app.get('/api/astrometry/jobs/:jobId/info', async (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
+    if (isLocalJobId(jobId)) {
+      const hist = userHistory.find((h) => String(h.jobId) === String(jobId));
+      return res.json({
+        status: 'success',
+        objects_in_field: hist?.objects || [],
+        original_filename: hist?.title || `Local Job #${jobId}`,
+      });
+    }
     const resp = await fetch(`https://nova.astrometry.net/api/jobs/${jobId}/info/`, {
       headers: { 'User-Agent': 'AstroPlate/1.0' },
     });
@@ -629,6 +701,18 @@ app.get('/api/astrometry/jobs/:jobId/info', async (req: Request, res: Response) 
 app.get('/api/astrometry/jobs/:jobId/full', async (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
+    if (isLocalJobId(jobId)) {
+      const hist = userHistory.find((h) => String(h.jobId) === String(jobId));
+      if (hist && hist.solvedData) {
+        return res.json({
+          jobId,
+          calibration: hist.solvedData.calibration,
+          annotations: hist.solvedData.annotations || [],
+          info: hist.solvedData.info || {},
+        });
+      }
+      return res.status(404).json({ error: `Local job #${jobId} not found on server.` });
+    }
 
     const [calResp, annResp, infoResp] = await Promise.all([
       fetch(`https://nova.astrometry.net/api/jobs/${jobId}/calibration/`, { headers: { 'User-Agent': 'AstroPlate/1.0' } }),
@@ -655,37 +739,56 @@ app.get('/api/astrometry/jobs/:jobId/full', async (req: Request, res: Response) 
   }
 });
 
-// Helper to retrieve CDS real optical astronomical survey image
-async function getCdsSkyImage(jobId: string | number): Promise<Buffer | null> {
+// Helper to retrieve CDS real optical astronomical survey image by sky coordinates
+async function getCdsSkyImageByCoords(
+  ra: number,
+  dec: number,
+  radius = 1,
+  orientation = 0
+): Promise<Buffer | null> {
   try {
-    const calResp = await fetch(`https://nova.astrometry.net/api/jobs/${jobId}/calibration/`, {
-      headers: { 'User-Agent': 'AstroPlate/1.0' },
-    });
-    if (!calResp.ok) return null;
-    const cal = await calResp.json();
-    const ra = cal.ra;
-    const dec = cal.dec;
-    const fov = Math.max(0.4, (cal.radius || 1) * 2);
-    const calW = cal.width_arcsec || 1920;
-    const calH = cal.height_arcsec || 1080;
-    const aspect = Math.max(0.5, Math.min(2.0, calW / calH));
+    const fov = Math.max(0.4, (radius || 1) * 2);
     const width = 1280;
-    const height = Math.round(1280 / aspect);
-    const rotation = cal.orientation !== undefined ? Math.round(cal.orientation) : 0;
+    const height = 960;
+    const rotation = orientation !== undefined ? Math.round(orientation) : 0;
     const cdsUrl = `https://alasky.cds.unistra.fr/hips-image-services/hips2fits?hips=CDS%2FP%2FDSS2%2Fcolor&ra=${ra}&dec=${dec}&fov=${fov}&width=${width}&height=${height}&rotation_angle=${rotation}&format=jpg`;
     const resp = await fetch(cdsUrl, {
       headers: { 'User-Agent': 'Mozilla/5.0' },
-    });
-    if (resp.ok) {
-      const arrayBuf = await resp.arrayBuffer();
-      if (arrayBuf.byteLength > 8000) {
+      signal: AbortSignal.timeout(5000),
+    }).catch(() => null);
+    if (resp && resp.ok) {
+      const arrayBuf = await resp.arrayBuffer().catch(() => null);
+      if (arrayBuf && arrayBuf.byteLength > 8000) {
         return Buffer.from(arrayBuf);
       }
     }
-  } catch (e) {
-    console.error('Failed to get CDS sky image:', e);
+  } catch {
+    // silent catch
   }
   return null;
+}
+
+// Helper to retrieve CDS real optical astronomical survey image by Job ID
+async function getCdsSkyImage(jobId: string | number): Promise<Buffer | null> {
+  if (isLocalJobId(jobId)) {
+    const hist = userHistory.find((h) => String(h.jobId) === String(jobId));
+    if (hist && typeof hist.raDeg === 'number' && typeof hist.decDeg === 'number') {
+      return getCdsSkyImageByCoords(hist.raDeg, hist.decDeg, hist.radiusDeg || 1.0, 0);
+    }
+    return null;
+  }
+  try {
+    const calResp = await fetch(`https://nova.astrometry.net/api/jobs/${jobId}/calibration/`, {
+      headers: { 'User-Agent': 'AstroPlate/1.0' },
+      signal: AbortSignal.timeout(4000),
+    }).catch(() => null);
+    if (!calResp || !calResp.ok) return null;
+    const cal = await calResp.json().catch(() => null);
+    if (!cal || typeof cal.ra !== 'number' || typeof cal.dec !== 'number') return null;
+    return getCdsSkyImageByCoords(cal.ra, cal.dec, cal.radius || 1.0, cal.orientation || 0);
+  } catch {
+    return null;
+  }
 }
 
 // Dedicated endpoint for high-resolution field sky image
@@ -752,7 +855,44 @@ app.get('/api/astrometry/image-proxy/:jobId/:type', async (req: Request, res: Re
   try {
     const { jobId, type } = req.params;
 
-    // Dedicated optical survey mode
+    // Check if this is a local in-browser solved job
+    if (isLocalJobId(jobId)) {
+      // 1. Check in-memory uploaded photo cache
+      const cached = originalPhotoCache.get(String(jobId));
+      if (cached) {
+        res.setHeader('Content-Type', cached.mimetype);
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.send(cached.buffer);
+      }
+
+      // 2. Check userHistory for image data or coordinates
+      const hist = userHistory.find((h) => String(h.jobId) === String(jobId));
+      if (hist) {
+        const targetImg = hist.imageUrl || hist.rawImageUrl || '';
+        if (targetImg.startsWith('data:image/')) {
+          const mime = targetImg.match(/data:(image\/[^;]+);base64,/)?.[1] || 'image/jpeg';
+          const base64Data = targetImg.replace(/^data:image\/[^;]+;base64,/, '');
+          const buf = Buffer.from(base64Data, 'base64');
+          res.setHeader('Content-Type', mime);
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          return res.send(buf);
+        }
+
+        // If coordinates exist, fetch real CDS sky survey image for this field!
+        if (typeof hist.raDeg === 'number' && typeof hist.decDeg === 'number') {
+          const cdsBuf = await getCdsSkyImageByCoords(hist.raDeg, hist.decDeg, hist.radiusDeg || 1.0, 0);
+          if (cdsBuf) {
+            res.setHeader('Content-Type', 'image/jpeg');
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            return res.send(cdsBuf);
+          }
+        }
+      }
+
+      return res.status(404).send('Local job image not available');
+    }
+
+    // Dedicated optical survey mode for remote jobs
     if (type === 'survey') {
       const surveyBuf = await getCdsSkyImage(jobId);
       if (surveyBuf) {
@@ -772,8 +912,7 @@ app.get('/api/astrometry/image-proxy/:jobId/:type', async (req: Request, res: Re
         return res.send(cached.buffer);
       }
 
-      // If no local uploaded photo cached (e.g. loaded by Job ID lookup), fetch authentic clean CDS optical survey image
-      // This ensures the background of the constellation precision overlay has clean real stars without official Astrometry annotations
+      // If no local uploaded photo cached, fetch authentic clean CDS optical survey image
       const surveyBuf = await getCdsSkyImage(jobId);
       if (surveyBuf) {
         originalPhotoCache.set(String(jobId), { buffer: surveyBuf, mimetype: 'image/jpeg' });
@@ -806,7 +945,6 @@ app.get('/api/astrometry/image-proxy/:jobId/:type', async (req: Request, res: Re
         `https://nova.astrometry.net/grid_display/${jobId}`,
       ];
     } else if (type === 'original' || type === 'raw' || type === 'image') {
-      // For jobs without cached local original, fetch clean unannotated photo from Astrometry first
       candidateUrls = [
         `https://nova.astrometry.net/image/${jobId}`,
         `https://nova.astrometry.net/annotated_full/${jobId}`,
@@ -831,7 +969,10 @@ app.get('/api/astrometry/image-proxy/:jobId/:type', async (req: Request, res: Re
             'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
           },
           redirect: 'manual',
-        });
+          signal: AbortSignal.timeout(4000),
+        }).catch(() => null);
+
+        if (!upstream) continue;
 
         // If ask_human redirect occurred, refresh human session and retry once
         if (upstream.status === 302 || upstream.headers.get('content-type')?.includes('text/html')) {
@@ -844,21 +985,23 @@ app.get('/api/astrometry/image-proxy/:jobId/:type', async (req: Request, res: Re
               'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
             },
             redirect: 'manual',
-          });
+            signal: AbortSignal.timeout(4000),
+          }).catch(() => null);
         }
 
-        const contentType = upstream.headers.get('content-type') || '';
-        if (upstream.ok && contentType.startsWith('image/')) {
-          const arrayBuf = await upstream.arrayBuffer();
-          // Skip dummy tiny placeholder images (< 10000 bytes)
-          if (arrayBuf.byteLength >= 10000) {
-            res.setHeader('Content-Type', contentType);
-            res.setHeader('Cache-Control', 'public, max-age=86400');
-            return res.send(Buffer.from(arrayBuf));
+        if (upstream && upstream.ok) {
+          const contentType = upstream.headers.get('content-type') || '';
+          if (contentType.startsWith('image/')) {
+            const arrayBuf = await upstream.arrayBuffer().catch(() => null);
+            if (arrayBuf && arrayBuf.byteLength >= 10000) {
+              res.setHeader('Content-Type', contentType);
+              res.setHeader('Cache-Control', 'public, max-age=86400');
+              return res.send(Buffer.from(arrayBuf));
+            }
           }
         }
-      } catch (e) {
-        console.warn(`Astrometry proxy error for ${targetUrl}:`, e);
+      } catch {
+        // silent catch
       }
     }
 

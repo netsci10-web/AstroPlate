@@ -64,14 +64,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
-            {/* My Account Jobs Button */}
+            {/* Work History Button */}
             <button
               onClick={onOpenAccountJobs}
-              title="Astrometry.net 내 계정 작업 및 기억된 Job 목록 보기"
+              title="Astrometry.net 및 로컬 솔빙 작업 히스토리 목록 보기"
               className="text-xs px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center space-x-1.5 transition-colors relative cursor-pointer"
             >
               <Database className="w-3.5 h-3.5 text-sky-400" />
-              <span className="font-medium">내 계정 작업</span>
+              <span className="font-medium">작업 히스토리</span>
               {accountJobsCount > 0 && (
                 <span className="ml-1 px-1.5 py-0.2 rounded-full bg-sky-500 text-white text-[10px] font-bold">
                   {accountJobsCount}

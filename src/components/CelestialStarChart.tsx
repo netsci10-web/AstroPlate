@@ -253,10 +253,12 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
   const [isAladinOpen, setIsAladinOpen] = useState(false);
 
   // Direct external URL to CDS Aladin Lite with explicit ra & dec parameters for exact celestial targeting
-  const aladinFov = Math.max(0.1, Math.min(60, cal?.radius ? cal.radius * 2 : 1.5)).toFixed(2);
-  const aladinUrl = `https://aladin.cds.unistra.fr/AladinLite/?ra=${centerRa.toFixed(
+  const aladinFov = Math.max(0.1, Math.min(60, typeof cal?.radius === 'number' && !isNaN(cal.radius) ? cal.radius * 2 : 1.5)).toFixed(2);
+  const safeCenterRa = typeof centerRa === 'number' && !isNaN(centerRa) ? centerRa : 0;
+  const safeCenterDec = typeof centerDec === 'number' && !isNaN(centerDec) ? centerDec : 0;
+  const aladinUrl = `https://aladin.cds.unistra.fr/AladinLite/?ra=${safeCenterRa.toFixed(
     5
-  )}&dec=${centerDec.toFixed(5)}&fov=${aladinFov}&survey=P%2FDSS2%2Fcolor`;
+  )}&dec=${safeCenterDec.toFixed(5)}&fov=${aladinFov}&survey=P%2FDSS2%2Fcolor`;
 
   // Line stroke width based on setting
   const strokeWidthPx = lineWidth === 'thick' ? 2.6 : lineWidth === 'normal' ? 1.8 : 1.2;
