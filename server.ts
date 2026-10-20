@@ -169,6 +169,9 @@ let userHistory: SavedAnalysisItem[] = [];
 // In-memory cache for original uploaded photo files (keyed by subid and jobid)
 const originalPhotoCache = new Map<string, { buffer: Buffer; mimetype: string }>();
 
+// In-memory cache for Astrometry job details (info, calibration, annotations)
+const jobDetailsCache = new Map<string, any>();
+
 // Analysis history endpoints
 app.get('/api/astrometry/history', (_req: Request, res: Response) => {
   res.json({ history: userHistory });
@@ -237,34 +240,60 @@ app.get('/api/astrometry/my-jobs', async (req: Request, res: Response) => {
       // Session error / no API key: we still proceed with extraList!
     }
 
-    // Merge: extraList first (latest remembered in app), then account jobs, deduplicated
-    // Filter out jobs that the user explicitly deleted
-    const combinedIds = Array.from(new Set([...extraList, ...accountJobIds.reverse()]))
-      .filter((id) => id && !deletedJobIds.has(String(id)));
+    // Cache for job details to avoid bombarding Astrometry.net and prevent 429/503 rate limits
+    const combinedIds = Array.from(new Set([...extraList, ...accountJobIds]))
+      .filter((id) => id && !deletedJobIds.has(String(id)))
+      .sort((a, b) => {
+        const numA = Number(a);
+        const numB = Number(b);
+        if (!isNaN(numA) && !isNaN(numB)) return numB - numA;
+        return 0;
+      });
 
-    // Fetch brief info for top 25 jobs from Astrometry.net
+    // Fetch brief info for top 25 jobs from Astrometry.net with caching
     const topJobs = combinedIds.slice(0, 25);
     const detailed = await Promise.all(
       topJobs.map(async (jobId) => {
-        try {
-          const [infoResp, calResp, annoResp] = await Promise.all([
-            fetch(`https://nova.astrometry.net/api/jobs/${jobId}/info/`, {
-              headers: { 'User-Agent': 'AstroPlate/1.0' },
-            }),
-            fetch(`https://nova.astrometry.net/api/jobs/${jobId}/calibration/`, {
-              headers: { 'User-Agent': 'AstroPlate/1.0' },
-            }).catch(() => null),
-            fetch(`https://nova.astrometry.net/api/jobs/${jobId}/annotations/`, {
-              headers: { 'User-Agent': 'AstroPlate/1.0' },
-            }).catch(() => null),
-          ]);
+        const strId = String(jobId);
+        if (jobDetailsCache.has(strId)) {
+          return jobDetailsCache.get(strId);
+        }
 
-          const info = infoResp.ok ? await infoResp.json() : {};
-          const calibration = calResp && calResp.ok ? await calResp.json() : null;
-          const annoData = annoResp && annoResp.ok ? await annoResp.json().catch(() => null) : null;
-          const annoNames = Array.isArray(annoData?.annotations)
-            ? annoData.annotations.flatMap((a: any) => (Array.isArray(a.names) ? a.names : []))
-            : [];
+        try {
+          const infoResp = await fetch(`https://nova.astrometry.net/api/jobs/${jobId}/info/`, {
+            headers: { 'User-Agent': 'AstroPlate/1.0' },
+          }).catch(() => null);
+
+          if (!infoResp || !infoResp.ok) {
+            return { jobId, status: 'unknown' };
+          }
+
+          const info = await infoResp.json().catch(() => ({}));
+
+          // Use info.calibration if available, or fetch calibration
+          let calibration = info.calibration || null;
+          if (!calibration || !calibration.width_arcsec) {
+            const calResp = await fetch(`https://nova.astrometry.net/api/jobs/${jobId}/calibration/`, {
+              headers: { 'User-Agent': 'AstroPlate/1.0' },
+            }).catch(() => null);
+            if (calResp && calResp.ok) {
+              const fullCal = await calResp.json().catch(() => null);
+              if (fullCal) calibration = { ...calibration, ...fullCal };
+            }
+          }
+
+          let annoNames: string[] = [];
+          try {
+            const annoResp = await fetch(`https://nova.astrometry.net/api/jobs/${jobId}/annotations/`, {
+              headers: { 'User-Agent': 'AstroPlate/1.0' },
+            }).catch(() => null);
+            if (annoResp && annoResp.ok) {
+              const annoData = await annoResp.json().catch(() => null);
+              if (Array.isArray(annoData?.annotations)) {
+                annoNames = annoData.annotations.flatMap((a: any) => (Array.isArray(a.names) ? a.names : []));
+              }
+            }
+          } catch {}
 
           const rawObjects = [
             ...(Array.isArray(info.objects_in_field) ? info.objects_in_field : []),
@@ -274,13 +303,19 @@ app.get('/api/astrometry/my-jobs', async (req: Request, res: Response) => {
           ];
           const objects = Array.from(new Set(rawObjects.filter(Boolean)));
 
-          return {
+          const resItem = {
             jobId,
             status: info.status || (calibration ? 'success' : 'unknown'),
             filename: info.original_filename || `Astrometry Job #${jobId}`,
             objects,
             calibration,
           };
+
+          if (resItem.status === 'success' && calibration) {
+            jobDetailsCache.set(strId, resItem);
+          }
+
+          return resItem;
         } catch {
           return { jobId, status: 'unknown' };
         }
