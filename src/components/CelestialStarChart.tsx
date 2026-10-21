@@ -3,32 +3,35 @@ import {
   Compass,
   Globe,
   Sparkles,
-  MapPin,
   ExternalLink,
   ZoomIn,
   ZoomOut,
   RotateCcw,
   Eye,
+  EyeOff,
   Sliders,
   Maximize2,
   Minimize2,
   Crosshair,
-  Layers,
-  Palette,
-  Check,
   ChevronDown,
-  Info,
+  Search,
+  Filter,
+  Tag,
+  GitCommit,
+  Check,
 } from 'lucide-react';
 import { SolvedAstroData } from '../types/astronomy';
-import { degToRA_HMS, degToDec_DMS, computeFieldCorners } from '../utils/coordinateMath';
+import { degToRA_HMS, degToDec_DMS, computeFieldCorners, angularSeparation as angularSeparationDeg } from '../utils/coordinateMath';
 import { IAU_CONSTELLATIONS } from '../utils/constellations';
 import { AladinSurveyModal } from './AladinSurveyModal';
 import {
   BRIGHT_STARS,
   CONSTELLATION_FIGURES,
   MILKY_WAY_COORDINATES,
+  DEEP_SKY_OBJECTS,
   CatalogStar,
   ConstellationFigure,
+  DeepSkyCatalogObject,
 } from '../data/celestialCatalog';
 
 interface CelestialStarChartProps {
@@ -61,26 +64,37 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
   });
 
   // Display & Visibility Controls
+  const [showConstellationLines, setShowConstellationLines] = useState(true);
   const [lineStyle, setLineStyle] = useState<LineBrightness>('glow');
   const [lineWidth, setLineWidth] = useState<'thin' | 'normal' | 'thick'>('thin');
   const [showConstellationNames, setShowConstellationNames] = useState(true);
   const [constellationFilter, setConstellationFilter] = useState<ConstellationFilter>('all');
   const [showStarNames, setShowStarNames] = useState(true);
   const [showStars, setShowStars] = useState(true);
+  const [showDeepSkyObjects, setShowDeepSkyObjects] = useState(true);
+  const [showDsoLabels, setShowDsoLabels] = useState(true);
   const [showGrid, setShowGrid] = useState(true);
   const [showMilkyWay, setShowMilkyWay] = useState(true);
   const [theme, setTheme] = useState<ChartTheme>('deep_navy');
   const [showControlsMenu, setShowControlsMenu] = useState(false);
 
+  // Per-constellation visibility state (allows hiding specific constellation lines and/or labels)
+  const [hiddenConstellationLines, setHiddenConstellationLines] = useState<Set<string>>(new Set());
+  const [hiddenConstellationLabels, setHiddenConstellationLabels] = useState<Set<string>>(new Set());
+  const [showConstellationSelector, setShowConstellationSelector] = useState(false);
+  const [constellationSearchQuery, setConstellationSearchQuery] = useState('');
+
   // Hover & selection inspection
   const [hoveredCoords, setHoveredCoords] = useState<{ ra: string; dec: string; rawRa: number; rawDec: number } | null>(null);
   const [hoveredConstellation, setHoveredConstellation] = useState<ConstellationFigure | null>(null);
   const [hoveredStar, setHoveredStar] = useState<CatalogStar | null>(null);
+  const [hoveredDso, setHoveredDso] = useState<DeepSkyCatalogObject | null>(null);
   const [selectedConstCode, setSelectedConstCode] = useState<string | null>(null);
 
   const cal = data.calibration;
   const centerRa = cal?.ra || 0;
   const centerDec = cal?.dec || 0;
+  const fieldRadiusDeg = cal?.radius || 1.5;
   const widthArcsec = cal?.width_arcsec || (cal?.radius ? cal.radius * 7200 : 3600);
   const heightArcsec = cal?.height_arcsec || widthArcsec;
   const orientation = cal?.orientation || 0;
@@ -88,6 +102,120 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
 
   // Primary matched constellation
   const primaryConstellation = data.matchedConstellations[0];
+
+  // All available constellation codes (union of CONSTELLATION_FIGURES and IAU_CONSTELLATIONS)
+  const allConstellationCodes = useMemo(() => {
+    const codes = new Set<string>();
+    CONSTELLATION_FIGURES.forEach((f) => codes.add(f.code));
+    Object.keys(IAU_CONSTELLATIONS).forEach((c) => codes.add(c));
+    return Array.from(codes);
+  }, []);
+
+  // Per-constellation visibility helpers
+  const isConstellationLineVisible = useCallback(
+    (code: string) => {
+      if (!showConstellationLines || lineStyle === 'off') return false;
+      if (constellationFilter === 'matched_only' && !data.matchedConstellations.some((m) => m.code === code)) {
+        return false;
+      }
+      return !hiddenConstellationLines.has(code);
+    },
+    [showConstellationLines, lineStyle, constellationFilter, data.matchedConstellations, hiddenConstellationLines]
+  );
+
+  const isConstellationLabelVisible = useCallback(
+    (code: string) => {
+      if (!showConstellationNames) return false;
+      if (constellationFilter === 'matched_only' && !data.matchedConstellations.some((m) => m.code === code)) {
+        return false;
+      }
+      return !hiddenConstellationLabels.has(code);
+    },
+    [showConstellationNames, constellationFilter, data.matchedConstellations, hiddenConstellationLabels]
+  );
+
+  const isConstellationVisible = useCallback(
+    (code: string) => {
+      return !hiddenConstellationLines.has(code) || !hiddenConstellationLabels.has(code);
+    },
+    [hiddenConstellationLines, hiddenConstellationLabels]
+  );
+
+  const toggleSingleConstellation = useCallback((code: string) => {
+    const currentlyHidden = hiddenConstellationLines.has(code) && hiddenConstellationLabels.has(code);
+    setHiddenConstellationLines((prev) => {
+      const next = new Set(prev);
+      if (currentlyHidden) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+    setHiddenConstellationLabels((prev) => {
+      const next = new Set(prev);
+      if (currentlyHidden) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  }, [hiddenConstellationLines, hiddenConstellationLabels]);
+
+  const toggleSingleConstellationLine = useCallback((code: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setHiddenConstellationLines((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  }, []);
+
+  const toggleSingleConstellationLabel = useCallback((code: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setHiddenConstellationLabels((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  }, []);
+
+  // Presets for quick DSO / Constellation filtering
+  const handleShowAllConstellations = () => {
+    setShowConstellationLines(true);
+    if (lineStyle === 'off') setLineStyle('glow');
+    setShowConstellationNames(true);
+    setConstellationFilter('all');
+    setHiddenConstellationLines(new Set());
+    setHiddenConstellationLabels(new Set());
+  };
+
+  const handleHideAllConstellationsForDso = () => {
+    setShowConstellationLines(false);
+    setShowConstellationNames(false);
+    setShowDeepSkyObjects(true);
+    setShowDsoLabels(true);
+  };
+
+  const handleShowOnlyMatchedConstellations = () => {
+    setShowConstellationLines(true);
+    if (lineStyle === 'off') setLineStyle('glow');
+    setShowConstellationNames(true);
+    const matchedCodes = new Set(data.matchedConstellations.map((m) => m.code));
+    const toHide = allConstellationCodes.filter((c) => !matchedCodes.has(c));
+    setHiddenConstellationLines(new Set(toHide));
+    setHiddenConstellationLabels(new Set(toHide));
+  };
+
+  const handleHideMatchedConstellationsForFovDso = () => {
+    setShowConstellationLines(true);
+    if (lineStyle === 'off') setLineStyle('glow');
+    setShowConstellationNames(true);
+    setShowDeepSkyObjects(true);
+    setShowDsoLabels(true);
+    const matchedCodes = data.matchedConstellations.map((m) => m.code);
+    setHiddenConstellationLines(new Set(matchedCodes));
+    setHiddenConstellationLabels(new Set(matchedCodes));
+  };
+
+  const isDsoCleanModeActive = !showConstellationLines && !showConstellationNames && showDeepSkyObjects;
 
   // SVG dimensions for celestial projection
   const width = 1000;
@@ -245,28 +373,59 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
 
   const [isAladinOpen, setIsAladinOpen] = useState(false);
 
-  // Direct external URL to CDS Aladin Lite with explicit ra & dec parameters for exact celestial targeting
-  const aladinFov = Math.max(0.1, Math.min(60, typeof cal?.radius === 'number' && !isNaN(cal.radius) ? cal.radius * 2 : 1.5)).toFixed(2);
-  const safeCenterRa = typeof centerRa === 'number' && !isNaN(centerRa) ? centerRa : 0;
-  const safeCenterDec = typeof centerDec === 'number' && !isNaN(centerDec) ? centerDec : 0;
-  const aladinUrl = `https://aladin.cds.unistra.fr/AladinLite/?ra=${safeCenterRa.toFixed(
-    5
-  )}&dec=${safeCenterDec.toFixed(5)}&fov=${aladinFov}&survey=P%2FDSS2%2Fcolor`;
-
   // Line stroke width based on setting
   const strokeWidthPx = lineWidth === 'thick' ? 2.6 : lineWidth === 'normal' ? 1.8 : 1.2;
 
-  // Filtered constellations for rendering
+  // Filtered constellations for rendering lines
   const activeConstellations = useMemo(() => {
-    return CONSTELLATION_FIGURES.filter((fig) => {
-      if (constellationFilter === 'matched_only') {
-        return data.matchedConstellations.some((m) => m.code === fig.code);
-      }
-      return true;
-    });
-  }, [constellationFilter, data.matchedConstellations]);
+    return CONSTELLATION_FIGURES.filter((fig) => isConstellationLineVisible(fig.code));
+  }, [isConstellationLineVisible]);
 
-  // Milky way SVG path generator with meridian safety
+  // Combined list of constellations for the per-constellation selector panel
+  const selectorConstellationList = useMemo(() => {
+    const matchedCodes = new Set(data.matchedConstellations.map((m) => m.code));
+    const items = CONSTELLATION_FIGURES.map((fig) => {
+      const dsoList = DEEP_SKY_OBJECTS.filter((d) => d.constellation === fig.code);
+      return {
+        code: fig.code,
+        nameKo: fig.nameKo,
+        nameEn: fig.nameEn,
+        family: fig.family,
+        isMatched: matchedCodes.has(fig.code),
+        isPrimary: primaryConstellation?.code === fig.code,
+        dsoCount: dsoList.length,
+        dsoNames: dsoList.map((d) => d.catalogId).join(', '),
+      };
+    });
+
+    // Sort: primary first, then matched, then by DSO count descending, then alphabetically
+    items.sort((a, b) => {
+      if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+      if (a.isMatched !== b.isMatched) return a.isMatched ? -1 : 1;
+      if (b.dsoCount !== a.dsoCount) return b.dsoCount - a.dsoCount;
+      return a.nameKo.localeCompare(b.nameKo, 'ko');
+    });
+
+    if (!constellationSearchQuery.trim()) return items;
+    const q = constellationSearchQuery.trim().toLowerCase();
+    return items.filter(
+      (item) =>
+        item.nameKo.toLowerCase().includes(q) ||
+        item.nameEn.toLowerCase().includes(q) ||
+        item.code.toLowerCase().includes(q) ||
+        item.dsoNames.toLowerCase().includes(q)
+    );
+  }, [data.matchedConstellations, primaryConstellation, constellationSearchQuery]);
+
+  // Count of visible constellations
+  const visibleConstellationCount = useMemo(() => {
+    if (!showConstellationLines && !showConstellationNames) return 0;
+    return CONSTELLATION_FIGURES.filter(
+      (f) => isConstellationLineVisible(f.code) || isConstellationLabelVisible(f.code)
+    ).length;
+  }, [showConstellationLines, showConstellationNames, isConstellationLineVisible, isConstellationLabelVisible]);
+
+  // Milky way SVG path generator
   const milkyWayPath = useMemo(() => {
     if (MILKY_WAY_COORDINATES.length === 0) return '';
     const points = MILKY_WAY_COORDINATES.map(([ra, dec]) => `${raToX(ra)},${decToY(dec)}`);
@@ -387,19 +546,19 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
       }`}
     >
       {/* Header Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-800">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3 pb-3 border-b border-slate-800">
         <div>
           <div className="flex items-center space-x-2">
             <Globe className="w-5 h-5 text-sky-400 animate-pulse" />
             <h3 className="text-base font-bold text-white tracking-tight flex items-center space-x-2">
               <span>실시간 전천 성도 (Celestial Star Chart)</span>
               <span className="text-xs px-2 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-800 font-medium">
-                고선명 별자리 성도
+                고선명 별자리 & 딥스카이 성도
               </span>
             </h3>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            전천 88개 별자리 선(Asterisms)과 주요 밝은 별, 천구 좌표계(J2000) 및 촬영 사진 정밀 화각(FOV) 연동
+            별자리 선·라벨 개별 표시/숨김 및 메시에·NGC·IC 딥스카이 천체(DSO) 시인성 제어 지원
           </p>
         </div>
 
@@ -439,25 +598,131 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
             </button>
           </div>
 
+          {/* Direct Quick Visibility Toggles for Lines, Labels, DSOs, and Per-Constellation Selector */}
+          <div className="bg-slate-950 rounded-xl p-1 flex flex-wrap items-center gap-1 border border-slate-800">
+            {/* 1. Constellation Lines Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = !(showConstellationLines && lineStyle !== 'off');
+                setShowConstellationLines(next);
+                if (next && lineStyle === 'off') setLineStyle('glow');
+              }}
+              title="별자리 선(Asterism Lines) 전체 표시/숨김 토글"
+              className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all flex items-center space-x-1.5 ${
+                showConstellationLines && lineStyle !== 'off'
+                  ? 'bg-sky-950/90 text-sky-300 border border-sky-700/70 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
+              }`}
+            >
+              <GitCommit className="w-3.5 h-3.5" />
+              <span>별자리 선</span>
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  showConstellationLines && lineStyle !== 'off' ? 'bg-sky-400' : 'bg-slate-600'
+                }`}
+              />
+            </button>
+
+            {/* 2. Constellation Labels Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowConstellationNames((v) => !v)}
+              title="별자리 이름 라벨(Constellation Labels) 전체 표시/숨김 토글"
+              className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all flex items-center space-x-1.5 ${
+                showConstellationNames
+                  ? 'bg-indigo-950/90 text-indigo-300 border border-indigo-700/70 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
+              }`}
+            >
+              <Tag className="w-3.5 h-3.5" />
+              <span>별자리 라벨</span>
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  showConstellationNames ? 'bg-indigo-400' : 'bg-slate-600'
+                }`}
+              />
+            </button>
+
+            {/* 3. Deep Sky Objects (DSO) Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowDeepSkyObjects((v) => !v)}
+              title="딥스카이 천체(성운·은하·성단) 마커 및 라벨 표시/숨김"
+              className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all flex items-center space-x-1.5 ${
+                showDeepSkyObjects
+                  ? 'bg-emerald-950/90 text-emerald-300 border border-emerald-700/70 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>딥스카이(DSO)</span>
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  showDeepSkyObjects ? 'bg-emerald-400' : 'bg-slate-600'
+                }`}
+              />
+            </button>
+
+            {/* 4. DSO Clean View Quick Toggle (Hides constellation lines/labels for unobstructed DSO view) */}
+            <button
+              type="button"
+              onClick={() => {
+                if (isDsoCleanModeActive) {
+                  handleShowAllConstellations();
+                } else {
+                  handleHideAllConstellationsForDso();
+                }
+              }}
+              title="별자리 선과 라벨을 일시 숨기고 딥스카이 천체(DSO)만 선명하게 관측"
+              className={`text-xs px-2.5 py-1.5 rounded-lg font-semibold transition-all flex items-center space-x-1.5 ${
+                isDsoCleanModeActive
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-sm'
+                  : 'text-slate-400 hover:text-amber-300 border border-transparent'
+              }`}
+            >
+              {isDsoCleanModeActive ? <EyeOff className="w-3.5 h-3.5 text-amber-400" /> : <Eye className="w-3.5 h-3.5" />}
+              <span>DSO 클린 뷰</span>
+            </button>
+
+            {/* 5. Specific Constellation Filter Drawer Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowConstellationSelector((v) => !v)}
+              title="특정 별자리만 선택적으로 표시하거나 숨겨 딥스카이 천체 시야 확보"
+              className={`text-xs px-2.5 py-1.5 rounded-lg font-semibold transition-all flex items-center space-x-1.5 ${
+                showConstellationSelector || hiddenConstellationLines.size > 0 || hiddenConstellationLabels.size > 0
+                  ? 'bg-purple-950/90 text-purple-200 border border-purple-600/70 shadow-sm'
+                  : 'text-slate-300 hover:text-white bg-slate-900 border border-slate-800'
+              }`}
+            >
+              <Filter className="w-3.5 h-3.5 text-purple-400" />
+              <span>별자리 선택</span>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-950 text-purple-300 border border-purple-800/60">
+                {visibleConstellationCount}/{CONSTELLATION_FIGURES.length}
+              </span>
+            </button>
+          </div>
+
           {/* Quick Visibility Settings Menu Button */}
           <div className="relative">
             <button
               onClick={() => setShowControlsMenu(!showControlsMenu)}
               className="text-xs px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center space-x-1.5 transition-all shadow-sm"
-              title="별자리 선, 밝기, 이름, 별 표시 설정"
+              title="별자리 선, 밝기, 이름, 별 표시 상세 설정"
             >
               <Sliders className="w-3.5 h-3.5 text-sky-400" />
-              <span>성도 시인성 조절</span>
+              <span>성도 세부 설정</span>
               <ChevronDown className="w-3 h-3 text-slate-400" />
             </button>
 
             {/* Dropdown Menu for Visual Clarity */}
             {showControlsMenu && (
-              <div className="absolute right-0 mt-2 w-72 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-4 z-40 space-y-3.5 text-xs">
+              <div className="absolute right-0 mt-2 w-80 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-4 z-40 space-y-3.5 text-xs">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-800">
                   <span className="font-bold text-white flex items-center space-x-1.5">
                     <Eye className="w-4 h-4 text-sky-400" />
-                    <span>별자리 및 성도 시인성 설정</span>
+                    <span>별자리 및 딥스카이 시인성 설정</span>
                   </span>
                   <button
                     onClick={() => setShowControlsMenu(false)}
@@ -475,13 +740,17 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
                       { id: 'glow', label: '✨ 네온 발광 (추천)' },
                       { id: 'sharp', label: '⚪ 고선명 화이트' },
                       { id: 'amber', label: '🌟 황금빛 클래식' },
-                      { id: 'off', label: '❌ 선 숨김' },
+                      { id: 'subtle', label: '🔹 은은한 보라 (DSO 강조)' },
+                      { id: 'off', label: '❌ 별자리 선 숨김' },
                     ].map((opt) => (
                       <button
                         key={opt.id}
-                        onClick={() => setLineStyle(opt.id as LineBrightness)}
+                        onClick={() => {
+                          setLineStyle(opt.id as LineBrightness);
+                          setShowConstellationLines(opt.id !== 'off');
+                        }}
                         className={`px-2 py-1.5 rounded-lg text-left text-[11px] font-medium transition-all ${
-                          lineStyle === opt.id
+                          (showConstellationLines ? lineStyle : 'off') === opt.id
                             ? 'bg-sky-600 text-white shadow'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
                         }`}
@@ -497,13 +766,13 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
                   <label className="text-slate-300 font-medium block">별자리 선 굵기</label>
                   <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800">
                     {[
-                      { id: 'thin', label: '보통 (기본 1.2px)' },
+                      { id: 'thin', label: '보통 (1.2px)' },
                       { id: 'normal', label: '선명 (1.8px)' },
                       { id: 'thick', label: '굵게 (2.6px)' },
                     ].map((opt) => (
                       <button
                         key={opt.id}
-                        onClick={() => setLineWidth(opt.id as any)}
+                        onClick={() => setLineWidth(opt.id as 'thin' | 'normal' | 'thick')}
                         className={`flex-1 py-1 rounded-lg text-center text-[11px] font-medium transition-all ${
                           lineWidth === opt.id
                             ? 'bg-indigo-600 text-white shadow'
@@ -516,10 +785,52 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
                   </div>
                 </div>
 
-                {/* 3. Constellation Names & Stars Toggles */}
+                {/* 3. Constellation Scope Filter */}
+                <div className="space-y-1.5">
+                  <label className="text-slate-300 font-medium block">별자리 표시 범위</label>
+                  <div className="grid grid-cols-2 gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setConstellationFilter('all')}
+                      className={`py-1.5 rounded-lg text-center text-[11px] font-medium transition-all ${
+                        constellationFilter === 'all'
+                          ? 'bg-sky-600 text-white shadow'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      전천 별자리 (선택 반영)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConstellationFilter('matched_only')}
+                      className={`py-1.5 rounded-lg text-center text-[11px] font-medium transition-all ${
+                        constellationFilter === 'matched_only'
+                          ? 'bg-sky-600 text-white shadow'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      사진 매칭 별자리만
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4. Layer Visibility Checkboxes */}
                 <div className="space-y-2 pt-1 border-t border-slate-800">
                   <label className="flex items-center justify-between text-slate-300 cursor-pointer">
-                    <span>별자리 이름 표시 (한글)</span>
+                    <span>별자리 선 (Asterism Lines) 표시</span>
+                    <input
+                      type="checkbox"
+                      checked={showConstellationLines && lineStyle !== 'off'}
+                      onChange={(e) => {
+                        setShowConstellationLines(e.target.checked);
+                        if (e.target.checked && lineStyle === 'off') setLineStyle('glow');
+                      }}
+                      className="rounded bg-slate-800 border-slate-700 text-sky-500 focus:ring-0"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between text-slate-300 cursor-pointer">
+                    <span>별자리 이름 라벨 (한글/IAU) 표시</span>
                     <input
                       type="checkbox"
                       checked={showConstellationNames}
@@ -528,15 +839,49 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
                     />
                   </label>
 
-                  <label className="flex items-center justify-between text-slate-300 cursor-pointer">
-                    <span>주요 밝은 별 및 이름 표시</span>
+                  <label className="flex items-center justify-between text-emerald-300 font-medium cursor-pointer">
+                    <span>딥스카이 천체 (M/NGC/IC) 마커 표시</span>
                     <input
                       type="checkbox"
-                      checked={showStarNames}
-                      onChange={(e) => setShowStarNames(e.target.checked)}
+                      checked={showDeepSkyObjects}
+                      onChange={(e) => setShowDeepSkyObjects(e.target.checked)}
+                      className="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0"
+                    />
+                  </label>
+
+                  {showDeepSkyObjects && (
+                    <label className="flex items-center justify-between text-slate-300 pl-3 cursor-pointer">
+                      <span>↳ 딥스카이 천체 이름 라벨 표시</span>
+                      <input
+                        type="checkbox"
+                        checked={showDsoLabels}
+                        onChange={(e) => setShowDsoLabels(e.target.checked)}
+                        className="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0"
+                      />
+                    </label>
+                  )}
+
+                  <label className="flex items-center justify-between text-slate-300 cursor-pointer">
+                    <span>주요 밝은 별 (Bright Stars) 표시</span>
+                    <input
+                      type="checkbox"
+                      checked={showStars}
+                      onChange={(e) => setShowStars(e.target.checked)}
                       className="rounded bg-slate-800 border-slate-700 text-sky-500 focus:ring-0"
                     />
                   </label>
+
+                  {showStars && (
+                    <label className="flex items-center justify-between text-slate-300 pl-3 cursor-pointer">
+                      <span>↳ 주요 별 이름 라벨 표시</span>
+                      <input
+                        type="checkbox"
+                        checked={showStarNames}
+                        onChange={(e) => setShowStarNames(e.target.checked)}
+                        className="rounded bg-slate-800 border-slate-700 text-sky-500 focus:ring-0"
+                      />
+                    </label>
+                  )}
 
                   <label className="flex items-center justify-between text-slate-300 cursor-pointer">
                     <span>적경/적위 천구 좌표 격자선</span>
@@ -559,7 +904,7 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
                   </label>
                 </div>
 
-                {/* 4. Background Theme */}
+                {/* 5. Background Theme */}
                 <div className="space-y-1.5 pt-1 border-t border-slate-800">
                   <label className="text-slate-300 font-medium block">성도 배경 테마</label>
                   <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
@@ -645,24 +990,204 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
         </div>
       </div>
 
-      {/* Interactive Status Banner */}
+      {/* Collapsible Per-Constellation Visibility Selector Drawer */}
+      {showConstellationSelector && (
+        <div className="mb-3 p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-3 animate-in fade-in duration-200">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
+            <div className="flex items-center space-x-2">
+              <Filter className="w-4 h-4 text-purple-400" />
+              <span className="text-xs font-bold text-white">
+                개별 별자리 선 · 라벨 표시/숨김 제어 (딥스카이 천체 시야 확보)
+              </span>
+              <span className="text-[11px] text-slate-400 hidden sm:inline">
+                — 특정 별자리의 선이나 라벨이 성운·은하·성단을 가릴 때 개별적으로 켜고 끌 수 있습니다.
+              </span>
+            </div>
+
+            {/* Preset Action Buttons */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleShowAllConstellations}
+                className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors"
+              >
+                전체 표시
+              </button>
+              <button
+                type="button"
+                onClick={handleShowOnlyMatchedConstellations}
+                className="text-[11px] px-2.5 py-1 rounded-lg bg-sky-950/80 hover:bg-sky-900 text-sky-300 border border-sky-800/70 transition-colors"
+              >
+                매칭 별자리만 표시
+              </button>
+              <button
+                type="button"
+                onClick={handleHideMatchedConstellationsForFovDso}
+                className="text-[11px] px-2.5 py-1 rounded-lg bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-800/70 transition-colors"
+                title="사진 화각 내부의 딥스카이 천체를 가리는 매칭 별자리 선/라벨만 숨김"
+              >
+                화각 내 별자리만 숨김 (DSO 강조)
+              </button>
+              <button
+                type="button"
+                onClick={handleHideAllConstellationsForDso}
+                className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-800/70 transition-colors"
+              >
+                전체 별자리 숨김 (DSO 전용)
+              </button>
+            </div>
+          </div>
+
+          {/* Search & Matched Constellation Quick Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="relative flex-1 min-w-[220px] max-w-xs">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={constellationSearchQuery}
+                onChange={(e) => setConstellationSearchQuery(e.target.value)}
+                placeholder="별자리명(오리온, Ori) 또는 DSO(M42, M31) 검색..."
+                className="w-full bg-slate-900 border border-slate-800 focus:border-purple-500 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none"
+              />
+            </div>
+
+            <div className="flex items-center space-x-3 text-[11px] text-slate-400">
+              <span>
+                현재 표시 중: <strong className="text-sky-300">{visibleConstellationCount}</strong> / {CONSTELLATION_FIGURES.length}개 별자리
+              </span>
+              {(hiddenConstellationLines.size > 0 || hiddenConstellationLabels.size > 0) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHiddenConstellationLines(new Set());
+                    setHiddenConstellationLabels(new Set());
+                  }}
+                  className="text-purple-300 hover:text-purple-200 underline"
+                >
+                  개별 숨김 초기화
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Constellation Toggle Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-48 overflow-y-auto pr-1">
+            {selectorConstellationList.map((item) => {
+              const lineOn = isConstellationLineVisible(item.code);
+              const labelOn = isConstellationLabelVisible(item.code);
+              const anyOn = lineOn || labelOn;
+
+              return (
+                <div
+                  key={`selector-${item.code}`}
+                  onClick={() => toggleSingleConstellation(item.code)}
+                  className={`p-2 rounded-xl border text-xs cursor-pointer transition-all flex flex-col justify-between ${
+                    anyOn
+                      ? item.isPrimary
+                        ? 'bg-sky-950/60 border-sky-500/70 text-white shadow-sm'
+                        : item.isMatched
+                        ? 'bg-indigo-950/50 border-indigo-500/60 text-slate-100'
+                        : 'bg-slate-900/90 border-slate-800 text-slate-200 hover:border-slate-700'
+                      : 'bg-slate-950/50 border-slate-800/50 text-slate-500 opacity-65 hover:opacity-100'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="flex items-center space-x-1.5 truncate">
+                      {anyOn ? (
+                        <Eye className={`w-3.5 h-3.5 shrink-0 ${item.isPrimary ? 'text-sky-400' : 'text-emerald-400'}`} />
+                      ) : (
+                        <EyeOff className="w-3.5 h-3.5 shrink-0 text-slate-500" />
+                      )}
+                      <span className="font-bold truncate">{item.nameKo}</span>
+                    </div>
+                    <span className="text-[10px] font-mono px-1 rounded bg-slate-950 text-slate-400 border border-slate-800 shrink-0">
+                      {item.code}
+                    </span>
+                  </div>
+
+                  {/* DSOs in this constellation + individual Line / Label mini-toggles */}
+                  <div className="mt-2 flex items-center justify-between gap-1 pt-1.5 border-t border-slate-800/60">
+                    <span
+                      className="text-[10px] text-emerald-400/90 truncate max-w-[90px]"
+                      title={item.dsoNames ? `주요 DSO: ${item.dsoNames}` : '주요 DSO 없음'}
+                    >
+                      {item.dsoCount > 0 ? `✦ ${item.dsoNames}` : '일반 성야'}
+                    </span>
+                    <div className="flex items-center space-x-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => toggleSingleConstellationLine(item.code, e)}
+                        title={`${item.nameKo} 별자리 선 ${lineOn ? '숨기기' : '표시'}`}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                          lineOn
+                            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                            : 'bg-slate-950 text-slate-500 border border-slate-800'
+                        }`}
+                      >
+                        선
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => toggleSingleConstellationLabel(item.code, e)}
+                        title={`${item.nameKo} 별자리 라벨 ${labelOn ? '숨기기' : '표시'}`}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                          labelOn
+                            ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
+                            : 'bg-slate-950 text-slate-500 border border-slate-800'
+                        }`}
+                      >
+                        라벨
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Interactive Status Banner with Matched Constellation Quick Visibility Pills */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-1 mb-2 text-xs text-slate-400">
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="flex items-center space-x-1.5 text-sky-400 font-semibold">
             <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
-            <span>솔빙 매칭 별자리:</span>
+            <span>화각 별자리 빠른 토글:</span>
           </span>
-          <span className="text-white font-bold bg-slate-800 px-2 py-0.5 rounded-md border border-slate-700">
-            {primaryConstellation?.nameKo} ({primaryConstellation?.code})
-          </span>
-          <span className="text-slate-400 hidden sm:inline">
+          {data.matchedConstellations.map((mc) => {
+            const visible = isConstellationLineVisible(mc.code) || isConstellationLabelVisible(mc.code);
+            return (
+              <button
+                key={`quick-pill-${mc.code}`}
+                type="button"
+                onClick={() => toggleSingleConstellation(mc.code)}
+                title={`클릭하여 ${mc.nameKo}(${mc.code}) 별자리 선과 라벨을 ${visible ? '숨기기 (DSO 시야 확보)' : '다시 표시'}`}
+                className={`inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-lg border text-xs font-semibold transition-all ${
+                  visible
+                    ? mc.isPrimary
+                      ? 'bg-sky-950/80 text-white border-sky-500/60 hover:bg-sky-900'
+                      : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
+                    : 'bg-slate-950 text-slate-500 border-slate-800 line-through hover:text-slate-300'
+                }`}
+              >
+                {visible ? (
+                  <Eye className="w-3 h-3 text-sky-400" />
+                ) : (
+                  <EyeOff className="w-3 h-3 text-slate-500" />
+                )}
+                <span>
+                  {mc.nameKo} ({mc.code})
+                </span>
+              </button>
+            );
+          })}
+          <span className="text-slate-400 hidden lg:inline ml-1">
             화각: {cal?.radius ? `${(cal.radius * 2).toFixed(2)}°` : 'N/A'} (RA: {degToRA_HMS(centerRa)}, Dec: {degToDec_DMS(centerDec)})
           </span>
         </div>
 
         <div className="flex items-center space-x-3 text-[11px] text-slate-400">
-          <span className="hidden md:inline">💡 마우스 드래그로 성도 자유 이동 / 버튼으로 줌 조절</span>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2.5">
             <span className="inline-flex items-center space-x-1">
               <span className="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block" />
               <span className="text-sky-300">별자리 선</span>
@@ -670,6 +1195,10 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
             <span className="inline-flex items-center space-x-1">
               <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
               <span className="text-amber-300">주요 별</span>
+            </span>
+            <span className="inline-flex items-center space-x-1">
+              <span className="w-2 h-2 rotate-45 bg-emerald-400 inline-block" />
+              <span className="text-emerald-300">딥스카이(DSO)</span>
             </span>
             <span className="inline-flex items-center space-x-1">
               <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
@@ -694,6 +1223,7 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
             setHoveredCoords(null);
             setHoveredConstellation(null);
             setHoveredStar(null);
+            setHoveredDso(null);
           }}
         >
           <defs>
@@ -850,7 +1380,7 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
           )}
 
           {/* Constellation Stick-Figure Lines (별자리 선들) */}
-          {lineStyle !== 'off' && (
+          {showConstellationLines && lineStyle !== 'off' && (
             <g className="constellation-asterism-lines">
               {activeConstellations.map((figure) => {
                 const isPrimary = primaryConstellation?.code === figure.code;
@@ -862,6 +1392,7 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
                     key={`lines-${figure.code}`}
                     className="cursor-pointer"
                     onMouseEnter={() => setHoveredConstellation(figure)}
+                    onMouseLeave={() => setHoveredConstellation(null)}
                     onClick={() => {
                       setSelectedConstCode(figure.code);
                       onSelectConstellation?.(figure.code);
@@ -875,6 +1406,128 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
                         isMatched,
                         isHovered
                       )
+                    )}
+                  </g>
+                );
+              })}
+            </g>
+          )}
+
+          {/* Deep Sky Objects (DSO: Nebulae, Galaxies, Star Clusters) Layer */}
+          {showDeepSkyObjects && (
+            <g className="deep-sky-objects-layer">
+              {DEEP_SKY_OBJECTS.map((dso) => {
+                const dx = raToX(dso.raDeg);
+                const dy = decToY(dso.decDeg);
+
+                if (dx < -30 || dx > width + 30 || dy < -30 || dy > height + 30) return null;
+
+                const distFromPhotoCenter = angularSeparationDeg(centerRa, centerDec, dso.raDeg, dso.decDeg);
+                const isInsidePhotoFov = distFromPhotoCenter <= Math.max(1.8, fieldRadiusDeg * 1.35);
+                const isHovered = hoveredDso?.id === dso.id;
+                const parentConstHidden =
+                  !isConstellationLineVisible(dso.constellation) && !isConstellationLabelVisible(dso.constellation);
+
+                // Distinct color palette per DSO category
+                const colorMap: Record<DeepSkyCatalogObject['type'], string> = {
+                  nebula: '#34d399', // Emerald green
+                  galaxy: '#fb7185', // Rose pink
+                  cluster: '#fde047', // Warm yellow
+                  planetary_nebula: '#2dd4bf', // Teal cyan
+                  supernova_remnant: '#c084fc', // Violet
+                };
+                const dsoColor = isHovered ? '#ffffff' : colorMap[dso.type] || '#34d399';
+                const markerSize = isInsidePhotoFov || isHovered ? 7.5 : parentConstHidden ? 6.5 : 5.2;
+
+                return (
+                  <g
+                    key={`dso-${dso.id}`}
+                    className="cursor-pointer group"
+                    onMouseEnter={() => setHoveredDso(dso)}
+                    onMouseLeave={() => setHoveredDso(null)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setHoveredDso(dso);
+                    }}
+                  >
+                    {/* Outer glowing halo if inside current photo FOV or if parent constellation is hidden for DSO clarity */}
+                    {(isInsidePhotoFov || isHovered || parentConstHidden) && (
+                      <circle
+                        cx={dx}
+                        cy={dy}
+                        r={isInsidePhotoFov ? markerSize * 2.4 : markerSize * 1.9}
+                        fill={`${dsoColor}22`}
+                        stroke={dsoColor}
+                        strokeWidth={isInsidePhotoFov ? '1.2' : '0.8'}
+                        strokeDasharray="2 2"
+                        filter="url(#line-glow)"
+                      />
+                    )}
+
+                    {/* Astronomical Symbol by DSO Type */}
+                    {dso.type === 'galaxy' ? (
+                      <ellipse
+                        cx={dx}
+                        cy={dy}
+                        rx={markerSize * 1.35}
+                        ry={markerSize * 0.7}
+                        transform={`rotate(-28 ${dx} ${dy})`}
+                        fill={`${dsoColor}33`}
+                        stroke={dsoColor}
+                        strokeWidth={isHovered || isInsidePhotoFov ? '1.8' : '1.3'}
+                      />
+                    ) : dso.type === 'cluster' ? (
+                      <circle
+                        cx={dx}
+                        cy={dy}
+                        r={markerSize}
+                        fill={`${dsoColor}25`}
+                        stroke={dsoColor}
+                        strokeWidth="1.6"
+                        strokeDasharray="2 1.5"
+                      />
+                    ) : dso.type === 'planetary_nebula' ? (
+                      <g>
+                        <circle
+                          cx={dx}
+                          cy={dy}
+                          r={markerSize * 0.9}
+                          fill="none"
+                          stroke={dsoColor}
+                          strokeWidth="1.5"
+                        />
+                        <circle cx={dx} cy={dy} r="1.8" fill={dsoColor} />
+                      </g>
+                    ) : (
+                      /* Nebula / Supernova Remnant diamond box */
+                      <rect
+                        x={dx - markerSize * 0.85}
+                        y={dy - markerSize * 0.85}
+                        width={markerSize * 1.7}
+                        height={markerSize * 1.7}
+                        rx="2"
+                        transform={`rotate(45 ${dx} ${dy})`}
+                        fill={`${dsoColor}30`}
+                        stroke={dsoColor}
+                        strokeWidth={isHovered || isInsidePhotoFov ? '1.8' : '1.3'}
+                      />
+                    )}
+
+                    {/* DSO Catalog & Name Label */}
+                    {(showDsoLabels || isInsidePhotoFov || isHovered || parentConstHidden) && (
+                      <text
+                        x={dx + markerSize + 5}
+                        y={dy + 3}
+                        fill={isInsidePhotoFov || isHovered ? '#ecfdf5' : '#6ee7b7'}
+                        fontSize={isInsidePhotoFov || isHovered ? '11' : parentConstHidden ? '10.5' : '9.5'}
+                        fontWeight={isInsidePhotoFov || isHovered || parentConstHidden ? 'bold' : '600'}
+                        paintOrder="stroke"
+                        stroke="#020617"
+                        strokeWidth="3"
+                        strokeLinejoin="round"
+                      >
+                        {dso.catalogId} {chartMode === 'focused' || isInsidePhotoFov || isHovered ? `· ${dso.nameKo}` : ''}
+                      </text>
                     )}
                   </g>
                 );
@@ -950,6 +1603,8 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
           {showConstellationNames && (
             <g className="constellation-labels-layer">
               {Object.entries(IAU_CONSTELLATIONS).map(([code, info]) => {
+                if (!isConstellationLabelVisible(code)) return null;
+
                 const cx = raToX(info.raHours * 15);
                 const cy = decToY(info.decDeg);
 
@@ -971,6 +1626,7 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
                       const fig = CONSTELLATION_FIGURES.find((f) => f.code === code);
                       if (fig) setHoveredConstellation(fig);
                     }}
+                    onMouseLeave={() => setHoveredConstellation(null)}
                   >
                     {/* Glowing Aura if matched or hovered */}
                     {(isMatched || isHovered) && (
@@ -1073,8 +1729,8 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
               strokeDasharray="3 3"
             />
 
-            {/* Connecting Guide Line to Primary Constellation */}
-            {primaryConstellation && (
+            {/* Connecting Guide Line to Primary Constellation (shown only when primary constellation label is visible) */}
+            {primaryConstellation && isConstellationLabelVisible(primaryConstellation.code) && (
               <line
                 x1={raToX(centerRa)}
                 y1={decToY(centerDec)}
@@ -1121,10 +1777,28 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
           </span>
         </div>
 
-        {/* Interactive Hover Card for Constellation or Star */}
-        {(hoveredConstellation || hoveredStar) && (
-          <div className="absolute bottom-3 left-3 bg-slate-900/95 backdrop-blur-md border border-sky-500/60 rounded-xl px-3.5 py-2 shadow-2xl z-30 max-w-sm pointer-events-none">
-            {hoveredStar ? (
+        {/* Interactive Hover Card for DSO, Star, or Constellation */}
+        {(hoveredDso || hoveredStar || hoveredConstellation) && (
+          <div className="absolute bottom-3 left-3 bg-slate-900/95 backdrop-blur-md border border-sky-500/60 rounded-xl px-3.5 py-2.5 shadow-2xl z-30 max-w-md pointer-events-none">
+            {hoveredDso ? (
+              <div>
+                <div className="flex items-center space-x-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="font-bold text-white text-xs">
+                    {hoveredDso.nameKo} ({hoveredDso.nameEn})
+                  </span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
+                    {hoveredDso.catalogId}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-300 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                  <span>분류: <strong className="text-emerald-300">{hoveredDso.typeKo}</strong></span>
+                  <span>등급: <strong>{hoveredDso.mag} mag</strong></span>
+                  <span>시직경: <strong>{hoveredDso.sizeArcmin}&apos;</strong></span>
+                  <span>별자리: <strong>{hoveredDso.constellation}</strong></span>
+                </div>
+              </div>
+            ) : hoveredStar ? (
               <div>
                 <div className="flex items-center space-x-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-amber-400" />
@@ -1159,6 +1833,12 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
 
         {/* Mode badge & view indicator */}
         <div className="absolute top-3 right-3 flex items-center space-x-2">
+          {isDsoCleanModeActive && (
+            <div className="bg-emerald-950/90 backdrop-blur-md border border-emerald-600/70 rounded-xl px-2.5 py-1 text-[11px] text-emerald-300 font-semibold shadow-lg flex items-center space-x-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              <span>DSO 클린 뷰 (별자리 숨김)</span>
+            </div>
+          )}
           <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl px-3 py-1.5 text-[11px] text-slate-300 shadow-lg flex items-center space-x-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
             <span>
@@ -1170,10 +1850,14 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
         </div>
       </div>
 
-      {/* Matched Constellations Information Cards */}
+      {/* Matched Constellations Information Cards with Individual Line/Label Visibility Toggles */}
       <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
         {data.matchedConstellations.map((constellation, idx) => {
-          const info = IAU_CONSTELLATIONS[constellation.code];
+          const lineVisible = isConstellationLineVisible(constellation.code);
+          const labelVisible = isConstellationLabelVisible(constellation.code);
+          const anyVisible = lineVisible || labelVisible;
+          const constellationDsos = DEEP_SKY_OBJECTS.filter((d) => d.constellation === constellation.code);
+
           return (
             <div
               key={`card-${constellation.code}-${idx}`}
@@ -1187,7 +1871,7 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
                   : 'bg-slate-800/40 border-slate-800 hover:border-slate-700 hover:bg-slate-800/70'
               }`}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <span
                   className={`text-xs uppercase font-bold tracking-wider ${
                     constellation.isPrimary ? 'text-sky-300' : 'text-slate-400'
@@ -1195,23 +1879,75 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
                 >
                   {constellation.isPrimary ? '🎯 주요 매칭 별자리' : '경계 인접 별자리'}
                 </span>
+                <div className="flex items-center space-x-1">
+                  {/* Individual Line Toggle on Card */}
+                  <button
+                    type="button"
+                    onClick={(e) => toggleSingleConstellationLine(constellation.code, e)}
+                    title={`${constellation.nameKo} 별자리 선 ${lineVisible ? '숨기기' : '표시'}`}
+                    className={`text-[10px] px-1.5 py-0.5 rounded font-semibold border transition-colors ${
+                      lineVisible
+                        ? 'bg-sky-950 text-sky-300 border-sky-700/80 hover:bg-sky-900'
+                        : 'bg-slate-900 text-slate-500 border-slate-800 hover:text-slate-300'
+                    }`}
+                  >
+                    선 {lineVisible ? 'ON' : 'OFF'}
+                  </button>
+                  {/* Individual Label Toggle on Card */}
+                  <button
+                    type="button"
+                    onClick={(e) => toggleSingleConstellationLabel(constellation.code, e)}
+                    title={`${constellation.nameKo} 별자리 라벨 ${labelVisible ? '숨기기' : '표시'}`}
+                    className={`text-[10px] px-1.5 py-0.5 rounded font-semibold border transition-colors ${
+                      labelVisible
+                        ? 'bg-indigo-950 text-indigo-300 border-indigo-700/80 hover:bg-indigo-900'
+                        : 'bg-slate-900 text-slate-500 border-slate-800 hover:text-slate-300'
+                    }`}
+                  >
+                    라벨 {labelVisible ? 'ON' : 'OFF'}
+                  </button>
+                  {/* Both Toggle Button */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSingleConstellation(constellation.code);
+                    }}
+                    title={`${constellation.nameKo} 전체 ${anyVisible ? '숨기기 (DSO 시야 확보)' : '표시'}`}
+                    className={`p-1 rounded border transition-colors ${
+                      anyVisible
+                        ? 'bg-slate-800 text-sky-300 border-slate-700 hover:bg-slate-700'
+                        : 'bg-slate-950 text-slate-500 border-slate-800 hover:text-slate-300'
+                    }`}
+                  >
+                    {anyVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between mt-1.5">
+                <h4 className="text-base font-bold text-white flex items-center space-x-1.5">
+                  <span>{constellation.nameKo}</span>
+                  <span className="text-xs text-slate-400 font-normal">({constellation.nameEn})</span>
+                </h4>
                 <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-800 text-sky-300 border border-slate-700">
                   {constellation.code}
                 </span>
               </div>
-              <h4 className="text-base font-bold text-white mt-1.5 flex items-center space-x-1.5">
-                <span>{constellation.nameKo}</span>
-                <span className="text-xs text-slate-400 font-normal">({constellation.nameEn})</span>
-              </h4>
+
               <div className="mt-2.5 text-xs text-slate-300 space-y-1.5">
                 <p className="flex justify-between">
                   <span className="text-slate-400">대표 밝은 별:</span>
                   <span className="font-semibold text-amber-300">{constellation.brightestStar}</span>
                 </p>
-                <p className="flex justify-between">
-                  <span className="text-slate-400">성족 분류:</span>
-                  <span className="text-slate-300">{constellation.family}</span>
-                </p>
+                {constellationDsos.length > 0 && (
+                  <p className="flex justify-between items-center gap-2">
+                    <span className="text-slate-400 shrink-0">소속 딥스카이(DSO):</span>
+                    <span className="font-medium text-emerald-300 truncate">
+                      {constellationDsos.map((d) => `${d.catalogId}(${d.nameKo})`).join(', ')}
+                    </span>
+                  </p>
+                )}
                 <p className="flex justify-between">
                   <span className="text-slate-400">화각 내 검출 점수:</span>
                   <span className="text-sky-300 font-bold">{constellation.starsCountInField} pts</span>
@@ -1231,3 +1967,4 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
     </div>
   );
 };
+

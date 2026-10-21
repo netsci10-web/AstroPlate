@@ -150,11 +150,11 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
 
   // Overlay layer toggles
   const [showConstellationLines, setShowConstellationLines] = useState(true);
-  const [showStarLabels, setShowStarLabels] = useState(true);
+  const [showStarLabels, setShowStarLabels] = useState(false);
   const [showDSO, setShowDSO] = useState(true);
   const [showGrid, setShowGrid] = useState(true);
   const [showCenterFov, setShowCenterFov] = useState(true);
-  const [showDetectedCircles, setShowDetectedCircles] = useState(true);
+  const [showDetectedCircles, setShowDetectedCircles] = useState(false);
   const [overlayOpacity, setOverlayOpacity] = useState(0.85);
 
   // Astrometry.net Simplexy + 7-Stage Nebula Pipeline detected stars state
@@ -1033,78 +1033,18 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
       {/* Bottom Layer Controls Toolbar (Only active in 'vector' viewMode) */}
       {viewMode === 'vector' && (
         <div className="bg-slate-900/95 border-t border-slate-800 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-300 z-10">
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <span className="font-semibold text-slate-400 flex items-center gap-1">
               <Layers className="w-3.5 h-3.5 text-sky-400" />
               레이어:
             </span>
 
-            {/* Astrometry.net Simplexy Detected Stars Red Circles Toggle */}
-            <button
-              onClick={() => setShowDetectedCircles(!showDetectedCircles)}
-              className={`px-2 py-1 rounded transition-colors flex items-center space-x-1.5 ${
-                showDetectedCircles
-                  ? 'bg-red-500/20 text-red-300 border border-red-500/40 font-semibold shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Astrometry.net 방식 항성 검출 원형 마커 (Red Circles)"
-            >
-              <span className="w-2.5 h-2.5 rounded-full border border-red-400 inline-block bg-red-500/40" />
-              <span>항성 검출 원 ({effectiveDetectedStars.length}개)</span>
-            </button>
-
-            {onReAnalyze && (
-              <button
-                type="button"
-                onClick={onReAnalyze}
-                disabled={isReAnalyzing}
-                className="px-2 py-1 rounded transition-colors flex items-center space-x-1 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 hover:text-white border border-sky-500/40 hover:border-sky-400 cursor-pointer disabled:opacity-50"
-                title="천체사진 플레이트 솔빙 분석 다시 실행"
-              >
-                <RotateCcw className={`w-3 h-3 ${isReAnalyzing ? 'animate-spin' : ''}`} />
-                <span>{isReAnalyzing ? '분석 중...' : '천체사진 다시 분석'}</span>
-              </button>
-            )}
-
-            <button
-              onClick={() => setShowConstellationLines(!showConstellationLines)}
-              className={`px-2 py-1 rounded transition-colors flex items-center space-x-1 ${
-                showConstellationLines ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Sparkles className="w-3 h-3" />
-              <span>별자리 선 ({constellationLines.length})</span>
-            </button>
-
-            <button
-              onClick={() => setShowStarLabels(!showStarLabels)}
-              className={`px-2 py-1 rounded transition-colors flex items-center space-x-1 ${
-                showStarLabels ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <span>항성 라벨 ({stars.length})</span>
-            </button>
-
-            {data.dualIndexTelemetry && (
-              <div
-                className={`hidden md:inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-mono border ${
-                  data.dualIndexTelemetry.selectedCatalog === 'Gaia DR3'
-                    ? 'bg-amber-950/60 text-amber-300 border-amber-600/40'
-                    : 'bg-indigo-950/60 text-indigo-300 border-indigo-600/40'
-                }`}
-                title={`듀얼 인덱스 대조 완료: ${data.dualIndexTelemetry.matchedIndexSeries} (광각: Tycho-2 / 딥스카이: Gaia DR3)`}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-                <span>{data.dualIndexTelemetry.selectedCatalog === 'Gaia DR3' ? 'Gaia DR3 (딥스카이 5200)' : 'Tycho-2 (광각 4100)'}</span>
-              </div>
-            )}
-
             <button
               onClick={() => setShowDSO(!showDSO)}
-              className={`px-2 py-1 rounded transition-colors flex items-center space-x-1.5 ${
+              className={`px-2.5 py-1 rounded transition-colors flex items-center space-x-1.5 ${
                 showDSO
                   ? `${currentColorConfig.activeClass} shadow-sm`
-                  : 'text-slate-400 hover:text-slate-200'
+                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
               <span
@@ -1115,9 +1055,34 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
             </button>
 
             <button
+              onClick={() => setShowConstellationLines(!showConstellationLines)}
+              className={`px-2.5 py-1 rounded transition-colors flex items-center space-x-1 ${
+                showConstellationLines
+                  ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
+              }`}
+            >
+              <Sparkles className="w-3 h-3" />
+              <span>별자리 선 ({constellationLines.length})</span>
+            </button>
+
+            <button
+              onClick={() => setShowStarLabels(!showStarLabels)}
+              className={`px-2.5 py-1 rounded transition-colors flex items-center space-x-1 ${
+                showStarLabels
+                  ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
+              }`}
+            >
+              <span>항성 라벨 ({stars.length})</span>
+            </button>
+
+            <button
               onClick={() => setShowCenterFov(!showCenterFov)}
-              className={`px-2 py-1 rounded transition-colors flex items-center space-x-1 ${
-                showCenterFov ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40' : 'text-slate-400 hover:text-slate-200'
+              className={`px-2.5 py-1 rounded transition-colors flex items-center space-x-1 ${
+                showCenterFov
+                  ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
+                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
               <Compass className="w-3 h-3" />

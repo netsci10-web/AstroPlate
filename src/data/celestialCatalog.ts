@@ -730,3 +730,65 @@ export const MILKY_WAY_COORDINATES: [number, number][] = [
   [335, 59],
   [360, 60],
 ];
+
+export interface DeepSkyCatalogObject {
+  id: string;
+  catalogId: string;
+  nameKo: string;
+  nameEn: string;
+  type: 'nebula' | 'galaxy' | 'cluster' | 'planetary_nebula' | 'supernova_remnant';
+  typeKo: string;
+  constellation: string;
+  raDeg: number;
+  decDeg: number;
+  mag: number;
+  sizeArcmin: number;
+}
+
+export const DEEP_SKY_OBJECTS: DeepSkyCatalogObject[] = [
+  // Orion (Ori)
+  { id: 'm42', catalogId: 'M42', nameKo: '오리온 대성운', nameEn: 'Orion Nebula', type: 'nebula', typeKo: '발광/반사 성운', constellation: 'Ori', raDeg: 83.8221, decDeg: -5.3911, mag: 4.0, sizeArcmin: 85 },
+  { id: 'ic434', catalogId: 'IC 434 / B33', nameKo: '말머리 성운 & 불꽃 성운', nameEn: 'Horsehead & Flame Nebula', type: 'nebula', typeKo: '암흑/발광 성운', constellation: 'Ori', raDeg: 85.25, decDeg: -2.46, mag: 6.8, sizeArcmin: 60 },
+  { id: 'm78', catalogId: 'M78', nameKo: 'M78 반사성운', nameEn: 'Messier 78', type: 'nebula', typeKo: '반사 성운', constellation: 'Ori', raDeg: 86.6946, decDeg: 0.08, mag: 8.3, sizeArcmin: 8 },
+  // Taurus (Tau)
+  { id: 'm45', catalogId: 'M45', nameKo: '플레이아데스 성단 (좀생이별)', nameEn: 'Pleiades', type: 'cluster', typeKo: '산개 성단', constellation: 'Tau', raDeg: 56.75, decDeg: 24.1167, mag: 1.6, sizeArcmin: 110 },
+  { id: 'm1', catalogId: 'M1', nameKo: '게 성운', nameEn: 'Crab Nebula', type: 'supernova_remnant', typeKo: '초신성 잔해', constellation: 'Tau', raDeg: 83.6331, decDeg: 22.0145, mag: 8.4, sizeArcmin: 6 },
+  // Andromeda & Triangulum (And, Tri)
+  { id: 'm31', catalogId: 'M31', nameKo: '안드로메다 은하', nameEn: 'Andromeda Galaxy', type: 'galaxy', typeKo: '나선 은하', constellation: 'And', raDeg: 10.6847, decDeg: 41.2687, mag: 3.4, sizeArcmin: 178 },
+  { id: 'm33', catalogId: 'M33', nameKo: '삼각형자리 은하', nameEn: 'Triangulum Galaxy', type: 'galaxy', typeKo: '나선 은하', constellation: 'Tri', raDeg: 23.4621, decDeg: 30.6599, mag: 5.7, sizeArcmin: 73 },
+  // Perseus & Cassiopeia & Cepheus (Per, Cas, Cep)
+  { id: 'ngc869', catalogId: 'NGC 869/884', nameKo: '페르세우스 이중성단', nameEn: 'Double Cluster', type: 'cluster', typeKo: '이중 산개 성단', constellation: 'Per', raDeg: 35.125, decDeg: 57.14, mag: 3.7, sizeArcmin: 60 },
+  { id: 'ngc1499', catalogId: 'NGC 1499', nameKo: '캘리포니아 성운', nameEn: 'California Nebula', type: 'nebula', typeKo: '발광 성운', constellation: 'Per', raDeg: 60.2, decDeg: 36.4, mag: 5.0, sizeArcmin: 150 },
+  { id: 'm76', catalogId: 'M76', nameKo: '작은 아령 성운', nameEn: 'Little Dumbbell Nebula', type: 'planetary_nebula', typeKo: '행성상 성운', constellation: 'Per', raDeg: 25.582, decDeg: 51.575, mag: 10.1, sizeArcmin: 2.7 },
+  { id: 'ic1805', catalogId: 'IC 1805', nameKo: '하트 성운', nameEn: 'Heart Nebula', type: 'nebula', typeKo: '발광 성운', constellation: 'Cas', raDeg: 38.175, decDeg: 61.45, mag: 6.5, sizeArcmin: 150 },
+  { id: 'ic1848', catalogId: 'IC 1848', nameKo: '소울(태아) 성운', nameEn: 'Soul Nebula', type: 'nebula', typeKo: '발광 성운', constellation: 'Cas', raDeg: 42.8, decDeg: 60.43, mag: 6.5, sizeArcmin: 150 },
+  { id: 'ngc7635', catalogId: 'NGC 7635 / M52', nameKo: '버블 성운 & M52 성단', nameEn: 'Bubble Nebula & M52', type: 'nebula', typeKo: '발광 성운/성단', constellation: 'Cas', raDeg: 350.19, decDeg: 61.2, mag: 7.3, sizeArcmin: 15 },
+  { id: 'ic1396', catalogId: 'IC 1396', nameKo: '코끼리 코 성운', nameEn: 'Elephant Trunk Nebula', type: 'nebula', typeKo: '발광 성운', constellation: 'Cep', raDeg: 324.74, decDeg: 57.49, mag: 3.5, sizeArcmin: 170 },
+  { id: 'ngc7023', catalogId: 'NGC 7023', nameKo: '아이리스(붓꽃) 성운', nameEn: 'Iris Nebula', type: 'nebula', typeKo: '반사 성운', constellation: 'Cep', raDeg: 315.38, decDeg: 68.16, mag: 6.8, sizeArcmin: 18 },
+  // Cygnus, Lyra, Vulpecula (Cyg, Lyr, Vul)
+  { id: 'ngc7000', catalogId: 'NGC 7000', nameKo: '북아메리카 성운', nameEn: 'North America Nebula', type: 'nebula', typeKo: '발광 성운', constellation: 'Cyg', raDeg: 314.8, decDeg: 44.33, mag: 4.0, sizeArcmin: 120 },
+  { id: 'ngc6992', catalogId: 'NGC 6992/6960', nameKo: '베일(면사포) 성운', nameEn: 'Veil Nebula', type: 'supernova_remnant', typeKo: '초신성 잔해', constellation: 'Cyg', raDeg: 312.75, decDeg: 30.7, mag: 7.0, sizeArcmin: 180 },
+  { id: 'ic1318', catalogId: 'IC 1318', nameKo: '사드르 나비 성운', nameEn: 'Sadr Region Nebula', type: 'nebula', typeKo: '발광 성운', constellation: 'Cyg', raDeg: 305.56, decDeg: 40.26, mag: 5.5, sizeArcmin: 180 },
+  { id: 'ngc6888', catalogId: 'NGC 6888', nameKo: '초승달 성운', nameEn: 'Crescent Nebula', type: 'nebula', typeKo: '발광 성운', constellation: 'Cyg', raDeg: 303.06, decDeg: 38.35, mag: 7.4, sizeArcmin: 18 },
+  { id: 'm57', catalogId: 'M57', nameKo: '고리 성운', nameEn: 'Ring Nebula', type: 'planetary_nebula', typeKo: '행성상 성운', constellation: 'Lyr', raDeg: 283.396, decDeg: 33.029, mag: 8.8, sizeArcmin: 1.5 },
+  { id: 'm27', catalogId: 'M27', nameKo: '아령 성운', nameEn: 'Dumbbell Nebula', type: 'planetary_nebula', typeKo: '행성상 성운', constellation: 'Vul', raDeg: 299.901, decDeg: 22.721, mag: 7.5, sizeArcmin: 8 },
+  // Ursa Major, Canes Venatici (UMa, CVn)
+  { id: 'm81', catalogId: 'M81 / M82', nameKo: '보데 은하 & 시가 은하', nameEn: 'Bode & Cigar Galaxies', type: 'galaxy', typeKo: '은하 쌍', constellation: 'UMa', raDeg: 148.888, decDeg: 69.36, mag: 6.9, sizeArcmin: 27 },
+  { id: 'm101', catalogId: 'M101', nameKo: '바람개비 은하', nameEn: 'Pinwheel Galaxy', type: 'galaxy', typeKo: '나선 은하', constellation: 'UMa', raDeg: 210.802, decDeg: 54.349, mag: 7.9, sizeArcmin: 29 },
+  { id: 'm97', catalogId: 'M97 / M108', nameKo: '부엉이 성운 & 서프보드 은하', nameEn: 'Owl Nebula & M108', type: 'planetary_nebula', typeKo: '행성상 성운/은하', constellation: 'UMa', raDeg: 168.699, decDeg: 55.019, mag: 9.9, sizeArcmin: 3.4 },
+  { id: 'm51', catalogId: 'M51', nameKo: '부자(소용돌이) 은하', nameEn: 'Whirlpool Galaxy', type: 'galaxy', typeKo: '상호작용 나선 은하', constellation: 'CVn', raDeg: 202.47, decDeg: 47.195, mag: 8.4, sizeArcmin: 11 },
+  // Hercules, Sagittarius, Scorpius (Her, Sgr, Sco)
+  { id: 'm13', catalogId: 'M13', nameKo: '헤르쿨레스 대구상성단', nameEn: 'Hercules Globular Cluster', type: 'cluster', typeKo: '구상 성단', constellation: 'Her', raDeg: 250.423, decDeg: 36.46, mag: 5.8, sizeArcmin: 20 },
+  { id: 'm8', catalogId: 'M8 / M20', nameKo: '석호 성운 & 삼열 성운', nameEn: 'Lagoon & Trifid Nebulae', type: 'nebula', typeKo: '발광/반사 성운', constellation: 'Sgr', raDeg: 270.92, decDeg: -24.38, mag: 6.0, sizeArcmin: 90 },
+  { id: 'm17', catalogId: 'M17 / M16', nameKo: '오메가(백조) & 독수리 성운', nameEn: 'Omega & Eagle Nebulae', type: 'nebula', typeKo: '발광 성운', constellation: 'Sgr', raDeg: 275.196, decDeg: -16.17, mag: 6.0, sizeArcmin: 45 },
+  { id: 'rho_oph', catalogId: 'IC 4604', nameKo: '안타레스 & 로 오피우치 성운 복합체', nameEn: 'Rho Ophiuchi Complex', type: 'nebula', typeKo: '발광/반사/암흑 성운', constellation: 'Sco', raDeg: 246.79, decDeg: -24.5, mag: 4.6, sizeArcmin: 180 },
+  // Leo, Virgo, Cancer, Monoceros, Auriga, Gemini
+  { id: 'm66', catalogId: 'M65 / M66', nameKo: '사자자리 삼중은하 (Leo Triplet)', nameEn: 'Leo Triplet', type: 'galaxy', typeKo: '은하군', constellation: 'Leo', raDeg: 170.06, decDeg: 13.15, mag: 8.9, sizeArcmin: 35 },
+  { id: 'm104', catalogId: 'M104', nameKo: '솜브레로 은하', nameEn: 'Sombrero Galaxy', type: 'galaxy', typeKo: '나선 은하', constellation: 'Vir', raDeg: 189.998, decDeg: -11.623, mag: 8.0, sizeArcmin: 9 },
+  { id: 'm87', catalogId: 'M87', nameKo: '처녀자리 A 은하 (M87)', nameEn: 'Virgo A (M87)', type: 'galaxy', typeKo: '타원 은하', constellation: 'Vir', raDeg: 187.706, decDeg: 12.391, mag: 8.6, sizeArcmin: 8.3 },
+  { id: 'm44', catalogId: 'M44', nameKo: '프레세페(벌집) 성단', nameEn: 'Beehive Cluster', type: 'cluster', typeKo: '산개 성단', constellation: 'Cnc', raDeg: 130.1, decDeg: 19.67, mag: 3.7, sizeArcmin: 95 },
+  { id: 'ngc2237', catalogId: 'NGC 2237', nameKo: '장미 성운 (Rosette)', nameEn: 'Rosette Nebula', type: 'nebula', typeKo: '발광 성운', constellation: 'Mon', raDeg: 97.98, decDeg: 4.95, mag: 6.0, sizeArcmin: 80 },
+  { id: 'm35', catalogId: 'M35', nameKo: '쌍둥이자리 M35 산개성단', nameEn: 'Messier 35', type: 'cluster', typeKo: '산개 성단', constellation: 'Gem', raDeg: 92.225, decDeg: 24.333, mag: 5.3, sizeArcmin: 28 },
+  { id: 'm37', catalogId: 'M36 / M37 / M38', nameKo: '마차부자리 3대 산개성단', nameEn: 'Auriga Open Clusters', type: 'cluster', typeKo: '산개 성단', constellation: 'Aur', raDeg: 88.07, decDeg: 32.55, mag: 6.2, sizeArcmin: 24 },
+];
+
