@@ -703,7 +703,7 @@ export default function App() {
                   )}
                 </button>
 
-                {/* 2. 천체좌표 및 WCS 관측 원격 측정 */}
+                {/* 2. 천체좌표 및 세부내용 */}
                 <button
                   type="button"
                   onClick={() => setActiveMainTab('telemetry')}
@@ -714,7 +714,7 @@ export default function App() {
                   }`}
                 >
                   <Activity className={`w-4 h-4 ${activeMainTab === 'telemetry' ? 'text-white' : 'text-indigo-400'}`} />
-                  <span>천체좌표 및 WCS 관측 원격 측정</span>
+                  <span>천체좌표 및 세부내용</span>
                   {activeMainTab === 'telemetry' && (
                     <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_#fff]" />
                   )}
@@ -908,9 +908,9 @@ export default function App() {
           </section>
         )}
 
-        {/* Tab 2: 천체좌표 및 WCS 관측 원격 측정 */}
+        {/* Tab 2: 천체좌표 및 세부내용 */}
         {!loading && solvedData && activeMainTab === 'telemetry' && (
-          <section aria-label="천체좌표 및 WCS 관측 원격 측정">
+          <section aria-label="천체좌표 및 세부내용">
             <AstroTelemetryPanel
               data={solvedData}
               onSelectObject={(obj) => setSelectedTargetForSimbad(obj)}

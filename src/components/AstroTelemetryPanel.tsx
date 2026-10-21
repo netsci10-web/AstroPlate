@@ -199,9 +199,21 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({
       return s;
     };
 
+    const isStarAnnotation = (item: AstrometryAnnotationItem) => {
+      const t = (item.type || '').toLowerCase();
+      return t === 'bright' || t === 'hd' || t === 'star' || t === 'tycho2' || t === 'gaia';
+    };
+
+    const sortedForCsv = [...annotations].sort((a, b) => {
+      const aIsDso = !isStarAnnotation(a);
+      const bIsDso = !isStarAnnotation(b);
+      if (aIsDso !== bIsDso) return aIsDso ? -1 : 1;
+      return 0;
+    });
+
     // 3. Rows
-    const rows = annotations.map((item, idx) => {
-      const isStar = item.type === 'bright' || item.type === 'hd' || item.type === 'star';
+    const rows = sortedForCsv.map((item, idx) => {
+      const isStar = isStarAnnotation(item);
       const typeStr = isStar ? '항성 (Star)' : '심우주천체 (DSO)';
       const primaryName = item.names[0] || 'Unknown';
       const allNames = item.names.join('; ');
@@ -257,16 +269,30 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({
     setTimeout(() => setDownloadedCSV(false), 2500);
   };
 
-  // Filtered annotations table
-  const filteredAnnotations = annotations.filter((item) => {
-    const nameMatch = item.names.some((n) => n.toLowerCase().includes(searchTerm.toLowerCase()));
-    if (!nameMatch) return false;
+  const isStarItem = (item: AstrometryAnnotationItem) => {
+    const t = (item.type || '').toLowerCase();
+    return t === 'bright' || t === 'hd' || t === 'star' || t === 'tycho2' || t === 'gaia';
+  };
 
-    const isStar = item.type === 'bright' || item.type === 'hd' || item.type === 'star';
-    if (filterType === 'star') return isStar;
-    if (filterType === 'dso') return !isStar;
-    return true;
-  });
+  // Filtered annotations table (심우주 천체를 최상단으로 정렬)
+  const filteredAnnotations = annotations
+    .filter((item) => {
+      const nameMatch = item.names.some((n) => n.toLowerCase().includes(searchTerm.toLowerCase()));
+      if (!nameMatch) return false;
+
+      const isStar = isStarItem(item);
+      if (filterType === 'star') return isStar;
+      if (filterType === 'dso') return !isStar;
+      return true;
+    })
+    .sort((a, b) => {
+      const aIsDso = !isStarItem(a);
+      const bIsDso = !isStarItem(b);
+      if (aIsDso !== bIsDso) {
+        return aIsDso ? -1 : 1;
+      }
+      return 0;
+    });
 
   return (
     <div className="bg-slate-900 rounded-2xl border border-slate-800 p-5 shadow-xl space-y-6">
@@ -276,7 +302,7 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({
           <div className="flex items-center space-x-2">
             <Target className="w-5 h-5 text-sky-400" />
             <h3 className="text-base font-bold text-white tracking-tight">
-              천체 좌표 및 WCS 관측 원격 측정 (Calibration Telemetry)
+              천체좌표 및 세부내용
             </h3>
           </div>
           <div className="flex items-center space-x-2">
@@ -597,11 +623,12 @@ export const AstroTelemetryPanel: React.FC<AstroTelemetryPanelProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 pt-1">
               {STAR_CHART_LAYERS.map((layer) => {
                 const localUrl = localLayerUrls?.[layer.id];
-                const imgProxyUrl = isLocalJob
-                  ? localUrl || data.rawImageUrl || data.imageUrl
-                  : layer.id === 'original' && data.rawImageUrl && !data.rawImageUrl.startsWith('blob:')
-                  ? data.rawImageUrl
-                  : `/api/astrometry/image-proxy/${data.jobId}/${layer.id}`;
+                const imgProxyUrl =
+                  isLocalJob || (layer.id === 'grid' && localUrl)
+                    ? localUrl || data.rawImageUrl || data.imageUrl
+                    : layer.id === 'original' && data.rawImageUrl && !data.rawImageUrl.startsWith('blob:')
+                    ? data.rawImageUrl
+                    : `/api/astrometry/image-proxy/${data.jobId}/${layer.id}`;
                 const fallbackUrl = isLocalJob
                   ? localUrl || data.rawImageUrl || data.imageUrl
                   : layer.id === 'annotated'

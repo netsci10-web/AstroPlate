@@ -148,7 +148,7 @@ export const StarChartLayerModal: React.FC<StarChartLayerModalProps> = ({
   const currentDef = STAR_CHART_LAYERS.find((l) => l.id === activeLayer) || STAR_CHART_LAYERS[0];
 
   const getLayerImageUrl = (type: StarChartLayerType) => {
-    if (isLocalJob && localLayerUrls?.[type]) {
+    if ((isLocalJob || type === 'grid') && localLayerUrls?.[type]) {
       return localLayerUrls[type]!;
     }
     if (type === 'original' && rawImageUrl && !rawImageUrl.startsWith('blob:')) {

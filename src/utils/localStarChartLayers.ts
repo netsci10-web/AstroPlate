@@ -541,7 +541,7 @@ export async function generateBrowserStarChartLayers(
       ctx.save();
       ctx.strokeStyle = 'rgba(129, 140, 248, 0.68)';
       ctx.lineWidth = 1.4 * uiScale;
-      ctx.font = `bold ${Math.round(10.5 * uiScale)}px monospace`;
+      ctx.font = `bold ${Math.round(12.5 * uiScale)}px monospace`;
       ctx.fillStyle = '#c7d2fe';
 
       // Draw Constant-Dec Parallels
@@ -568,7 +568,7 @@ export async function generateBrowserStarChartLayers(
             } else {
               ctx.lineTo(sx, sy);
             }
-            if (!labelPos && sx > 30 * uiScale && sx < cw - 90 * uiScale && sy > 55 * uiScale && sy < ch - 20 * uiScale) {
+            if (!labelPos && sx > 30 * uiScale && sx < cw - 105 * uiScale && sy > 55 * uiScale && sy < ch - 20 * uiScale) {
               labelPos = { x: sx, y: sy };
             }
           } else {
@@ -579,11 +579,11 @@ export async function generateBrowserStarChartLayers(
 
         if (labelPos) {
           const decText = `Dec ${dec >= 0 ? '+' : ''}${dec.toFixed(decStep < 1 ? 2 : 1)}°`;
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
           const tw = ctx.measureText(decText).width;
-          ctx.fillRect(labelPos.x - 2, labelPos.y - 12 * uiScale, tw + 6, 14 * uiScale);
+          ctx.fillRect(labelPos.x - 2, labelPos.y - 14 * uiScale, tw + 8, 17 * uiScale);
           ctx.fillStyle = '#a5b4fc';
-          ctx.fillText(decText, labelPos.x + 1, labelPos.y - 2 * uiScale);
+          ctx.fillText(decText, labelPos.x + 2, labelPos.y - 2 * uiScale);
         }
       }
 
@@ -612,7 +612,7 @@ export async function generateBrowserStarChartLayers(
             } else {
               ctx.lineTo(sx, sy);
             }
-            if (!labelPos && sx > 30 * uiScale && sx < cw - 110 * uiScale && sy > ch * 0.25 && sy < ch - 25 * uiScale) {
+            if (!labelPos && sx > 30 * uiScale && sx < cw - 120 * uiScale && sy > ch * 0.25 && sy < ch - 25 * uiScale) {
               labelPos = { x: sx, y: sy };
             }
           } else {
@@ -623,11 +623,11 @@ export async function generateBrowserStarChartLayers(
 
         if (labelPos) {
           const raText = `RA ${ra.toFixed(raStep < 1 ? 2 : 1)}°`;
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.8)';
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
           const tw = ctx.measureText(raText).width;
-          ctx.fillRect(labelPos.x + 3, labelPos.y - 11 * uiScale, tw + 6, 14 * uiScale);
+          ctx.fillRect(labelPos.x + 3, labelPos.y - 13 * uiScale, tw + 8, 17 * uiScale);
           ctx.fillStyle = '#7dd3fc';
-          ctx.fillText(raText, labelPos.x + 6, labelPos.y - 1 * uiScale);
+          ctx.fillText(raText, labelPos.x + 7, labelPos.y - 1 * uiScale);
         }
       }
 

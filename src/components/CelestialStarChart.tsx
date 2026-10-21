@@ -1343,7 +1343,7 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
                       x="10"
                       y={y - 4}
                       fill={isEquator ? '#22d3ee' : '#94a3b8'}
-                      fontSize={isEquator ? '11' : '10'}
+                      fontSize={isEquator ? '13' : '12'}
                       fontWeight={isEquator ? 'bold' : 'normal'}
                       fontFamily="monospace"
                       filter="drop-shadow(0 1px 2px rgba(0,0,0,0.8))"
@@ -1367,7 +1367,7 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
                       x={x + 4}
                       y={height - 10}
                       fill="#94a3b8"
-                      fontSize="10"
+                      fontSize="12"
                       fontFamily="monospace"
                       filter="drop-shadow(0 1px 2px rgba(0,0,0,0.8))"
                     >
