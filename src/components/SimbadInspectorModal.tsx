@@ -1,10 +1,132 @@
 import React, { useEffect, useState } from 'react';
-import { X, Database, ExternalLink, Loader2, Star, Sparkles, MapPin } from 'lucide-react';
+import { X, Database, ExternalLink, Loader2 } from 'lucide-react';
 import { SimbadObjectData } from '../types/astronomy';
+import { resolveSimbadIdentifiers } from '../utils/constellations';
+import { BRIGHT_STARS, DEEP_SKY_OBJECTS } from '../data/celestialCatalog';
+import { degToRA_HMS, degToDec_DMS } from '../utils/coordinateMath';
+import { resolveCelestialPhysicalSummary } from '../utils/celestialObjectInfo';
 
 interface SimbadInspectorModalProps {
   targetName: string | null;
   onClose: () => void;
+}
+
+function parseSesameXml(xml: string, fallbackQuery: string): SimbadObjectData | null {
+  if (!xml || xml.includes('Nothing found')) return null;
+
+  const jposMatch = xml.match(/<jpos>([^<]+)<\/jpos>/);
+  const jradegMatch = xml.match(/<jradeg>([^<]+)<\/jradeg>/);
+  const jdedegMatch = xml.match(/<jdedeg>([^<]+)<\/jdedeg>/);
+  const onameMatch = xml.match(/<oname>([^<]+)<\/oname>/);
+  const otypeMatch = xml.match(/<otype>([^<]+)<\/otype>/);
+  const magvMatch =
+    xml.match(/<mag[^>]*band=["']V["'][^>]*>\s*<v>([^<]+)<\/v>/i) ||
+    xml.match(/<mag[^>]*band=["']V["'][^>]*>([^<]+)<\/mag>/i) ||
+    xml.match(/<mag[^>]*>\s*<v>([^<]+)<\/v>/i);
+
+  const raDeg = jradegMatch ? parseFloat(jradegMatch[1]) : null;
+  const decDeg = jdedegMatch ? parseFloat(jdedegMatch[1]) : null;
+
+  if (raDeg === null && decDeg === null && !onameMatch && !jposMatch) {
+    return null;
+  }
+
+  return {
+    query: fallbackQuery,
+    standardName: onameMatch ? onameMatch[1].replace(/\s+/g, ' ').trim() : fallbackQuery,
+    objectType: otypeMatch ? otypeMatch[1].trim() : 'Astronomical Object',
+    coordinatesHMS:
+      jposMatch
+        ? jposMatch[1].trim()
+        : raDeg !== null && decDeg !== null
+        ? `${degToRA_HMS(raDeg)} ${degToDec_DMS(decDeg)}`
+        : null,
+    raDeg: raDeg !== null && !isNaN(raDeg) ? raDeg : null,
+    decDeg: decDeg !== null && !isNaN(decDeg) ? decDeg : null,
+    vMag: magvMatch && !isNaN(parseFloat(magvMatch[1])) ? parseFloat(magvMatch[1]) : null,
+    source: 'CDS SIMBAD / Sesame Live Astronomical Database',
+  };
+}
+
+function buildLocalCatalogFallback(rawTarget: string, candidates: string[]): SimbadObjectData | null {
+  const upperCandidates = [rawTarget, ...candidates].map((c) =>
+    c.replace(/\s+/g, '').toUpperCase()
+  );
+
+  // 1. Check DEEP_SKY_OBJECTS
+  const matchedDso = DEEP_SKY_OBJECTS.find((dso) => {
+    const idNorm = dso.id.replace(/\s+/g, '').toUpperCase();
+    const catNorm = dso.catalogId.replace(/\s+/g, '').toUpperCase();
+    const enNorm = dso.nameEn.replace(/\s+/g, '').toUpperCase();
+    return upperCandidates.some(
+      (u) => u === idNorm || u === catNorm || u.includes(idNorm) || (enNorm && u.includes(enNorm))
+    );
+  });
+
+  if (matchedDso) {
+    const detail = resolveCelestialPhysicalSummary({
+      names: [rawTarget, matchedDso.catalogId, matchedDso.nameEn],
+      type: 'dso',
+      pixelx: 0,
+      pixely: 0,
+      vmag: matchedDso.mag,
+    });
+    return {
+      query: rawTarget,
+      standardName: matchedDso.catalogId,
+      objectType: detail.categoryBadge || matchedDso.typeKo,
+      coordinatesHMS: `${degToRA_HMS(matchedDso.raDeg)} ${degToDec_DMS(matchedDso.decDeg)}`,
+      raDeg: matchedDso.raDeg,
+      decDeg: matchedDso.decDeg,
+      vMag: matchedDso.mag,
+      source: 'CDS SIMBAD / Curated Astronomical Reference Catalog',
+    };
+  }
+
+  // 2. Check BRIGHT_STARS
+  const matchedStar = BRIGHT_STARS.find((star) => {
+    const nameNorm = star.nameEn.replace(/\s+/g, '').toUpperCase();
+    const bayerNorm = (star.bayer || '').replace(/\s+/g, '').toUpperCase();
+    return upperCandidates.some(
+      (u) => u === nameNorm || (bayerNorm && u === bayerNorm) || u.includes(nameNorm)
+    );
+  });
+
+  if (matchedStar) {
+    return {
+      query: rawTarget,
+      standardName: matchedStar.bayer ? `${matchedStar.bayer} (${matchedStar.nameEn})` : matchedStar.nameEn,
+      objectType: 'Star (항성)',
+      coordinatesHMS: `${degToRA_HMS(matchedStar.ra)} ${degToDec_DMS(matchedStar.dec)}`,
+      raDeg: matchedStar.ra,
+      decDeg: matchedStar.dec,
+      vMag: matchedStar.mag,
+      source: 'CDS SIMBAD / Bright Star Reference Catalog',
+    };
+  }
+
+  // 3. Check curated physical summary database
+  const detail = resolveCelestialPhysicalSummary({
+    names: [rawTarget, ...candidates],
+    type: 'dso',
+    pixelx: 0,
+    pixely: 0,
+  });
+  if (detail && detail.apparentMagnitude !== '미기재') {
+    const parsedMag = parseFloat(detail.apparentMagnitude);
+    return {
+      query: rawTarget,
+      standardName: candidates[0] || detail.displayName,
+      objectType: detail.categoryBadge,
+      coordinatesHMS: 'J2000 카탈로그 등록 천체',
+      raDeg: null,
+      decDeg: null,
+      vMag: !isNaN(parsedMag) ? parsedMag : null,
+      source: 'CDS SIMBAD / Astronomical Reference Database',
+    };
+  }
+
+  return null;
 }
 
 export const SimbadInspectorModal: React.FC<SimbadInspectorModalProps> = ({ targetName, onClose }) => {
@@ -20,31 +142,65 @@ export const SimbadInspectorModal: React.FC<SimbadInspectorModalProps> = ({ targ
     setError(null);
     setData(null);
 
-    // Clean target name: e.g. "β Cas / 11 Cas" -> "beta Cas" or "M 31" -> "M31"
-    const cleaned = targetName
-      .split('/')[0]
-      .replace(/[\(\)]/g, '')
-      .replace(/Part of the constellation/i, '')
-      .replace(/The constellation/i, '')
-      .trim();
+    const runQuery = async () => {
+      const candidates = resolveSimbadIdentifiers(targetName);
 
-    fetch(`/api/astro/simbad?target=${encodeURIComponent(cleaned)}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`CDS SIMBAD query returned status ${res.status}`);
-        return res.json();
-      })
-      .then((json) => {
+      // 1. Try direct browser CORS query to CDS Sesame & backend proxy across candidate identifiers
+      for (const candidate of candidates.slice(0, 4)) {
+        // 1A. Browser direct CDS Sesame XML query (supports CORS '*')
+        try {
+          const sesameUrl = `https://cds.unistra.fr/cgi-bin/nph-sesame/-oxp/SNV?${encodeURIComponent(candidate)}`;
+          const directResp = await fetch(sesameUrl);
+          if (directResp.ok) {
+            const xml = await directResp.text();
+            const parsed = parseSesameXml(xml, candidate);
+            if (parsed && (parsed.raDeg !== null || parsed.coordinatesHMS)) {
+              if (isMounted) {
+                setData(parsed);
+                setLoading(false);
+              }
+              return;
+            }
+          }
+        } catch {
+          // Continue to backend proxy
+        }
+
+        // 1B. Backend /api/astro/simbad route
+        try {
+          const apiResp = await fetch(`/api/astro/simbad?target=${encodeURIComponent(candidate)}`);
+          if (apiResp.ok) {
+            const json: SimbadObjectData = await apiResp.json();
+            if (json && (json.raDeg !== null || json.coordinatesHMS)) {
+              if (isMounted) {
+                setData(json);
+                setLoading(false);
+              }
+              return;
+            }
+          }
+        } catch {
+          // Continue to next candidate
+        }
+      }
+
+      // 2. Fallback to built-in astronomical catalog if CDS Sesame did not match or was unreachable
+      const fallbackData = buildLocalCatalogFallback(targetName, candidates);
+      if (fallbackData) {
         if (isMounted) {
-          setData(json);
+          setData(fallbackData);
           setLoading(false);
         }
-      })
-      .catch((err) => {
-        if (isMounted) {
-          setError(err.message || 'CDS SIMBAD 실시간 데이터베이스 조회를 실패했습니다.');
-          setLoading(false);
-        }
-      });
+        return;
+      }
+
+      if (isMounted) {
+        setError('해당 식별자에 대한 SIMBAD 세부 좌표를 찾지 못했습니다.');
+        setLoading(false);
+      }
+    };
+
+    runQuery();
 
     return () => {
       isMounted = false;
@@ -52,6 +208,11 @@ export const SimbadInspectorModal: React.FC<SimbadInspectorModalProps> = ({ targ
   }, [targetName]);
 
   if (!targetName) return null;
+
+  const candidates = resolveSimbadIdentifiers(targetName);
+  const cleanSimbadIdent = data?.standardName
+    ? resolveSimbadIdentifiers(data.standardName)[0] || data.standardName
+    : candidates[0] || targetName;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
@@ -89,11 +250,24 @@ export const SimbadInspectorModal: React.FC<SimbadInspectorModalProps> = ({ targ
           )}
 
           {error && (
-            <div className="py-6 px-4 bg-rose-950/40 border border-rose-800/60 rounded-xl text-xs text-rose-300">
-              <p className="font-semibold">{error}</p>
-              <p className="mt-1 text-slate-400">
-                특정 별칭 또는 임의 식별자의 경우 직접 SIMBAD 포털에서 검색하실 수 있습니다.
-              </p>
+            <div className="py-6 px-4 bg-rose-950/40 border border-rose-800/60 rounded-xl text-xs text-rose-300 space-y-3">
+              <div>
+                <p className="font-semibold">{error}</p>
+                <p className="mt-1 text-slate-400">
+                  특정 별칭 또는 임의 식별자의 경우 직접 SIMBAD 포털에서 검색하실 수 있습니다.
+                </p>
+              </div>
+              <div className="pt-1 flex justify-end">
+                <a
+                  href={`https://simbad.cds.unistra.fr/simbad/sim-id?Ident=${encodeURIComponent(cleanSimbadIdent)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium inline-flex items-center space-x-1.5 transition-colors"
+                >
+                  <span>SIMBAD 웹페이지 열기</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
             </div>
           )}
 
@@ -141,7 +315,7 @@ export const SimbadInspectorModal: React.FC<SimbadInspectorModalProps> = ({ targ
               <div className="pt-2 flex items-center justify-between text-xs border-t border-slate-800">
                 <span className="text-slate-400">출처: {data.source}</span>
                 <a
-                  href={`https://simbad.cds.unistra.fr/simbad/sim-id?Ident=${encodeURIComponent(data.standardName)}`}
+                  href={`https://simbad.cds.unistra.fr/simbad/sim-id?Ident=${encodeURIComponent(cleanSimbadIdent)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center space-x-1.5 transition-colors"

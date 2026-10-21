@@ -1015,43 +1015,88 @@ app.get('/api/astrometry/image-proxy/:jobId/:type', async (req: Request, res: Re
 // Real-time live astronomical query to CDS Sesame & SIMBAD Database
 app.get('/api/astro/simbad', async (req: Request, res: Response) => {
   try {
-    const target = req.query.target as string;
-    if (!target || !target.trim()) {
+    const rawTarget = req.query.target as string;
+    if (!rawTarget || !rawTarget.trim()) {
       return res.status(400).json({ error: 'Target name is required' });
     }
 
-    // Query CDS Sesame service
-    const sesameUrl = `https://cds.unistra.fr/cgi-bin/nph-sesame/-oxp/SNV?${encodeURIComponent(target.trim())}`;
-    const response = await fetch(sesameUrl, {
-      headers: { 'User-Agent': 'AstroPlate/1.0' },
-    });
+    // Extract atomic SIMBAD candidate identifiers (e.g., "M13 (NGC 6205)" -> ["M 13", "NGC 6205", "M13"])
+    const candidates: string[] = [];
+    const pushCandidate = (v?: string) => {
+      const s = (v || '').replace(/\s+/g, ' ').trim();
+      if (s && !candidates.includes(s)) candidates.push(s);
+    };
 
-    if (!response.ok) {
-      return res.status(response.status).json({ error: 'Failed to query CDS Sesame' });
+    for (const m of rawTarget.matchAll(/\b(?:Messier|M)\s*(\d{1,3})\b/gi)) {
+      pushCandidate(`M ${m[1]}`);
+      pushCandidate(`M${m[1]}`);
+    }
+    for (const n of rawTarget.matchAll(/\b(NGC|IC)\s*(\d+[A-Z]?)\b/gi)) {
+      pushCandidate(`${n[1].toUpperCase()} ${n[2].toUpperCase()}`);
+    }
+    for (const part of rawTarget.split(/[()\/|—–·,]/)) {
+      const cleanedPart = part.replace(/[가-힣]+/g, ' ').replace(/\s+/g, ' ').trim();
+      if (cleanedPart.length >= 2 && !/^C\d{1,3}$/i.test(cleanedPart)) {
+        pushCandidate(cleanedPart);
+      }
+    }
+    pushCandidate(rawTarget.trim());
+
+    const mirrors = [
+      'https://cds.unistra.fr/cgi-bin/nph-sesame/-oxp/SNV?',
+      'https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?',
+    ];
+
+    for (const candidate of candidates.slice(0, 4)) {
+      for (const mirrorBase of mirrors) {
+        try {
+          const sesameUrl = `${mirrorBase}${encodeURIComponent(candidate)}`;
+          const response = await fetch(sesameUrl, {
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+            signal: AbortSignal.timeout(4500),
+          });
+
+          if (!response.ok) continue;
+          const xml = await response.text();
+          if (!xml || xml.includes('Nothing found')) continue;
+
+          const jposMatch = xml.match(/<jpos>([^<]+)<\/jpos>/);
+          const jradegMatch = xml.match(/<jradeg>([^<]+)<\/jradeg>/);
+          const jdedegMatch = xml.match(/<jdedeg>([^<]+)<\/jdedeg>/);
+          const onameMatch = xml.match(/<oname>([^<]+)<\/oname>/);
+          const otypeMatch = xml.match(/<otype>([^<]+)<\/otype>/);
+          const magvMatch =
+            xml.match(/<mag[^>]*band=["']V["'][^>]*>\s*<v>([^<]+)<\/v>/i) ||
+            xml.match(/<mag[^>]*band=["']V["'][^>]*>([^<]+)<\/mag>/i) ||
+            xml.match(/<mag[^>]*>\s*<v>([^<]+)<\/v>/i);
+
+          if (jposMatch || jradegMatch || onameMatch) {
+            return res.json({
+              query: rawTarget,
+              standardName: onameMatch ? onameMatch[1].replace(/\s+/g, ' ').trim() : candidate,
+              objectType: otypeMatch ? otypeMatch[1].trim() : 'Astronomical Object',
+              coordinatesHMS: jposMatch ? jposMatch[1].trim() : null,
+              raDeg: jradegMatch ? parseFloat(jradegMatch[1]) : null,
+              decDeg: jdedegMatch ? parseFloat(jdedegMatch[1]) : null,
+              vMag: magvMatch && !isNaN(parseFloat(magvMatch[1])) ? parseFloat(magvMatch[1]) : null,
+              source: 'CDS SIMBAD / Sesame Live Astronomical Database',
+            });
+          }
+        } catch {
+          // Try next mirror or candidate
+        }
+      }
     }
 
-    const xml = await response.text();
-
-    // Extract basic properties from XML
-    const jposMatch = xml.match(/<jpos>([^<]+)<\/jpos>/);
-    const jradegMatch = xml.match(/<jradeg>([^<]+)<\/jradeg>/);
-    const jdedegMatch = xml.match(/<jdedeg>([^<]+)<\/jdedeg>/);
-    const onameMatch = xml.match(/<oname>([^<]+)<\/oname>/);
-    const otypeMatch = xml.match(/<otype>([^<]+)<\/otype>/);
-    const magvMatch = xml.match(/<mag[^>]*band="V"[^>]*>([^<]+)<\/mag>/i);
-
-    res.json({
-      query: target,
-      standardName: onameMatch ? onameMatch[1] : target,
-      objectType: otypeMatch ? otypeMatch[1] : 'Astronomical Object',
-      coordinatesHMS: jposMatch ? jposMatch[1] : null,
-      raDeg: jradegMatch ? parseFloat(jradegMatch[1]) : null,
-      decDeg: jdedegMatch ? parseFloat(jdedegMatch[1]) : null,
-      vMag: magvMatch ? parseFloat(magvMatch[1]) : null,
-      source: 'CDS SIMBAD / Sesame Live Astronomical Database',
+    return res.status(404).json({
+      query: rawTarget,
+      error: 'No matching SIMBAD entry found',
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(404).json({ error: error.message });
   }
 });
 

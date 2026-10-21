@@ -1631,3 +1631,140 @@ export function getConstellationObjectTitle(
   return '천구의 천체';
 }
 
+const GREEK_TO_SIMBAD_ABBR: Record<string, string> = {
+  α: 'alf',
+  β: 'bet',
+  γ: 'gam',
+  δ: 'del',
+  ε: 'eps',
+  ζ: 'zet',
+  η: 'eta',
+  θ: 'tet',
+  ι: 'iot',
+  κ: 'kap',
+  λ: 'lam',
+  μ: 'mu.',
+  ν: 'nu.',
+  ξ: 'ksi',
+  ο: 'omi',
+  π: 'pi.',
+  ρ: 'rho',
+  σ: 'sig',
+  τ: 'tau',
+  υ: 'ups',
+  φ: 'phi',
+  χ: 'chi',
+  ψ: 'psi',
+  ω: 'ome',
+};
+
+/**
+ * Resolves a formatted display target name (e.g., "M13 (NGC 6205)", "C14 (NGC 869)", "β Cas / 11 Cas")
+ * into an ordered list of clean, atomic CDS SIMBAD / Sesame identifiers.
+ */
+export function resolveSimbadIdentifiers(rawTarget: string): string[] {
+  if (!rawTarget || typeof rawTarget !== 'string') return [];
+
+  const results: string[] = [];
+  const pushUnique = (val?: string | null) => {
+    if (!val) return;
+    const trimmed = val.replace(/\s+/g, ' ').trim();
+    if (trimmed && !results.some((r) => r.toUpperCase() === trimmed.toUpperCase())) {
+      results.push(trimmed);
+    }
+  };
+
+  const low = rawTarget.toLowerCase();
+  if (low.includes('더블더블') || low.includes('double double') || low.includes('ε¹') || low.includes('ε²')) {
+    pushUnique('eps1 Lyr');
+    pushUnique('* eps01 Lyr');
+    pushUnique('eps Lyr');
+  }
+
+  // 1. Extract Messier numbers (e.g. "M13" -> "M 13", "NGC 6205")
+  const messierMatches = rawTarget.matchAll(/\b(?:Messier|M)\s*(\d{1,3})\b/gi);
+  for (const m of messierMatches) {
+    const num = parseInt(m[1], 10);
+    if (num >= 1 && num <= 110) {
+      const mKey = `M${num}`;
+      pushUnique(`M ${num}`);
+      pushUnique(mKey);
+      if (MESSIER_TO_NGC_IC[mKey]) {
+        for (const part of MESSIER_TO_NGC_IC[mKey].split('/')) {
+          pushUnique(part.trim());
+        }
+      }
+    }
+  }
+
+  // 2. Extract NGC / IC numbers (including inside parentheses, e.g., "(NGC 6205)")
+  const ngcIcMatches = rawTarget.matchAll(/\b(NGC|IC)\s*(\d+[A-Z]?)\b/gi);
+  for (const n of ngcIcMatches) {
+    pushUnique(`${n[1].toUpperCase()} ${n[2].toUpperCase()}`);
+  }
+
+  // 3. Extract Caldwell numbers and translate to canonical NGC/IC (since SIMBAD does not index "C14" directly)
+  const caldwellMatches = rawTarget.matchAll(/\b(?:Caldwell|C)\s*(\d{1,3})\b/gi);
+  for (const c of caldwellMatches) {
+    const num = parseInt(c[1], 10);
+    if (num >= 1 && num <= 109) {
+      const cKey = `C${num}`;
+      const mappedNgc = CALDWELL_TO_NGC_IC[cKey];
+      if (mappedNgc) {
+        for (const part of mappedNgc.split('/')) {
+          pushUnique(part.trim());
+        }
+      }
+    }
+  }
+
+  // 4. Extract HD / HIP / HR / SAO / Sh2 / Barnard / vdB / LBN / LDN catalog IDs
+  const otherCatMatches = rawTarget.matchAll(
+    /\b(HD|HIP|HR|SAO|Sh2-|vdB|Barnard|B|LBN|LDN|TYC)\s*([0-9\-]+[A-Z]?)\b/gi
+  );
+  for (const oc of otherCatMatches) {
+    const prefix = oc[1].toUpperCase() === 'SH2-' ? 'Sh2-' : `${oc[1]} `;
+    pushUnique(`${prefix}${oc[2]}`);
+  }
+
+  // 5. Extract Greek Bayer / Flamsteed designations (e.g., "β Cas", "α Ori", "11 Cas")
+  for (const [greek, simbadAbbr] of Object.entries(GREEK_TO_SIMBAD_ABBR)) {
+    const bayerRegex = new RegExp(`${greek}[¹²³123]?\\s+([A-Za-z]{3})\\b`, 'g');
+    for (const bm of rawTarget.matchAll(bayerRegex)) {
+      const constCode = bm[1];
+      pushUnique(`* ${simbadAbbr} ${constCode}`);
+      pushUnique(`${simbadAbbr} ${constCode}`);
+      pushUnique(`${greek} ${constCode}`);
+    }
+  }
+
+  const flamsteedMatches = rawTarget.matchAll(/\b(\d{1,3}\s+[A-Z][a-z]{2})\b/g);
+  for (const fm of flamsteedMatches) {
+    pushUnique(`* ${fm[1]}`);
+    pushUnique(fm[1]);
+  }
+
+  // 6. Split by parentheses, slashes, and separators to extract clean ASCII astronomical names
+  const parts = rawTarget
+    .split(/[()\/|—–·,]/)
+    .map((p) =>
+      p
+        .replace(/Part of the constellation/gi, '')
+        .replace(/The constellation/gi, '')
+        .replace(/[가-힣]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    )
+    .filter((p) => p.length >= 2 && !/^C\d{1,3}$/i.test(p));
+
+  for (const part of parts) {
+    pushUnique(part);
+  }
+
+  if (results.length === 0) {
+    pushUnique(rawTarget.replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim());
+  }
+
+  return results;
+}
+
