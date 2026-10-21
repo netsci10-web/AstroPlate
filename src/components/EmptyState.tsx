@@ -434,43 +434,6 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
             <span>실시간 WCS 정밀 천체 좌표계</span>
           </div>
         </div>
-
-        {/* Sample Targets Showcase for Instant Experience on GitHub & First-time visits */}
-        {onSelectSampleJob && (
-          <div className="pt-4 border-t border-slate-800">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                샘플 천체 사진으로 즉시 체험하기:
-              </span>
-              <span className="text-[11px] text-slate-400">API 키 없이 즉시 분석 결과 로드</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {SAMPLE_SOLVED_JOBS.map((sample) => (
-                <div
-                  key={sample.jobId}
-                  onClick={() => onSelectSampleJob(sample)}
-                  className="p-3 bg-slate-950/70 hover:bg-slate-800/90 border border-slate-800 hover:border-sky-500/50 rounded-xl cursor-pointer transition-all flex items-center space-x-3 group shadow-sm active:scale-98"
-                >
-                  <img
-                    src={sample.imageUrl}
-                    alt={sample.title}
-                    className="w-12 h-12 object-cover rounded-lg border border-slate-700 shrink-0 group-hover:scale-105 transition-transform"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-white group-hover:text-sky-300 transition-colors truncate">
-                      {sample.title}
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      {sample.matchedConstellations[0]?.nameKo} ({sample.matchedConstellations[0]?.code}) • Job #{sample.jobId}
-                    </p>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-sky-400 transition-colors shrink-0" />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

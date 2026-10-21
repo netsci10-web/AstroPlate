@@ -703,11 +703,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
               </div>
 
               {solverMode === 'local' && (
-                <div className="pt-0.5 space-y-1.5">
-                  <div className="flex flex-wrap items-center justify-between gap-1 text-[10px] text-emerald-300/90 bg-emerald-950/30 border border-emerald-800/40 rounded-lg px-2.5 py-1.5">
-                    <span>★ 느슨한 인덱스 컷 적용: Gaia DR3 G ≤ 17.5 (3,200개) · Tycho-2 VT ≤ 13.5</span>
-                    <span className="font-mono font-bold">일치 기준성 30개+ 보장 (1단계 4개 → 2단계 12~15개+ → 3단계 30개+)</span>
-                  </div>
+                <div className="pt-0.5">
                   <label className="text-[11px] font-medium text-slate-400 block mb-1">
                     선택적 천체/별자리 힌트 (비워두면 자동 전천 기하 해시 탐색):
                   </label>
