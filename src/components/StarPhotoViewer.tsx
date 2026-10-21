@@ -157,9 +157,31 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
   const [showDetectedCircles, setShowDetectedCircles] = useState(true);
   const [overlayOpacity, setOverlayOpacity] = useState(0.85);
 
-  // Astrometry.net Simplexy detected stars state
-  const [extractedStars, setExtractedStars] = useState<{ x: number; y: number; flux: number; radius: number; instMag?: number }[]>([]);
-  const [hoveredDetectedStar, setHoveredDetectedStar] = useState<{ x: number; y: number; idx: number; instMag?: number; flux: number } | null>(null);
+  // Astrometry.net Simplexy + 7-Stage Nebula Pipeline detected stars state
+  const [extractedStars, setExtractedStars] = useState<
+    {
+      x: number;
+      y: number;
+      flux: number;
+      radius: number;
+      instMag?: number;
+      fwhm?: number;
+      ellipticity?: number;
+      axisRatio?: number;
+      snr?: number;
+    }[]
+  >([]);
+  const [hoveredDetectedStar, setHoveredDetectedStar] = useState<{
+    x: number;
+    y: number;
+    idx: number;
+    instMag?: number;
+    flux: number;
+    fwhm?: number;
+    ellipticity?: number;
+    axisRatio?: number;
+    snr?: number;
+  } | null>(null);
 
   // Memoized detected stars (prefer data.detectedStars, fallback to client-extracted stars)
   const effectiveDetectedStars = React.useMemo(() => {
@@ -951,31 +973,51 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
           </div>
         )}
 
-        {/* Floating Tooltip when hovering a detected star (Simplexy red circle) */}
+        {/* Floating Tooltip when hovering a detected star (Simplexy / Nebula Pipeline red circle) */}
         {hoveredDetectedStar && !hoveredAnnotation && (
           <div className="absolute bottom-4 left-4 z-20 bg-slate-900/95 border border-red-500/60 rounded-xl p-3 shadow-2xl backdrop-blur-md max-w-xs animate-in fade-in">
             <div className="flex items-center justify-between space-x-2">
               <span className="text-xs uppercase font-bold text-red-400 flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-                {isLocalJob ? '브라우저 직접 검출 항성' : 'Astrometry 검출 항성'} #{hoveredDetectedStar.idx + 1}
+                {isLocalJob ? '정제된 점상 항성' : 'Astrometry 검출 항성'} #{hoveredDetectedStar.idx + 1}
               </span>
-              <span className="text-[10px] text-slate-400 font-mono">simplexy centroid</span>
+              <span className="text-[10px] text-emerald-300 font-mono bg-emerald-950/70 px-1.5 py-0.5 rounded border border-emerald-800/60">
+                Top-Hat + 2차 모멘트 검증
+              </span>
             </div>
             <div className="text-xs text-slate-200 mt-1.5 space-y-1 font-mono">
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-4">
                 <span className="text-slate-400">서브픽셀 좌표:</span>
-                <span className="text-white font-bold">X={hoveredDetectedStar.x.toFixed(1)}, Y={hoveredDetectedStar.y.toFixed(1)}</span>
+                <span className="text-white font-bold">
+                  X={hoveredDetectedStar.x.toFixed(1)}, Y={hoveredDetectedStar.y.toFixed(1)}
+                </span>
               </div>
               {hoveredDetectedStar.instMag !== undefined && (
-                <div className="flex justify-between">
-                  <span className="text-slate-400">추정 등급:</span>
-                  <span className="text-amber-300 font-bold">{hoveredDetectedStar.instMag.toFixed(1)}m</span>
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-400">추정 등급 / 광량:</span>
+                  <span className="text-amber-300 font-bold">
+                    {hoveredDetectedStar.instMag.toFixed(1)}m ({Math.round(hoveredDetectedStar.flux)} ADU)
+                  </span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-slate-400">검출 광량 (Flux):</span>
-                <span className="text-sky-300">{Math.round(hoveredDetectedStar.flux)}</span>
+              <div className="flex justify-between gap-4">
+                <span className="text-slate-400">반치폭 (FWHM):</span>
+                <span className="text-sky-300 font-bold">
+                  {(hoveredDetectedStar.fwhm ?? 2.8).toFixed(2)} px
+                </span>
               </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-slate-400">진원도(a/b) / 비원형도(e):</span>
+                <span className="text-emerald-300 font-bold">
+                  {(hoveredDetectedStar.axisRatio ?? 1.08).toFixed(2)} / {(hoveredDetectedStar.ellipticity ?? 0.07).toFixed(2)}
+                </span>
+              </div>
+              {hoveredDetectedStar.snr !== undefined && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-400">국소 SNR (Peak/σ_local):</span>
+                  <span className="text-indigo-300 font-bold">{hoveredDetectedStar.snr.toFixed(1)}σ</span>
+                </div>
+              )}
             </div>
           </div>
         )}

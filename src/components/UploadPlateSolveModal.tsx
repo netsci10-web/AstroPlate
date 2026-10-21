@@ -578,9 +578,9 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-xl max-h-[90vh] shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+        <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60 shrink-0">
           <div className="flex items-center space-x-2">
             <Upload className="w-5 h-5 text-sky-400" />
             <h3 className="text-base font-bold text-white">
@@ -597,7 +597,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
         </div>
 
         {/* Tab Selection */}
-        <div className="flex border-b border-slate-800 bg-slate-950/40 px-5 pt-3 overflow-x-auto">
+        <div className="flex border-b border-slate-800 bg-slate-950/40 px-5 pt-2.5 overflow-x-auto shrink-0">
           <button
             onClick={() => setActiveTab('upload')}
             className={`pb-3 px-3 text-xs font-semibold flex items-center space-x-1.5 border-b-2 transition-all whitespace-nowrap ${
@@ -648,10 +648,10 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
         </div>
 
         {/* Body Content */}
-        <div className="p-5 space-y-4">
+        <div className="p-4 sm:p-5 space-y-3.5 overflow-y-auto flex-1">
           {/* Solver Engine Mode Selector (Shown on Upload & URL Tabs) */}
           {(activeTab === 'upload' || activeTab === 'url') && (
-            <div className="p-3 bg-slate-950/90 border border-slate-800 rounded-xl space-y-2.5">
+            <div className="p-3 bg-slate-950/90 border border-slate-800 rounded-xl space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
                   <Cpu className="w-3.5 h-3.5 text-emerald-400" />
@@ -666,7 +666,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setSolverMode('local')}
-                  className={`p-2.5 rounded-xl border text-left transition-all flex items-start space-x-2 ${
+                  className={`p-2 rounded-xl border text-left transition-all flex items-start space-x-2 ${
                     solverMode === 'local'
                       ? 'bg-emerald-950/40 border-emerald-500/80 text-white shadow-md shadow-emerald-500/10'
                       : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
@@ -678,7 +678,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
                       <span>웹 브라우저 직접 계산</span>
                     </div>
                     <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">
-                      astrometry.net 코어(image2xy + Quad 해시) 내장 · API 없이 1초 완료
+                      astrometry.net 코어 내장 · 1초 완료
                     </p>
                   </div>
                 </button>
@@ -686,7 +686,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setSolverMode('api')}
-                  className={`p-2.5 rounded-xl border text-left transition-all flex items-start space-x-2 ${
+                  className={`p-2 rounded-xl border text-left transition-all flex items-start space-x-2 ${
                     solverMode === 'api'
                       ? 'bg-sky-950/40 border-sky-500/80 text-white shadow-md shadow-sky-500/10'
                       : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
@@ -696,55 +696,28 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
                   <div>
                     <div className="text-xs font-bold">Astrometry.net API</div>
                     <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">
-                      원격 서버 인덱스 대조 (API 키 및 서버 통신 필요)
+                      원격 서버 인덱스 대조
                     </p>
                   </div>
                 </button>
               </div>
 
               {solverMode === 'local' && (
-                <div className="pt-1 space-y-2.5">
-                  <div className="p-2.5 bg-slate-900/90 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                    <div className="flex items-center space-x-2">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span className="font-bold text-slate-200">
-                        듀얼 인덱스 대조: 광각 Tycho-2 ({dualIndexStats.tycho2TotalStars}개) / 딥스카이 Gaia DR3 ({dualIndexStats.gaiaTotalStars}개)
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <a
-                        href="/indexes/tycho2_wide_index.json"
-                        download="tycho2_wide_index.json"
-                        className="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 hover:text-white border border-indigo-800 text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
-                        title="로컬 Tycho-2 광각 인덱스 JSON 파일 다운로드"
-                      >
-                        <Download className="w-3 h-3" />
-                        <span>Tycho-2 JSON</span>
-                      </a>
-                      <a
-                        href="/indexes/gaia_dr3_deepsky_index.json"
-                        download="gaia_dr3_deepsky_index.json"
-                        className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 hover:text-white border border-amber-800 text-[10px] flex items-center gap-1 cursor-pointer transition-colors"
-                        title="로컬 Gaia DR3 딥스카이 인덱스 JSON 파일 다운로드"
-                      >
-                        <Download className="w-3 h-3" />
-                        <span>Gaia DR3 JSON</span>
-                      </a>
-                    </div>
+                <div className="pt-0.5 space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-1 text-[10px] text-emerald-300/90 bg-emerald-950/30 border border-emerald-800/40 rounded-lg px-2.5 py-1.5">
+                    <span>★ 느슨한 인덱스 컷 적용: Gaia DR3 G ≤ 17.5 (3,200개) · Tycho-2 VT ≤ 13.5</span>
+                    <span className="font-mono font-bold">일치 기준성 30개+ 보장 (1단계 4개 → 2단계 12~15개+ → 3단계 30개+)</span>
                   </div>
-
-                  <div>
-                    <label className="text-[11px] font-medium text-slate-400 block mb-1">
-                      선택적 천체/별자리 힌트 (비워두면 자동 전천 기하 해시 탐색):
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="예: 비워두면 자동 기하 해시 탐색 (또는 거문고자리 더블더블, NGC 628, M42, 세페우스 입력)"
-                      value={localTargetHint}
-                      onChange={(e) => setLocalTargetHint(e.target.value)}
-                      className="w-full text-xs px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
+                  <label className="text-[11px] font-medium text-slate-400 block mb-1">
+                    선택적 천체/별자리 힌트 (비워두면 자동 전천 기하 해시 탐색):
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="예: 비워두면 자동 기하 해시 탐색 (또는 이중성단, NGC 869, IC 434, M78, M42 입력)"
+                    value={localTargetHint}
+                    onChange={(e) => setLocalTargetHint(e.target.value)}
+                    className="w-full text-xs px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                  />
                 </div>
               )}
             </div>
@@ -1056,7 +1029,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3.5 bg-slate-950/60 border-t border-slate-800 flex items-center justify-between">
+        <div className="px-5 py-3.5 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between shrink-0">
           <div className="text-[11px] text-slate-400">
             {solverMode === 'local' && activeTab !== 'jobId' ? (
               <span>
@@ -1073,7 +1046,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
             <button
               onClick={onClose}
               disabled={isProcessing}
-              className="text-xs px-3.5 py-2 rounded-lg text-slate-400 hover:text-white transition-colors"
+              className="text-xs px-3.5 py-2 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
             >
               취소
             </button>
@@ -1081,7 +1054,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
               <button
                 onClick={handleStartSolve}
                 disabled={isProcessing}
-                className={`text-xs px-4 py-2 rounded-lg text-white font-medium shadow-md flex items-center space-x-1.5 transition-all disabled:opacity-50 ${
+                className={`text-xs px-4 py-2 rounded-lg text-white font-bold shadow-md flex items-center space-x-1.5 transition-all cursor-pointer disabled:opacity-50 ${
                   solverMode === 'local' && activeTab !== 'jobId'
                     ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 shadow-emerald-500/20'
                     : 'bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 shadow-sky-500/20'
@@ -1098,7 +1071,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
                       {activeTab === 'jobId'
                         ? 'Job ID 불러오기'
                         : solverMode === 'local'
-                        ? '브라우저에서 즉시 계산'
+                        ? '플레이트 솔빙 시작 (즉시 계산)'
                         : 'API 플레이트 솔빙 시작'}
                     </span>
                     <ArrowRight className="w-3.5 h-3.5" />

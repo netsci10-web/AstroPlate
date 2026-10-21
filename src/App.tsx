@@ -465,6 +465,7 @@ export default function App() {
           ? Math.round(calibration.height_arcsec / calibration.pixscale)
           : 0;
       let detectedStarsList: SolvedAstroData['detectedStars'] = undefined;
+      let nebulaPipelineTelemetry: SolvedAstroData['nebulaPipelineTelemetry'] = undefined;
       let verifiedAnnotations = rawAnnotations;
 
       try {
@@ -482,6 +483,7 @@ export default function App() {
               calibration.height_arcsec = Number((calH * calibration.pixscale).toFixed(2));
             }
           }
+          nebulaPipelineTelemetry = ext.pipelineTelemetry;
           detectedStarsList = ext.stars.map((ds) => ({
             x: Number(ds.x.toFixed(1)),
             y: Number(ds.y.toFixed(1)),
@@ -489,6 +491,10 @@ export default function App() {
             peak: Number((ds.peak || 0).toFixed(1)),
             radius: Number(ds.radius.toFixed(1)),
             instMag: ds.instMag,
+            fwhm: ds.fwhm,
+            ellipticity: ds.ellipticity,
+            axisRatio: ds.axisRatio,
+            snr: ds.snr,
           }));
           if (ext.stars.length > 0) {
             verifiedAnnotations = verifyAndSnapAnnotationsToDetectedStars(
@@ -535,6 +541,7 @@ export default function App() {
         annotations: verifiedAnnotations,
         detectedStars: detectedStarsList,
         dualIndexTelemetry,
+        nebulaPipelineTelemetry,
         info,
         matchedConstellations: matched,
       };
@@ -680,22 +687,6 @@ export default function App() {
                   <span>실시간 전천성도</span>
                   {activeMainTab === 'chart' && (
                     <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_#fff]" />
-                  )}
-                </button>
-
-                {/* 4. 듀얼 인덱스 (Tycho/Gaia) */}
-                <button
-                  type="button"
-                  onClick={() => setIsDualIndexModalOpen(true)}
-                  className="px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center space-x-2 transition-all cursor-pointer whitespace-nowrap bg-slate-900/90 hover:bg-indigo-950/80 text-indigo-300 hover:text-white border border-indigo-700/60 hover:border-indigo-500 shadow-sm"
-                  title="광각 Tycho-2 / 딥스카이 Gaia DR3 듀얼 인덱스 대조 및 로컬 파일 다운로드"
-                >
-                  <Sparkles className="w-4 h-4 text-amber-400" />
-                  <span>듀얼 인덱스</span>
-                  {solvedData.dualIndexTelemetry && (
-                    <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-indigo-900/80 text-indigo-200 border border-indigo-700">
-                      {solvedData.dualIndexTelemetry.selectedCatalog}
-                    </span>
                   )}
                 </button>
               </nav>

@@ -34,6 +34,29 @@ export interface DetectedStarItem {
   peak?: number;
   radius: number;
   instMag?: number;
+  fwhm?: number;
+  ellipticity?: number;
+  axisRatio?: number;
+  snr?: number;
+}
+
+export interface NebulaPipelineTelemetry {
+  hotPixelsRemoved: number;
+  topHatKernelRadiusPx: number;
+  meanNebulaSuppressed: number;
+  meshGridSize: string;
+  medianSkyBg: number;
+  medianLocalSigma: number;
+  dogSigma1: number;
+  dogSigma2: number;
+  rawConnectedComponents: number;
+  rejectedFwhmBlobs: number;
+  rejectedElongatedFilaments: number;
+  verifiedPointStars: number;
+  quadBuildingTopK: number;
+  meanStarFwhmPx: number;
+  meanStarAxisRatio: number;
+  executionTimeMs: number;
 }
 
 export interface DualIndexComparisonTelemetry {
@@ -49,6 +72,11 @@ export interface DualIndexComparisonTelemetry {
   gaiaDr3LogOdds: number;
   gaiaDr3PoolCount: number;
   localIndexFilesLoaded: string[];
+  initialPatternStars?: number;
+  verificationThresholdStars?: number;
+  distortionModelTargetStars?: number;
+  solvingGrade?: 'high_precision_sip' | 'verified_standard' | 'sparse_field';
+  magnitudeCutoffDesc?: string;
 }
 
 export interface SolvedAstroData {
@@ -64,6 +92,7 @@ export interface SolvedAstroData {
   matchedConstellations: ConstellationMatch[];
   detectedStars?: DetectedStarItem[];
   dualIndexTelemetry?: DualIndexComparisonTelemetry;
+  nebulaPipelineTelemetry?: NebulaPipelineTelemetry;
 }
 
 export interface ConstellationMatch {

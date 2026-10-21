@@ -204,13 +204,6 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
     isDraggingRef.current = false;
   };
 
-  // Wheel zoom
-  const handleWheel = (e: React.WheelEvent<SVGSVGElement>) => {
-    e.preventDefault();
-    const delta = e.deltaY < 0 ? 0.25 : -0.25;
-    setZoomLevel((prev) => Math.max(0.6, Math.min(6, parseFloat((prev + delta).toFixed(2)))));
-  };
-
   // Reset to Photo FOV location
   const handleResetToFOV = () => {
     setPanOffset({ raDeg: 0, decDeg: 0 });
@@ -668,7 +661,7 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
         </div>
 
         <div className="flex items-center space-x-3 text-[11px] text-slate-400">
-          <span className="hidden md:inline">💡 마우스 드래그로 성도 자유 이동 / 휠로 줌 조절</span>
+          <span className="hidden md:inline">💡 마우스 드래그로 성도 자유 이동 / 버튼으로 줌 조절</span>
           <div className="flex items-center space-x-2">
             <span className="inline-flex items-center space-x-1">
               <span className="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block" />
@@ -702,7 +695,6 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
             setHoveredConstellation(null);
             setHoveredStar(null);
           }}
-          onWheel={handleWheel}
         >
           <defs>
             {/* Background Theme Gradients */}

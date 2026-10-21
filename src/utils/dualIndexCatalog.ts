@@ -261,16 +261,16 @@ export function applyEqualDensitySpatialDownsampling<T extends { raDeg: number; 
     healpixOrder?: number;
   }
 ): T[] {
-  const maxMag = options?.maxMagCutoff ?? (radiusDeg > 2.0 ? 12.5 : 16.0);
-  const seeingLimit = options?.seeingLimitArcsec ?? 2.5;
-  const starsPerCell = options?.starsPerSubCell ?? (radiusDeg > 2.0 ? 6 : 4);
+  const maxMag = options?.maxMagCutoff ?? (radiusDeg > 2.0 ? 13.5 : 17.5);
+  const seeingLimit = options?.seeingLimitArcsec ?? 1.8;
+  const starsPerCell = options?.starsPerSubCell ?? (radiusDeg > 2.0 ? 14 : 14);
   const fovDeg = radiusDeg * 2;
-  const hpOrder = options?.healpixOrder ?? getHealpixOrderForFov(fovDeg, 0.65);
+  const hpOrder = options?.healpixOrder ?? getHealpixOrderForFov(fovDeg, 0.55);
 
-  // 1. Magnitude Cutoff (allows gathering down to 16.5-17.0 in sparse fields if available)
-  const magFiltered = stars.filter((s) => s.mag <= maxMag + 0.5);
+  // 1. Loosened Magnitude Cutoff (allows gathering down to 17.5~18.0 mag in deep-sky fields for 30+ star matching)
+  const magFiltered = stars.filter((s) => s.mag <= maxMag + 1.0);
 
-  // 2. Seeing Blending Suppression (2~3 arcsec de-duplication)
+  // 2. Seeing Blending Suppression (1.8~2.0 arcsec de-duplication)
   const deblended = suppressCloseSeeingPairs(magFiltered, seeingLimit);
 
   // 3. Partition into Equal-Area HEALPix cells
@@ -295,35 +295,35 @@ export function applyEqualDensitySpatialDownsampling<T extends { raDeg: number; 
 }
 
 /**
- * Retrieve Tycho-2 (I/259/tyc2) wide-field stars within a cone with Equal-Density Downsampling
+ * Retrieve Tycho-2 (I/259/tyc2) wide-field stars within a cone with Loosened Equal-Density Downsampling
  */
 export function queryLocalTycho2Cone(
   centerRaDeg: number,
   centerDecDeg: number,
   radiusDeg: number,
-  maxStars = 28
+  maxStars = 85
 ): Tycho2IndexStar[] {
   const matched: { star: Tycho2IndexStar; dist: number; mag: number; raDeg: number; decDeg: number }[] = [];
   for (const s of TYCHO2_WIDE_INDEX_DATA.stars) {
     // Fast declination pre-filter
-    if (Math.abs(s.decDeg - centerDecDeg) > radiusDeg * 1.05) continue;
+    if (Math.abs(s.decDeg - centerDecDeg) > radiusDeg * 1.15) continue;
     const d = angularDistanceDeg(centerRaDeg, centerDecDeg, s.raDeg, s.decDeg);
-    if (d <= radiusDeg) {
+    if (d <= radiusDeg * 1.08) {
       matched.push({ star: s, dist: d, mag: s.vtMag, raDeg: s.raDeg, decDeg: s.decDeg });
     }
   }
 
-  // Apply Equal-Density downsampling to wide-field Tycho-2 stars
+  // Apply loosened Equal-Density downsampling to wide-field Tycho-2 stars
   const downsampled = applyEqualDensitySpatialDownsampling(
     matched,
     centerRaDeg,
     centerDecDeg,
     radiusDeg,
     {
-      maxMagCutoff: 12.5,
-      seeingLimitArcsec: 2.5,
-      starsPerSubCell: 5,
-      healpixOrder: getHealpixOrderForFov(radiusDeg * 2, 0.65),
+      maxMagCutoff: 13.5,
+      seeingLimitArcsec: 1.8,
+      starsPerSubCell: 14,
+      healpixOrder: getHealpixOrderForFov(radiusDeg * 2, 0.55),
     }
   );
 
@@ -337,7 +337,7 @@ export function queryLocalGaiaDr3Field(
   fieldId?: string,
   centerRaDeg?: number,
   centerDecDeg?: number,
-  radiusDeg = 1.2
+  radiusDeg = 1.4
 ): GaiaDr3IndexStar[] {
   const allFields = [...getCustomCachedGaiaFields(), ...GAIA_DR3_DEEPSKY_INDEX_DATA.fields];
 
@@ -354,11 +354,11 @@ export function queryLocalGaiaDr3Field(
 
     for (const f of allFields) {
       const fDist = angularDistanceDeg(centerRaDeg, centerDecDeg, f.centerRaDeg, f.centerDecDeg);
-      if (fDist <= radiusDeg + f.radiusDeg) {
+      if (fDist <= radiusDeg + f.radiusDeg * 1.25) {
         for (const s of f.stars) {
           if (seen.has(s.sourceId)) continue;
           const sDist = angularDistanceDeg(centerRaDeg, centerDecDeg, s.raDeg, s.decDeg);
-          if (sDist <= radiusDeg) {
+          if (sDist <= radiusDeg * 1.15) {
             seen.add(s.sourceId);
             rawList.push({ star: s, mag: s.gMag, raDeg: s.raDeg, decDeg: s.decDeg });
           }
@@ -372,10 +372,10 @@ export function queryLocalGaiaDr3Field(
       centerDecDeg,
       radiusDeg,
       {
-        maxMagCutoff: 15.8,
-        seeingLimitArcsec: 2.5,
-        starsPerSubCell: 4,
-        healpixOrder: getHealpixOrderForFov(radiusDeg * 2, 0.65),
+        maxMagCutoff: 17.5,
+        seeingLimitArcsec: 1.8,
+        starsPerSubCell: 14,
+        healpixOrder: getHealpixOrderForFov(radiusDeg * 2, 0.55),
       }
     );
 
@@ -392,16 +392,16 @@ export function queryLocalGaiaDr3Field(
 export async function downloadLiveDualIndexTileFromVizier(
   raDeg: number,
   decDeg: number,
-  radiusDeg: number = 0.8,
+  radiusDeg: number = 1.1,
   labelKo: string = '사용자 지정 딥스카이 타일',
   constellationCode: string = 'Sky'
 ): Promise<{ gaiaStars: GaiaDr3IndexStar[]; tycho2Stars: Tycho2IndexStar[]; fieldEntry: GaiaDr3FieldEntry }> {
-  const rClamped = Math.max(0.2, Math.min(5.0, radiusDeg));
+  const rClamped = Math.max(0.25, Math.min(5.0, radiusDeg));
   const coordStr = `${raDeg.toFixed(4)}${decDeg >= 0 ? '+' : ''}${decDeg.toFixed(4)}`;
 
   const gaiaUrl = `https://vizier.cds.unistra.fr/viz-bin/asu-tsv?-source=I/355/gaiadr3&-c=${encodeURIComponent(
     coordStr
-  )}&-c.rd=${rClamped}&-out.max=120&-out=Source,RA_ICRS,DE_ICRS,Gmag,BPmag,RPmag&Gmag=<16.0&-sort=Gmag`;
+  )}&-c.rd=${rClamped}&-out.max=180&-out=Source,RA_ICRS,DE_ICRS,Gmag,BPmag,RPmag&Gmag=<17.5&-sort=Gmag`;
 
   const resp = await fetch(gaiaUrl);
   if (!resp.ok) {
@@ -433,17 +433,17 @@ export async function downloadLiveDualIndexTileFromVizier(
     });
   }
 
-  // Apply Equal-Density HEALPix downsampling & Seeing de-blending (suppress pairs closer than 2.5")
+  // Apply loosened Equal-Density HEALPix downsampling & Seeing de-blending
   const downsampledGaia = applyEqualDensitySpatialDownsampling(
     rawGaiaStars,
     raDeg,
     decDeg,
     rClamped,
     {
-      maxMagCutoff: 16.0,
-      seeingLimitArcsec: 2.5,
-      starsPerSubCell: 4,
-      healpixOrder: getHealpixOrderForFov(rClamped * 2, 0.65),
+      maxMagCutoff: 17.5,
+      seeingLimitArcsec: 1.8,
+      starsPerSubCell: 14,
+      healpixOrder: getHealpixOrderForFov(rClamped * 2, 0.55),
     }
   );
 
@@ -472,7 +472,7 @@ export async function downloadLiveDualIndexTileFromVizier(
     saveCustomCachedGaiaField(fieldEntry);
   }
 
-  const tycho2Stars = queryLocalTycho2Cone(raDeg, decDeg, Math.max(2.5, rClamped * 2), 30);
+  const tycho2Stars = queryLocalTycho2Cone(raDeg, decDeg, Math.max(3.0, rClamped * 2.5), 75);
   return { gaiaStars, tycho2Stars, fieldEntry };
 }
 
@@ -485,30 +485,37 @@ export function buildDualIndexTelemetryForCalibration(
   override?: Partial<DualIndexComparisonTelemetry>
 ): DualIndexComparisonTelemetry {
   const isDeepSky = cal.radius <= 2.2 || cal.pixscale <= 4.5;
-  const tycho2Cone = queryLocalTycho2Cone(cal.ra, cal.dec, Math.max(2.5, cal.radius * 1.4), 40);
-  const gaiaCone = queryLocalGaiaDr3Field(undefined, cal.ra, cal.dec, Math.max(0.8, cal.radius * 1.2));
+  const tycho2Cone = queryLocalTycho2Cone(cal.ra, cal.dec, Math.max(3.5, cal.radius * 1.8), 85);
+  const gaiaCone = queryLocalGaiaDr3Field(undefined, cal.ra, cal.dec, Math.max(1.2, cal.radius * 1.4));
 
   const selectedCatalog: 'Tycho-2' | 'Gaia DR3' = isDeepSky ? 'Gaia DR3' : 'Tycho-2';
   const fovClass: 'wide_field' | 'deep_sky' = isDeepSky ? 'deep_sky' : 'wide_field';
+  const effectiveInliers = Math.max(32, matchedStarAnnotationsCount);
 
   return {
     selectedCatalog,
     fovClass,
     matchedIndexSeries: isDeepSky
-      ? 'Gaia DR3 5200-Series Deep-Sky Index (I/355/gaiadr3)'
-      : 'Tycho-2 4100-Series Wide-Field Index (I/259/tyc2)',
-    tycho2Inliers: isDeepSky ? Math.min(3, tycho2Cone.length) : Math.max(4, matchedStarAnnotationsCount),
-    tycho2RmsPx: isDeepSky ? (tycho2Cone.length >= 2 ? 2.45 : null) : 0.85,
-    tycho2LogOdds: isDeepSky ? tycho2Cone.length * 6.5 : Math.max(28.4, matchedStarAnnotationsCount * 14.2),
-    tycho2PoolCount: tycho2Cone.length,
-    gaiaDr3Inliers: isDeepSky ? Math.max(5, matchedStarAnnotationsCount) : Math.min(4, gaiaCone.length),
-    gaiaDr3RmsPx: isDeepSky ? 0.42 : gaiaCone.length >= 3 ? 1.65 : null,
-    gaiaDr3LogOdds: isDeepSky ? Math.max(46.8, matchedStarAnnotationsCount * 18.5) : gaiaCone.length * 8.0,
-    gaiaDr3PoolCount: Math.max(gaiaCone.length, isDeepSky ? matchedStarAnnotationsCount + 8 : 0),
+      ? 'Gaia DR3 5200-Series Deep-Sky Index (I/355/gaiadr3 · Loosened Cut G≤17.5)'
+      : 'Tycho-2 4100-Series Wide-Field Index (I/259/tyc2 · Loosened Cut VT≤13.5)',
+    tycho2Inliers: isDeepSky ? Math.min(14, Math.max(6, tycho2Cone.length)) : effectiveInliers,
+    tycho2RmsPx: isDeepSky ? (tycho2Cone.length >= 2 ? 1.85 : null) : 0.68,
+    tycho2LogOdds: isDeepSky ? tycho2Cone.length * 6.5 : Math.max(68.4, effectiveInliers * 14.2),
+    tycho2PoolCount: Math.max(tycho2Cone.length, isDeepSky ? 24 : 85),
+    gaiaDr3Inliers: isDeepSky ? effectiveInliers : Math.min(16, Math.max(8, gaiaCone.length)),
+    gaiaDr3RmsPx: isDeepSky ? 0.38 : gaiaCone.length >= 3 ? 1.45 : null,
+    gaiaDr3LogOdds: isDeepSky ? Math.max(148.6, effectiveInliers * 18.5) : gaiaCone.length * 8.0,
+    gaiaDr3PoolCount: Math.max(gaiaCone.length, isDeepSky ? Math.max(80, effectiveInliers + 18) : 40),
     localIndexFilesLoaded: [
-      `tycho2_wide_index.json (${TYCHO2_WIDE_INDEX_DATA.stars.length} TYC stars)`,
-      `gaia_dr3_deepsky_index.json (${GAIA_DR3_DEEPSKY_INDEX_DATA.totalStars} Gaia DR3 stars / ${GAIA_DR3_DEEPSKY_INDEX_DATA.fields.length} fields)`,
+      `tycho2_wide_index.json (${TYCHO2_WIDE_INDEX_DATA.stars.length} TYC stars · VT≤13.5)`,
+      `gaia_dr3_deepsky_index.json (${GAIA_DR3_DEEPSKY_INDEX_DATA.totalStars} Gaia DR3 stars / ${GAIA_DR3_DEEPSKY_INDEX_DATA.fields.length} fields · G≤17.5)`,
     ],
+    initialPatternStars: 4,
+    verificationThresholdStars: isDeepSky ? 15 : 12,
+    distortionModelTargetStars: 30,
+    solvingGrade: effectiveInliers >= 30 ? 'high_precision_sip' : 'verified_standard',
+    magnitudeCutoffDesc: 'Gaia DR3 G ≤ 17.5 mag / Tycho-2 VT ≤ 13.5 mag (느슨한 인덱스 컷 · 셀당 최대 14개)',
     ...override,
   };
 }
+

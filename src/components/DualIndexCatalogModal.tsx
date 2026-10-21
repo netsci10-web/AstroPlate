@@ -336,12 +336,12 @@ export const DualIndexCatalogModal: React.FC<DualIndexCatalogModalProps> = ({
                       <span className="font-mono text-white font-bold">{stats.tycho2TotalStars.toLocaleString()} 개</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>광도 한계 (Cutoff):</span>
-                      <span className="font-mono text-indigo-300 font-semibold">VT ≤ 12.5 mag</span>
+                      <span>광도 한계 (Loosened Cutoff):</span>
+                      <span className="font-mono text-indigo-300 font-semibold">VT ≤ 13.5 mag (영역당 최대 85개)</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>HEALPix 셀 크기:</span>
-                      <span className="font-mono text-indigo-300 font-semibold">Order 5 (~1.83° 타일)</span>
+                      <span>정밀 왜곡보정 기준성:</span>
+                      <span className="font-mono text-emerald-300 font-semibold">최소 30개+ (1단계 4개→2단계 12개+→3단계 30개+)</span>
                     </div>
                   </div>
                 </div>
@@ -397,12 +397,12 @@ export const DualIndexCatalogModal: React.FC<DualIndexCatalogModalProps> = ({
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span>광도 한계 (Cutoff):</span>
-                      <span className="font-mono text-amber-300 font-semibold">G ≤ 15.0 ~ 16.0 mag</span>
+                      <span>광도 한계 (Loosened Cutoff):</span>
+                      <span className="font-mono text-amber-300 font-semibold">G ≤ 17.5 mag (영역당 최대 90개)</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>HEALPix 셀 크기:</span>
-                      <span className="font-mono text-amber-300 font-semibold">Order 8 (~13.7′ 타일)</span>
+                      <span>정밀 왜곡보정 기준성:</span>
+                      <span className="font-mono text-emerald-300 font-semibold">최소 30개+ (성운 15개+ 검증 / 30개+ SIP)</span>
                     </div>
                   </div>
                 </div>
@@ -687,30 +687,30 @@ export const DualIndexCatalogModal: React.FC<DualIndexCatalogModalProps> = ({
                 <div className="p-4 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2">
                   <div className="flex items-center space-x-2 text-sky-400 font-bold text-xs">
                     <ShieldCheck className="w-4 h-4" />
-                    <span>광도 컷오프 (Magnitude Cutoff)</span>
+                    <span>느슨한 광도 컷오프 (Loosened Cutoff)</span>
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Gaia DR3는 <strong className="text-amber-300">G ≤ 15~16 mag</strong>, Tycho-2는 <strong className="text-indigo-300">VT ≤ 12.5 mag</strong>를 컷오프로 설정하여 미광 노이즈와 과도한 데이터 크기를 방지합니다.
+                    대조 기준성 부족을 방지하기 위해 Gaia DR3는 <strong className="text-amber-300">G ≤ 17.5 mag (영역당 최대 90개)</strong>, Tycho-2는 <strong className="text-indigo-300">VT ≤ 13.5 mag (영역당 최대 85개)</strong>로 인덱스 컷을 대폭 완화하였습니다.
                   </p>
                 </div>
 
                 <div className="p-4 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2">
                   <div className="flex items-center space-x-2 text-indigo-400 font-bold text-xs">
                     <Compass className="w-4 h-4" />
-                    <span>시상(Seeing) 2~3″ 뭉개짐 방지</span>
+                    <span>시상(Seeing) 1.8″ 뭉개짐 디블렌딩</span>
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    센서 분해능과 시상 한계로 뭉개질 수 있는 <strong className="text-indigo-300">각거리 2.5 arcsec 이하</strong>의 근접 별들은 밝은 주성 1개만 남기고 동반성을 제거하여 쿼드 패턴 오인식을 차단합니다.
+                    산개성단(이중성단 등) 중심부에서도 충분한 별을 보존하면서 <strong className="text-indigo-300">각거리 1.8 arcsec 이하</strong> 초근접 동반성만 병합하여 위조 쿼드 오인식을 차단합니다.
                   </p>
                 </div>
 
                 <div className="p-4 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2">
                   <div className="flex items-center space-x-2 text-emerald-400 font-bold text-xs">
                     <Layers className="w-4 h-4" />
-                    <span>HEALPix 등밀도 균일화</span>
+                    <span>3단계 기준성 검증 &amp; 30개+ 보장</span>
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    은하수(백조·궁수)는 13-14등급에서 자동 컷오프되어 인덱스가 과대해지는 것을 막고, 별이 드문 처녀자리 은하단은 16-17등급까지 수집하여 공백(Hole)을 방지합니다.
+                    <strong className="text-emerald-300">1단계 4개(Quad) 초기 매칭 → 2단계 12~15개+ 검증 → 3단계 최소 30~56개+ 정밀 왜곡보정(SIP) 피팅</strong>의 3단계 파이프라인으로 정확도와 신뢰성을 동시에 달성합니다.
                   </p>
                 </div>
               </div>
@@ -718,7 +718,7 @@ export const DualIndexCatalogModal: React.FC<DualIndexCatalogModalProps> = ({
               {/* Detailed Algorithmic Breakdown */}
               <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800 space-y-3">
                 <h4 className="text-xs font-bold text-white uppercase tracking-wider">
-                  Astrometry.net 듀얼 인덱스 생성 및 쿼드 매칭 파이프라인
+                  3단계 일치 기준성(Reference Stars) 설정 &amp; 느슨한 인덱스 대조 파이프라인
                 </h4>
                 <div className="space-y-2 text-xs text-slate-300">
                   <div className="flex items-start space-x-2.5">
@@ -726,33 +726,33 @@ export const DualIndexCatalogModal: React.FC<DualIndexCatalogModalProps> = ({
                       1
                     </span>
                     <div>
-                      <strong className="text-white">타일 직경 = 최소 FOV의 50%~80% 수준 설정:</strong>
+                      <strong className="text-white">1단계 초기 패턴 매칭 (4개 Quad / 3개 Triangle):</strong>
                       <p className="text-slate-400 mt-0.5">
-                        앱이 지원하는 최소 FOV(망원 ~15~24 arcmin, 광각 ~2~3.5°)의 약 50%~80% 크기에 대응하도록 HEALPix 분할 차수(Order 8 / Order 5)를 선정합니다.
+                        밝은 별 4개가 이루는 기하학적 사각형(Quad) 비율 해시를 통해 회전·크기(Scale)·반전(Parity)에 무관한 초기 WCS 변환 행렬 후보를 도출합니다.
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-start space-x-2.5">
-                    <span className="w-5 h-5 rounded-full bg-sky-950 text-sky-400 border border-sky-800 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
+                    <span className="w-5 h-5 rounded-full bg-amber-950 text-amber-400 border border-amber-800 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
                       2
                     </span>
                     <div>
-                      <strong className="text-white">HEALPix 셀 내부 광도순 정렬 &amp; 상위 N개 선택:</strong>
+                      <strong className="text-white">2단계 솔루션 검증 단계 (성공 판정 임계치 12~15개+):</strong>
                       <p className="text-slate-400 mt-0.5">
-                        각 구면 셀 내부에서 별들을 밝기순으로 정렬한 뒤 상위 4~6개만 취합합니다. 은하수와 처녀자리 등 천구 밀도 차이에 관계없이 전천에 균일한 공간 밀도의 기준성 망이 형성됩니다.
+                        초기 변환 행렬로 카탈로그 별들을 투영하여 우연의 일치(False Positive)를 배제합니다. 성운이나 노이즈가 많은 환경에서는 최소 15개 이상의 기준점 일치를 검증합니다.
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-start space-x-2.5">
-                    <span className="w-5 h-5 rounded-full bg-sky-950 text-sky-400 border border-sky-800 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
+                    <span className="w-5 h-5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
                       3
                     </span>
                     <div>
-                      <strong className="text-white">광각 Tycho-2 &amp; 딥스카이 Gaia DR3 듀얼 교차 검증:</strong>
+                      <strong className="text-white">3단계 정밀 왜곡 보정 및 WCS 피팅 (최소 30개~50개+ 기준성 일치):</strong>
                       <p className="text-slate-400 mt-0.5">
-                        사진 속에서 검출된 단순(simplexy) 항성 패턴에 대해 두 인덱스를 모두 검증하여, 최소 4개 이상의 인라이어와 높은 베이지안 신뢰도(Log-Odds)를 획득한 최적 인덱스를 자동으로 채택합니다.
+                        느슨한 인덱스 컷(Gaia DR3 G ≤ 17.5 / Tycho-2 VT ≤ 13.5, HEALPix 셀당 최대 14개)으로 대조 풀을 확장하여 최소 30개 이상의 일치 기준성을 확보하고 렌즈 왜곡(SIP) 및 정밀 TAN WCS를 산출합니다.
                       </p>
                     </div>
                   </div>

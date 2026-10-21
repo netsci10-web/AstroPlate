@@ -471,16 +471,20 @@ export async function generateBrowserStarChartLayers(
         if (idx < 15) {
           ctx.fillStyle = '#fde047';
           ctx.font = `bold ${Math.round(10 * uiScale)}px monospace`;
-          ctx.fillText(`#${idx + 1}`, x + r + 3 * uiScale, y + 3 * uiScale);
+          const fwhmLabel = ds.fwhm ? ` (${ds.fwhm.toFixed(1)}px)` : '';
+          ctx.fillText(`#${idx + 1}${fwhmLabel}`, x + r + 3 * uiScale, y + 3 * uiScale);
         }
       }
     });
     ctx.restore();
 
+    const rejected =
+      (data.nebulaPipelineTelemetry?.rejectedFwhmBlobs || 0) +
+      (data.nebulaPipelineTelemetry?.rejectedElongatedFilaments || 0);
     drawHeaderBadge(
       ctx,
-      `항성 검출 맵 (Simplexy Source Extraction)`,
-      `총 검출 항성: ${detectedStars.length}개 · 황색(#1~#25): 4-별 기하 쿼드(Quad) 기준성`,
+      `항성 검출 맵 (White Top-Hat + 2D Mesh + 2차 모멘트 검증)`,
+      `점상 항성: ${detectedStars.length}개${rejected > 0 ? ` (성운/가짜별 ${rejected}개 제거)` : ''} · 황색(#1~#25): Top-K Quad 기준성`,
       '#fbbf24',
       uiScale
     );
