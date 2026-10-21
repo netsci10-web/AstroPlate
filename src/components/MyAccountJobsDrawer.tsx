@@ -9,7 +9,10 @@ import {
 } from 'lucide-react';
 import { AnalysisHistoryItem } from '../types/astronomy';
 import { degToRA_HMS, degToDec_DMS } from '../utils/coordinateMath';
-import { getConstellationObjectTitle } from '../utils/constellations';
+import {
+  getConstellationObjectTitle,
+  formatTitleWithCatalogPriority,
+} from '../utils/constellations';
 
 interface MyAccountJobsDrawerProps {
   isOpen: boolean;
@@ -168,7 +171,10 @@ export const MyAccountJobsDrawer: React.FC<MyAccountJobsDrawerProps> = ({
                       </div>
 
                       <p className="text-xs text-slate-300 font-medium truncate mt-1">
-                        {item.title || `Astrometry Job #${item.jobId}`}
+                        {formatTitleWithCatalogPriority(
+                          item.title || `Astrometry Job #${item.jobId}`,
+                          item.objects || item.solvedData?.info?.objects_in_field || []
+                        )}
                       </p>
 
                       <div className="text-[11px] text-slate-400 font-mono mt-1 space-y-0.5">

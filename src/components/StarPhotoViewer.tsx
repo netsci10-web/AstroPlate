@@ -15,11 +15,20 @@ import {
   Sliders,
   ExternalLink,
   Upload,
+  X,
+  Ruler,
+  Navigation,
+  Star,
 } from 'lucide-react';
 import { SolvedAstroData, AstrometryAnnotationItem } from '../types/astronomy';
 import { degToRA_HMS, degToDec_DMS } from '../utils/coordinateMath';
-import { getConstellationLinesForImage } from '../utils/constellations';
+import {
+  getConstellationLinesForImage,
+  extractPrimaryObjectIdentifier,
+  formatTitleWithCatalogPriority,
+} from '../utils/constellations';
 import { extractStarsImage2XY, verifyAndSnapAnnotationsToDetectedStars } from '../utils/localPlateSolver';
+import { resolveCelestialPhysicalSummary } from '../utils/celestialObjectInfo';
 
 export type OverlayColor = 'red' | 'yellow' | 'green' | 'white';
 
@@ -385,6 +394,52 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
     return { stars: verifiedStars, dsos: dsosList };
   }, [data.annotations, data.imageWidth, data.imageHeight, effectiveDetectedStars, calWidth, calHeight]);
 
+  // Selectable targets in field (DSOs first, then named bright stars, or fallback from objects_in_field)
+  const selectableTargets = React.useMemo<AstrometryAnnotationItem[]>(() => {
+    const namedStars = stars.filter(
+      (s) => s.names?.[0] && !s.names[0].startsWith('검출 항성')
+    );
+    const combined = [...dsos, ...namedStars.slice(0, 8)];
+    if (combined.length > 0) return combined;
+
+    const fallbackObj = extractPrimaryObjectIdentifier(
+      [...(data.info?.objects_in_field || []), ...(data.info?.tags || [])],
+      data.info?.original_filename,
+      data.title
+    );
+    if (fallbackObj) {
+      return [
+        {
+          type: /^(M\d+|C\d+|NGC|IC)/i.test(fallbackObj) ? 'dso' : 'bright',
+          names: [fallbackObj],
+          pixelx: calWidth / 2,
+          pixely: calHeight / 2,
+          radius: 24,
+        },
+      ];
+    }
+    if (stars.length > 0) return [stars[0]];
+    return [];
+  }, [dsos, stars, data.info, data.title, calWidth, calHeight]);
+
+  const [selectedTarget, setSelectedTarget] = useState<AstrometryAnnotationItem | null>(null);
+  const [isPhysicalCardOpen, setIsPhysicalCardOpen] = useState<boolean>(true);
+
+  // Auto-select primary target when photo or selectableTargets change
+  useEffect(() => {
+    if (selectableTargets.length > 0) {
+      setSelectedTarget(selectableTargets[0]);
+      setIsPhysicalCardOpen(true);
+    } else {
+      setSelectedTarget(null);
+    }
+  }, [data.jobId, selectableTargets]);
+
+  const selectedPhysicalSummary = React.useMemo(() => {
+    if (!selectedTarget) return null;
+    return resolveCelestialPhysicalSummary(selectedTarget, cal);
+  }, [selectedTarget, cal]);
+
   // Reset imgLoadError when switching viewMode or jobId
   useEffect(() => {
     setImgLoadError(false);
@@ -507,39 +562,193 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
           </div>
         )}
 
-        {/* Right: Quick Action Controls (+/- Zoom only, Reset, Fullscreen) */}
-        <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl p-1 flex items-center space-x-1 shadow-lg pointer-events-auto">
-          <button
-            onClick={() => handleZoom(0.25)}
-            title="확대 (Zoom In) - 버튼 클릭으로만 조절"
-            className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
-          >
-            <ZoomIn className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => handleZoom(-0.25)}
-            title="축소 (Zoom Out) - 버튼 클릭으로만 조절"
-            className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
-          >
-            <ZoomOut className="w-4 h-4" />
-          </button>
-          <button
-            onClick={resetView}
-            title="화면 맞춤 (Reset)"
-            className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
-          <div className="w-px h-4 bg-slate-700 mx-0.5" />
-          <button
-            onClick={toggleFullscreen}
-            title={isFullscreen ? '전체화면 종료' : '전체화면 (Fullscreen)'}
-            className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
-          >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </button>
+        {/* Right: Physical Summary Popover Toggle + Quick Action Controls (+/- Zoom, Reset, Fullscreen) */}
+        <div className="flex items-center gap-2 pointer-events-auto">
+          {selectedPhysicalSummary && (
+            <button
+              type="button"
+              onClick={() => setIsPhysicalCardOpen((prev) => !prev)}
+              className={`text-xs px-3 py-1.5 rounded-xl font-bold transition-all flex items-center space-x-1.5 border shadow-lg cursor-pointer ${
+                isPhysicalCardOpen
+                  ? 'bg-sky-500/25 text-sky-200 border-sky-400/70 ring-1 ring-sky-400/40'
+                  : 'bg-slate-900/90 text-slate-300 hover:text-white border-slate-700/80 hover:bg-slate-800'
+              }`}
+              title="선택된 천체의 주요 물리량(겉보기 등급, 크기, 거리) 요약 팝오버 열기/닫기"
+            >
+              <Info className="w-3.5 h-3.5 text-sky-400" />
+              <span>천체 물리량</span>
+              <span className="text-[11px] font-mono px-1.5 py-0.2 rounded bg-slate-950/80 text-sky-300 border border-sky-800/60 max-w-[130px] truncate">
+                {selectedPhysicalSummary.displayName}
+              </span>
+            </button>
+          )}
+
+          <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl p-1 flex items-center space-x-1 shadow-lg">
+            <button
+              onClick={() => handleZoom(0.25)}
+              title="확대 (Zoom In) - 버튼 클릭으로만 조절"
+              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+            >
+              <ZoomIn className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => handleZoom(-0.25)}
+              title="축소 (Zoom Out) - 버튼 클릭으로만 조절"
+              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+            >
+              <ZoomOut className="w-4 h-4" />
+            </button>
+            <button
+              onClick={resetView}
+              title="화면 맞춤 (Reset)"
+              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+            <div className="w-px h-4 bg-slate-700 mx-0.5" />
+            <button
+              onClick={toggleFullscreen}
+              title={isFullscreen ? '전체화면 종료' : '전체화면 (Fullscreen)'}
+              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+            >
+              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Top Popover Card: Selected Celestial Object (DSO / Star) Key Physical Quantities (겉보기 등급, 크기, 거리) */}
+      {selectedPhysicalSummary && isPhysicalCardOpen && (
+        <div
+          onMouseDown={(e) => e.stopPropagation()}
+          className="absolute top-14 right-3 z-30 w-[calc(100%-1.5rem)] sm:w-[430px] bg-slate-900/95 backdrop-blur-xl border border-sky-500/40 rounded-2xl p-3.5 shadow-2xl shadow-black/80 pointer-events-auto animate-in fade-in slide-in-from-top-2 duration-150"
+        >
+          {/* Popover Header: Target Title & Category Badge */}
+          <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-800/90">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                    selectedPhysicalSummary.isDSO
+                      ? 'bg-purple-950/80 text-purple-300 border-purple-700/60'
+                      : 'bg-amber-950/80 text-amber-300 border-amber-700/60'
+                  }`}
+                >
+                  {selectedPhysicalSummary.categoryBadge}
+                </span>
+                <span className="text-[10px] font-mono text-slate-400">
+                  픽셀 {selectedPhysicalSummary.pixelCoords}
+                </span>
+              </div>
+              <h4 className="text-sm sm:text-base font-extrabold text-white tracking-tight mt-1 truncate">
+                {selectedPhysicalSummary.displayName}
+              </h4>
+              <p className="text-[11px] text-slate-300 truncate">
+                {selectedPhysicalSummary.subtitleKo}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => onSelectObject(selectedPhysicalSummary.rawTargetQuery)}
+                className="text-[11px] px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                title="CDS SIMBAD 실시간 데이터베이스 상세 조회"
+              >
+                <span>SIMBAD</span>
+                <ExternalLink className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsPhysicalCardOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                title="물리량 요약 카드 닫기"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* 3-Column Physical Quantities Summary: 겉보기 등급, 크기, 거리 */}
+          <div className="grid grid-cols-3 gap-2 mt-2.5">
+            {/* 1. 겉보기 등급 (Apparent Magnitude) */}
+            <div className="bg-slate-950/90 border border-slate-800/90 rounded-xl p-2.5 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-[11px] text-slate-400 font-medium">
+                <span>겉보기 등급</span>
+                <Star className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              </div>
+              <div className="mt-1">
+                <p className="text-sm font-extrabold font-mono text-amber-300 tracking-tight">
+                  {selectedPhysicalSummary.apparentMagnitude}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1" title={selectedPhysicalSummary.apparentMagnitudeSub}>
+                  {selectedPhysicalSummary.apparentMagnitudeSub}
+                </p>
+              </div>
+            </div>
+
+            {/* 2. 크기 / 시직경 (Size / Angular Size) */}
+            <div className="bg-slate-950/90 border border-slate-800/90 rounded-xl p-2.5 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-[11px] text-slate-400 font-medium">
+                <span>크기 (시직경)</span>
+                <Ruler className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+              </div>
+              <div className="mt-1">
+                <p className="text-sm font-extrabold font-mono text-sky-300 tracking-tight truncate" title={selectedPhysicalSummary.sizeText}>
+                  {selectedPhysicalSummary.sizeText}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1" title={selectedPhysicalSummary.sizeSub}>
+                  {selectedPhysicalSummary.sizeSub}
+                </p>
+              </div>
+            </div>
+
+            {/* 3. 거리 (Distance) */}
+            <div className="bg-slate-950/90 border border-slate-800/90 rounded-xl p-2.5 flex flex-col justify-between">
+              <div className="flex items-center justify-between text-[11px] text-slate-400 font-medium">
+                <span>거리</span>
+                <Navigation className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+              </div>
+              <div className="mt-1">
+                <p className="text-sm font-extrabold font-mono text-indigo-300 tracking-tight truncate" title={selectedPhysicalSummary.distanceText}>
+                  {selectedPhysicalSummary.distanceText}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1" title={selectedPhysicalSummary.distanceSub}>
+                  {selectedPhysicalSummary.distanceSub}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Target Quick Selector Pills if multiple DSOs / Bright Stars are in field */}
+          {selectableTargets.length > 1 && (
+            <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+              <span className="text-[10px] text-slate-400 font-semibold shrink-0">천체 선택:</span>
+              {selectableTargets.map((item, idx) => {
+                const rawArr = Array.isArray(item.names) ? item.names : [];
+                const label =
+                  extractPrimaryObjectIdentifier(rawArr) ||
+                  formatTitleWithCatalogPriority(rawArr[0] || `천체 #${idx + 1}`);
+                const isCurrent = selectedTarget === item;
+                return (
+                  <button
+                    key={`sel-target-${idx}`}
+                    type="button"
+                    onClick={() => setSelectedTarget(item)}
+                    className={`text-[11px] px-2 py-0.5 rounded-lg font-medium whitespace-nowrap transition-all cursor-pointer border ${
+                      isCurrent
+                        ? 'bg-sky-500 text-white border-sky-400 font-bold shadow-sm'
+                        : 'bg-slate-950/80 text-slate-300 hover:text-white border-slate-800 hover:border-slate-600'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Main Interactive Canvas Area (Zoom via +/- buttons only, no wheel) */}
       <div
@@ -734,7 +943,10 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
                   <g className="dsos">
                     {dsos.map((dso, idx) => {
                       const radius = Math.max(16 * fontScale, (dso.radius || 18) * fontScale);
-                      const primaryName = dso.names[0] || 'DSO';
+                      const safeNames = Array.isArray(dso.names) ? dso.names : [];
+                      const primaryName =
+                        extractPrimaryObjectIdentifier(safeNames) ||
+                        formatTitleWithCatalogPriority(safeNames[0] || 'DSO');
                       const textWidth = Math.max(48 * fontScale, primaryName.length * (10 * fontScale) + 16 * fontScale);
                       const textHeight = 22 * fontScale;
                       const textX = dso.pixelx + radius + 8 * fontScale;
@@ -744,7 +956,12 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
                         <g
                           key={`dso-${idx}`}
                           className="cursor-pointer group"
-                          onClick={() => onSelectObject(primaryName)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTarget(dso);
+                            setIsPhysicalCardOpen(true);
+                          }}
+                          onDoubleClick={() => onSelectObject(primaryName)}
                           onMouseEnter={() => setHoveredAnnotation(dso)}
                           onMouseLeave={() => setHoveredAnnotation(null)}
                         >
@@ -839,7 +1056,12 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
                         <g
                           key={`star-${idx}`}
                           className="cursor-pointer group"
-                          onClick={() => onSelectObject(name)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTarget(star);
+                            setIsPhysicalCardOpen(true);
+                          }}
+                          onDoubleClick={() => onSelectObject(name)}
                           onMouseEnter={() => setHoveredAnnotation(star)}
                           onMouseLeave={() => setHoveredAnnotation(null)}
                         >

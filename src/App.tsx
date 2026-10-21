@@ -31,7 +31,11 @@ import { MyAccountJobsDrawer } from './components/MyAccountJobsDrawer';
 import { DualIndexCatalogModal } from './components/DualIndexCatalogModal';
 import { EmptyState } from './components/EmptyState';
 import { SolvedAstroData, AnalysisHistoryItem } from './types/astronomy';
-import { identifyConstellations, getConstellationObjectTitle } from './utils/constellations';
+import {
+  identifyConstellations,
+  getConstellationObjectTitle,
+  formatTitleWithCatalogPriority,
+} from './utils/constellations';
 import { degToRA_HMS, degToDec_DMS } from './utils/coordinateMath';
 import { SAMPLE_SOLVED_JOBS } from './data/sampleShowcase';
 import {
@@ -234,10 +238,19 @@ export default function App() {
             sj.filename
           );
           if (!map.has(strId)) {
+            const rawFilename = sj.filename || '';
+            const isGenericFilename =
+              !rawFilename ||
+              /^(image|img|photo|dsc|stacked|astrometry|plate|capture|test|frame|light)[_\-\d\s.]*\.(jpg|jpeg|png|fit|fits|tif|tiff|webp)$/i.test(
+                rawFilename.trim()
+              );
+            const displayJobTitle = isGenericFilename
+              ? constTitle
+              : formatTitleWithCatalogPriority(rawFilename, sj.objects || []);
             map.set(strId, {
               id: `job_${sj.jobId}`,
               jobId: sj.jobId,
-              title: sj.filename || `Astrometry Job #${sj.jobId}`,
+              title: displayJobTitle || `Astrometry Job #${sj.jobId}`,
               imageUrl: `/api/astrometry/image-proxy/${sj.jobId}/annotated`,
               rawImageUrl: `/api/astrometry/image-proxy/${sj.jobId}/original`,
               timestamp: Date.now(),
@@ -346,10 +359,23 @@ export default function App() {
           ? customImgUrl
           : `/api/astrometry/image-proxy/${solved.jobId}/original`);
 
+    const formattedSolvedTitle = formatTitleWithCatalogPriority(
+      solved.title || solved.info?.original_filename || '',
+      [...(solved.info?.objects_in_field || []), ...(solved.info?.tags || [])]
+    );
+    const isGenericSolvedTitle =
+      !formattedSolvedTitle ||
+      /^(image|img|photo|dsc|stacked|astrometry|plate|capture|test|frame|light)[_\-\d\s.]*\.(jpg|jpeg|png|fit|fits|tif|tiff|webp)$/i.test(
+        formattedSolvedTitle.trim()
+      ) ||
+      /^Astrometry Plate Solve #/i.test(formattedSolvedTitle.trim());
+
+    const effectiveTitle = isGenericSolvedTitle ? constTitle : formattedSolvedTitle;
+
     const newItem: AnalysisHistoryItem = {
       id: `job_${solved.jobId}`,
       jobId: solved.jobId,
-      title: solved.title || `Job #${solved.jobId}`,
+      title: effectiveTitle || `Job #${solved.jobId}`,
       imageUrl: validImgUrl,
       rawImageUrl: validRawImgUrl,
       timestamp: Date.now(),
@@ -530,9 +556,30 @@ export default function App() {
         ? buildDualIndexTelemetryForCalibration(calibration, starAnnCount)
         : undefined;
 
+      const primaryMatchedConstKo = matched[0]?.nameKo;
+      const computedConstellationTitle = getConstellationObjectTitle(
+        primaryMatchedConstKo,
+        calibration?.ra || 0,
+        calibration?.dec || 0,
+        [...(info.objects_in_field || []), ...(info.tags || [])],
+        info.original_filename
+      );
+      const rawOriginalTitle = info.original_filename || '';
+      const isGenericOriginalFilename =
+        !rawOriginalTitle ||
+        /^(image|img|photo|dsc|stacked|astrometry|plate|capture|test|frame|light)[_\-\d\s.]*\.(jpg|jpeg|png|fit|fits|tif|tiff|webp)$/i.test(
+          rawOriginalTitle.trim()
+        );
+      const resolvedTitle = isGenericOriginalFilename
+        ? computedConstellationTitle
+        : formatTitleWithCatalogPriority(rawOriginalTitle, [
+            ...(info.objects_in_field || []),
+            ...(info.tags || []),
+          ]);
+
       const solved: SolvedAstroData = {
         jobId,
-        title: info.original_filename || `Astrometry Plate Solve #${jobId}`,
+        title: resolvedTitle || `Astrometry Plate Solve #${jobId}`,
         imageUrl: resolvedImageUrl,
         rawImageUrl: resolvedRawImageUrl,
         imageWidth: calW,
@@ -696,7 +743,12 @@ export default function App() {
                 <span className="font-mono text-sky-400 font-bold px-1.5 py-0.5 rounded bg-sky-950/80 border border-sky-800/80">
                   Job #{solvedData.jobId}
                 </span>
-                <span className="text-white font-medium truncate max-w-xs">{solvedData.title}</span>
+                <span className="text-white font-medium truncate max-w-xs">
+                  {formatTitleWithCatalogPriority(
+                    solvedData.title,
+                    solvedData.info?.objects_in_field || solvedData.info?.tags || []
+                  )}
+                </span>
                 <span>•</span>
                 <span className="text-indigo-300 font-medium">
                   {solvedData.matchedConstellations[0]?.nameKo || '천구 별자리'}
@@ -780,7 +832,10 @@ export default function App() {
               </div>
 
               <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-1">
-                {solvedData.title || `천체 관측 사진 #${solvedData.jobId}`}
+                {formatTitleWithCatalogPriority(
+                  solvedData.title || `천체 관측 사진 #${solvedData.jobId}`,
+                  solvedData.info?.objects_in_field || solvedData.info?.tags || []
+                )}
               </h1>
 
               <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-slate-300">

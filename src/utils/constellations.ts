@@ -1203,8 +1203,220 @@ export function getConstellationLinesForImage(
   return linesResult;
 }
 
+// Complete Messier (M1..M110) <-> NGC/IC cross-reference map
+export const MESSIER_TO_NGC_IC: Record<string, string> = {
+  M1: 'NGC 1952', M2: 'NGC 7089', M3: 'NGC 5272', M4: 'NGC 6121', M5: 'NGC 5904',
+  M6: 'NGC 6405', M7: 'NGC 6475', M8: 'NGC 6523', M9: 'NGC 6333', M10: 'NGC 6254',
+  M11: 'NGC 6705', M12: 'NGC 6218', M13: 'NGC 6205', M14: 'NGC 6402', M15: 'NGC 7078',
+  M16: 'NGC 6611', M17: 'NGC 6618', M18: 'NGC 6613', M19: 'NGC 6273', M20: 'NGC 6514',
+  M21: 'NGC 6531', M22: 'NGC 6656', M23: 'NGC 6494', M25: 'IC 4725', M26: 'NGC 6694',
+  M27: 'NGC 6853', M28: 'NGC 6626', M29: 'NGC 6913', M30: 'NGC 7099', M31: 'NGC 224',
+  M32: 'NGC 221', M33: 'NGC 598', M34: 'NGC 1039', M35: 'NGC 2168', M36: 'NGC 1960',
+  M37: 'NGC 2099', M38: 'NGC 1912', M39: 'NGC 7092', M41: 'NGC 2287', M42: 'NGC 1976',
+  M43: 'NGC 1982', M44: 'NGC 2632', M46: 'NGC 2437', M47: 'NGC 2422', M48: 'NGC 2548',
+  M49: 'NGC 4472', M50: 'NGC 2323', M51: 'NGC 5194', M52: 'NGC 7654', M53: 'NGC 5024',
+  M54: 'NGC 6715', M55: 'NGC 6809', M56: 'NGC 6779', M57: 'NGC 6720', M58: 'NGC 4579',
+  M59: 'NGC 4621', M60: 'NGC 4649', M61: 'NGC 4303', M62: 'NGC 6266', M63: 'NGC 5055',
+  M64: 'NGC 4826', M65: 'NGC 3623', M66: 'NGC 3627', M67: 'NGC 2682', M68: 'NGC 4590',
+  M69: 'NGC 6637', M70: 'NGC 6681', M71: 'NGC 6838', M72: 'NGC 6981', M73: 'NGC 6994',
+  M74: 'NGC 628', M75: 'NGC 6864', M76: 'NGC 650', M77: 'NGC 1068', M78: 'NGC 2068',
+  M79: 'NGC 1904', M80: 'NGC 6093', M81: 'NGC 3031', M82: 'NGC 3034', M83: 'NGC 5236',
+  M84: 'NGC 4374', M85: 'NGC 4382', M86: 'NGC 4406', M87: 'NGC 4486', M88: 'NGC 4501',
+  M89: 'NGC 4552', M90: 'NGC 4569', M91: 'NGC 4548', M92: 'NGC 6341', M93: 'NGC 2447',
+  M94: 'NGC 4736', M95: 'NGC 3351', M96: 'NGC 3368', M97: 'NGC 3587', M98: 'NGC 4192',
+  M99: 'NGC 4254', M100: 'NGC 4321', M101: 'NGC 5457', M102: 'NGC 5866', M103: 'NGC 581',
+  M104: 'NGC 4594', M105: 'NGC 3379', M106: 'NGC 4258', M107: 'NGC 6171', M108: 'NGC 3556',
+  M109: 'NGC 3992', M110: 'NGC 205',
+};
+
+// Complete Caldwell (C1..C109) <-> NGC/IC cross-reference map
+export const CALDWELL_TO_NGC_IC: Record<string, string> = {
+  C1: 'NGC 188', C2: 'NGC 40', C3: 'NGC 4236', C4: 'NGC 7023', C5: 'IC 342',
+  C6: 'NGC 6543', C7: 'NGC 2403', C8: 'NGC 559', C10: 'NGC 663', C11: 'NGC 7635',
+  C12: 'NGC 6946', C13: 'NGC 457', C14: 'NGC 869 / NGC 884', C15: 'NGC 6826', C16: 'NGC 7243',
+  C17: 'NGC 147', C18: 'NGC 185', C19: 'IC 5146', C20: 'NGC 7000', C21: 'NGC 4449',
+  C22: 'NGC 7662', C23: 'NGC 891', C24: 'NGC 1275', C25: 'NGC 2419', C26: 'NGC 4244',
+  C27: 'NGC 6888', C28: 'NGC 752', C29: 'NGC 5005', C30: 'NGC 7331', C31: 'IC 405',
+  C32: 'NGC 4631', C33: 'NGC 6992', C34: 'NGC 6960', C35: 'NGC 4889', C36: 'NGC 4559',
+  C37: 'NGC 6885', C38: 'NGC 4565', C39: 'NGC 2392', C40: 'NGC 3626', C42: 'NGC 7006',
+  C43: 'NGC 7814', C44: 'NGC 7479', C45: 'NGC 5248', C46: 'NGC 2261', C47: 'NGC 6934',
+  C48: 'NGC 2775', C49: 'NGC 2237', C50: 'NGC 2244', C51: 'IC 1613', C52: 'NGC 4697',
+  C53: 'NGC 3115', C54: 'NGC 2506', C55: 'NGC 7009', C56: 'NGC 246', C57: 'NGC 6822',
+  C58: 'NGC 2360', C59: 'NGC 3242', C60: 'NGC 4038', C61: 'NGC 4039', C62: 'NGC 247',
+  C63: 'NGC 7293', C64: 'NGC 2362', C65: 'NGC 253', C66: 'NGC 5694', C67: 'NGC 1097',
+  C68: 'NGC 6729', C69: 'NGC 6302', C70: 'NGC 300', C71: 'NGC 2477', C72: 'NGC 55',
+  C73: 'NGC 1851', C74: 'NGC 3132', C75: 'NGC 6124', C76: 'NGC 6231', C77: 'NGC 5128',
+  C78: 'NGC 6541', C79: 'NGC 3201', C80: 'NGC 5139', C81: 'NGC 6352', C82: 'NGC 6193',
+  C83: 'NGC 4945', C84: 'NGC 5286', C85: 'IC 2391', C86: 'NGC 6397', C87: 'NGC 1261',
+  C88: 'NGC 5823', C89: 'NGC 6087', C90: 'NGC 2867', C91: 'NGC 3532', C92: 'NGC 3372',
+  C93: 'NGC 6752', C94: 'NGC 4755', C95: 'NGC 6025', C96: 'NGC 2516', C97: 'NGC 3766',
+  C98: 'NGC 4609', C102: 'IC 2602', C103: 'NGC 2070', C104: 'NGC 362', C105: 'NGC 4833',
+  C106: 'NGC 104', C107: 'NGC 6101', C108: 'NGC 4372', C109: 'NGC 3195',
+};
+
+// Reverse lookup map: "NGC 628" -> { mc: "M74", ngcIc: "NGC 628" }, "NGC 752" -> { mc: "C28", ngcIc: "NGC 752" }
+const NGC_IC_TO_MC: Record<string, { mc: string; ngcIc: string }> = (() => {
+  const map: Record<string, { mc: string; ngcIc: string }> = {};
+  for (const [mKey, ngcVal] of Object.entries(MESSIER_TO_NGC_IC)) {
+    map[ngcVal.toUpperCase()] = { mc: mKey, ngcIc: ngcVal };
+  }
+  for (const [cKey, ngcVal] of Object.entries(CALDWELL_TO_NGC_IC)) {
+    if (ngcVal.includes('/')) {
+      for (const part of ngcVal.split('/')) {
+        const trimmed = part.trim().toUpperCase();
+        map[trimmed] = { mc: cKey, ngcIc: trimmed };
+      }
+    } else {
+      map[ngcVal.toUpperCase()] = { mc: cKey, ngcIc: ngcVal };
+    }
+  }
+  // Additional multi-NGC aliases for C33 (Eastern Veil NGC 6992 / NGC 6995) and M76 (NGC 650 / NGC 651)
+  map['NGC 6995'] = { mc: 'C33', ngcIc: 'NGC 6995' };
+  map['NGC 651'] = { mc: 'M76', ngcIc: 'NGC 651' };
+  return map;
+})();
+
 /**
- * Extracts the most representative celestial object identifier (e.g. "더블더블 (ε¹·ε² Lyr)", "NGC 628", "M 42", "M 31", "IC 434", etc.)
+ * Formats an object designation so that if a Caldwell (C) or Messier (M) number exists,
+ * the Caldwell or Messier number is shown first and NGC/IC is placed inside parentheses (...).
+ * If no Caldwell or Messier number exists, returns the designation as-is.
+ */
+export function formatCatalogDesignationWithPriority(
+  messierOrNames?: string | string[] | null,
+  caldwellId?: string | null,
+  ngcIcList: string[] = []
+): string | null {
+  // If called with an array of names (e.g., dso.names from annotations), delegate to extractPrimaryObjectIdentifier
+  if (Array.isArray(messierOrNames)) {
+    return extractPrimaryObjectIdentifier(messierOrNames);
+  }
+
+  const messierId = typeof messierOrNames === 'string' ? messierOrNames : null;
+  const safeCaldwellId = typeof caldwellId === 'string' ? caldwellId : null;
+  const safeNgcIcList = Array.isArray(ngcIcList) ? ngcIcList.filter((s): s is string => typeof s === 'string') : [];
+
+  const uniqueNgcIc = Array.from(
+    new Set(safeNgcIcList.map((s) => s.replace(/\s+/g, ' ').trim().toUpperCase()))
+  ).filter(Boolean);
+
+  // 1. If explicit Messier or Caldwell is provided
+  let primaryMC = messierId
+    ? messierId.replace(/^MESSIER\s*/i, 'M').replace(/\s+/g, '').toUpperCase()
+    : safeCaldwellId
+    ? safeCaldwellId.replace(/^CALDWELL\s*/i, 'C').replace(/\s+/g, '').toUpperCase()
+    : null;
+
+  // 2. If not explicitly provided, check if any NGC/IC in the list maps to a known Messier or Caldwell number
+  if (!primaryMC && uniqueNgcIc.length > 0) {
+    for (const ngcIc of uniqueNgcIc) {
+      const mapped = NGC_IC_TO_MC[ngcIc];
+      if (mapped) {
+        primaryMC = mapped.mc;
+        break;
+      }
+    }
+  }
+
+  // 3. If we have a Messier or Caldwell number, ensure we also look up its canonical NGC/IC if none was in uniqueNgcIc
+  if (primaryMC) {
+    if (uniqueNgcIc.length === 0) {
+      const canonicalNgc = MESSIER_TO_NGC_IC[primaryMC] || CALDWELL_TO_NGC_IC[primaryMC];
+      if (canonicalNgc) {
+        return `${primaryMC} (${canonicalNgc})`;
+      }
+      return primaryMC;
+    }
+    return `${primaryMC} (${uniqueNgcIc.join(' / ')})`;
+  }
+
+  // 4. No Messier or Caldwell number exists -> return NGC/IC as-is
+  if (uniqueNgcIc.length > 0) {
+    return uniqueNgcIc[0];
+  }
+
+  return null;
+}
+
+/**
+ * Normalizes any title string so that if a Caldwell or Messier number exists alongside or via NGC/IC,
+ * Caldwell/Messier appears first and NGC/IC is inside parentheses (...). If none exists, returns as-is.
+ */
+export function formatTitleWithCatalogPriority(
+  rawTitle: string,
+  objectsOrTags: string[] = []
+): string {
+  if (!rawTitle || typeof rawTitle !== 'string') return rawTitle || '';
+  let result = rawTitle.trim();
+
+  // Case 1: Parenthesized "(NGC 628 / M74)" or "(M31 / NGC 224)" or "(NGC 891 / Caldwell 23)"
+  result = result.replace(
+    /\(\s*(?:(NGC|IC)\s*(\d+[A-Z]?)\s*\/\s*(?:(Messier|M|Caldwell|C)\s*(\d+))|(?:(Messier|M|Caldwell|C)\s*(\d+))\s*\/\s*(NGC|IC)\s*(\d+[A-Z]?))\s*\)/gi,
+    (_match, ngc1, num1, mc1, mcNum1, mc2, mcNum2, ngc2, num2) => {
+      const mcPrefix = (mc1 || mc2).toUpperCase().startsWith('C') ? 'C' : 'M';
+      const mcNumber = mcNum1 || mcNum2;
+      const ngcPrefix = (ngc1 || ngc2).toUpperCase();
+      const ngcNumber = (num1 || num2).toUpperCase();
+      return `${mcPrefix}${mcNumber} (${ngcPrefix} ${ngcNumber})`;
+    }
+  );
+
+  // Case 2: "NGC 663 산개성단 (Caldwell 10)" or "NGC 752 산개성단 (Caldwell 28)"
+  result = result.replace(
+    /\b(NGC|IC)\s*(\d+[A-Z]?)\s*([^()]*?)\(\s*(?:Caldwell|C|Messier|M)\s*(\d+)\s*\)/gi,
+    (_match, ngcPrefix, ngcNum, middleText, mcNum) => {
+      const isCaldwell = _match.toLowerCase().includes('caldwell') || /\(\s*c\s*\d+/i.test(_match);
+      const mcTag = `${isCaldwell ? 'C' : 'M'}${mcNum}`;
+      const mid = middleText.trim();
+      return mid
+        ? `${mcTag} ${mid} (${ngcPrefix.toUpperCase()} ${ngcNum.toUpperCase()})`
+        : `${mcTag} (${ngcPrefix.toUpperCase()} ${ngcNum.toUpperCase()})`;
+    }
+  );
+
+  // Case 3: Standalone "(NGC 869 / NGC 884)" -> "C14 (NGC 869 / NGC 884)"
+  result = result.replace(/\(\s*NGC\s*869\s*\/\s*(?:NGC\s*)?884\s*\)/gi, 'C14 (NGC 869 / NGC 884)');
+  result = result.replace(/\(\s*NGC\s*6992\s*\/\s*(?:NGC\s*)?6995\s*\)/gi, 'C33 (NGC 6992 / NGC 6995)');
+  result = result.replace(/\(\s*NGC\s*7000\s*\/\s*IC\s*5070\s*\)/gi, 'C20 (NGC 7000 / IC 5070)');
+
+  // Case 4: If string contains a standalone M or C number without its NGC/IC in parentheses, add (NGC/IC) if known
+  if (!/\(\s*(?:NGC|IC)\s*\d+/i.test(result)) {
+    result = result.replace(/\b(M|C)\s*(\d{1,3})\b/g, (fullMatch, mcPrefix, mcNum) => {
+      const key = `${mcPrefix.toUpperCase()}${mcNum}`;
+      const canonical = MESSIER_TO_NGC_IC[key] || CALDWELL_TO_NGC_IC[key];
+      if (canonical && !result.toUpperCase().includes(canonical.toUpperCase())) {
+        return `${key} (${canonical})`;
+      }
+      return fullMatch;
+    });
+  }
+
+  // Case 5: If string contains NGC/IC without M/C in the string, check if it maps to a known M/C
+  if (!/\b(?:M|C|Messier|Caldwell)\s*\d+\b/i.test(result)) {
+    result = result.replace(/\b(NGC|IC)\s*(\d+[A-Z]?)\b/gi, (fullMatch, cat, num) => {
+      const key = `${cat.toUpperCase()} ${num.toUpperCase()}`;
+      const mapped = NGC_IC_TO_MC[key];
+      if (mapped) {
+        return `${mapped.mc} (${key})`;
+      }
+      return fullMatch;
+    });
+  }
+
+  // Case 6: If result still has no catalog designation at all, check if objectsOrTags provides one when result ends with "의 천체"
+  if (result.endsWith('의 천체') && Array.isArray(objectsOrTags) && objectsOrTags.length > 0) {
+    const extracted = extractPrimaryObjectIdentifier(objectsOrTags);
+    if (extracted) {
+      result = result.replace(/의\s*천체$/, `의 ${extracted}`);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Extracts the most representative celestial object identifier.
+ * Rule: If a Caldwell (C) or Messier (M) number exists, show it first and put NGC or IC inside ().
+ * If no Caldwell or Messier number exists, show NGC/IC or object name as-is.
  */
 export function extractPrimaryObjectIdentifier(
   objectsOrTags: string[] = [],
@@ -1239,33 +1451,101 @@ export function extractPrimaryObjectIdentifier(
     }
   }
 
-  // Priority 1: Catalogs like NGC, Messier (M), IC, Caldwell (C), Barnard (B), Sh2, etc.
+  // Priority 1: Scan all candidates for Messier (M), Caldwell (C), NGC, and IC numbers
+  let foundMessier: string | null = null;
+  let foundCaldwell: string | null = null;
+  const foundNgcIc: string[] = [];
+  let foundOtherCatalog: string | null = null;
+
   for (const item of candidates) {
     // Check for "target:ngc=628" or "target:messier=74" or "target:m=74"
-    const targetMatch = item.match(/target:(ngc|ic|messier|m)=?(\d+)/i);
+    const targetMatch = item.match(/target:(ngc|ic|messier|m|caldwell|c)=?(\d+[A-Z]?)/i);
     if (targetMatch) {
-      const cat = targetMatch[1].toUpperCase() === 'MESSIER' ? 'M' : targetMatch[1].toUpperCase();
-      return `${cat} ${targetMatch[2]}`;
+      const rawCat = targetMatch[1].toUpperCase();
+      const num = targetMatch[2].toUpperCase();
+      if (rawCat === 'MESSIER' || rawCat === 'M') {
+        if (!foundMessier) foundMessier = `M${num}`;
+      } else if (rawCat === 'CALDWELL' || rawCat === 'C') {
+        if (!foundCaldwell) foundCaldwell = `C${num}`;
+      } else {
+        foundNgcIc.push(`${rawCat} ${num}`);
+      }
     }
 
-    // Check for "NGC 628", "NGC628", "NGC 628A"
-    const ngcMatch = item.match(/\bNGC\s*(\d+[A-Z]?)\b/i);
-    if (ngcMatch) return `NGC ${ngcMatch[1].toUpperCase()}`;
+    // Check for Messier ("Messier 74", "M 74", "M74")
+    const messierMatches = item.matchAll(/\b(?:Messier|M)\s*(\d{1,3})\b/gi);
+    for (const m of messierMatches) {
+      const mNum = parseInt(m[1], 10);
+      if (mNum >= 1 && mNum <= 110 && !foundMessier) {
+        foundMessier = `M${mNum}`;
+      }
+    }
 
-    // Check for "Messier 74", "M 74", "M74"
-    const messierMatch = item.match(/\b(?:Messier|M)\s*(\d+)\b/i);
-    if (messierMatch) return `M ${messierMatch[1]}`;
+    // Check for Caldwell ("Caldwell 28", "C 28", "C28")
+    const caldwellMatches = item.matchAll(/\b(?:Caldwell\s*(\d{1,3})|C\s*(\d{1,3}))\b/gi);
+    for (const c of caldwellMatches) {
+      // Avoid matching "c Ori" or single star letter by ensuring either "Caldwell" or "C<num>"
+      const cNumStr = c[1] || c[2];
+      const cNum = parseInt(cNumStr, 10);
+      if (cNum >= 1 && cNum <= 109 && !foundCaldwell) {
+        foundCaldwell = `C${cNum}`;
+      }
+    }
 
-    // Check for "IC 434", "IC434"
-    const icMatch = item.match(/\bIC\s*(\d+[A-Z]?)\b/i);
-    if (icMatch) return `IC ${icMatch[1].toUpperCase()}`;
+    // Check for NGC ("NGC 628", "NGC628")
+    const ngcMatches = item.matchAll(/\bNGC\s*(\d+[A-Z]?)\b/gi);
+    for (const n of ngcMatches) {
+      foundNgcIc.push(`NGC ${n[1].toUpperCase()}`);
+    }
 
-    // Other catalogs
-    const otherCatMatch = item.match(/\b(Sh2-\d+|vdB\s*\d+|Caldwell\s*\d+|C\s*\d+|B\s*\d+|Barnard\s*\d+|LBN\s*\d+|LDN\s*\d+|Sharpless\s*\d+)\b/i);
-    if (otherCatMatch) return otherCatMatch[1].toUpperCase();
+    // Check for IC ("IC 434", "IC434")
+    const icMatches = item.matchAll(/\bIC\s*(\d+[A-Z]?)\b/gi);
+    for (const ic of icMatches) {
+      foundNgcIc.push(`IC ${ic[1].toUpperCase()}`);
+    }
+
+    // Other catalogs (Sh2, Barnard, vdB, LBN, LDN)
+    if (!foundOtherCatalog) {
+      const otherCatMatch = item.match(/\b(Sh2-\d+|vdB\s*\d+|B\s*\d+|Barnard\s*\d+|LBN\s*\d+|LDN\s*\d+|Sharpless\s*\d+)\b/i);
+      if (otherCatMatch) foundOtherCatalog = otherCatMatch[1].toUpperCase();
+    }
   }
 
-  // Priority 2: Named prominent astronomical objects (e.g. Andromeda, Orion Nebula, Pleiades, etc.)
+  // If any Messier, Caldwell, NGC, or IC was found, format with Caldwell/Messier priority and (NGC/IC) in parentheses
+  if (foundMessier || foundCaldwell || foundNgcIc.length > 0) {
+    // Filter NGC/IC list to those matching the primary Messier/Caldwell if one exists, or keep primary NGC/IC
+    let relevantNgcIc = foundNgcIc;
+    if (foundMessier || foundCaldwell) {
+      const mcKey = (foundMessier || foundCaldwell)!;
+      const canonical = MESSIER_TO_NGC_IC[mcKey] || CALDWELL_TO_NGC_IC[mcKey];
+      if (canonical) {
+        const canonicalParts = canonical.split('/').map((s) => s.trim().toUpperCase());
+        const matchedFromCandidates = foundNgcIc.filter((id) => canonicalParts.includes(id.toUpperCase()));
+        relevantNgcIc = matchedFromCandidates.length > 0 ? matchedFromCandidates : [canonical];
+      }
+    } else if (foundNgcIc.length > 0) {
+      // Check if any found NGC/IC has a Messier or Caldwell number in the cross-reference table
+      const firstMapped = foundNgcIc.find((id) => Boolean(NGC_IC_TO_MC[id.toUpperCase()]));
+      if (firstMapped) {
+        const mappedInfo = NGC_IC_TO_MC[firstMapped.toUpperCase()];
+        if (mappedInfo.mc.startsWith('M')) foundMessier = mappedInfo.mc;
+        else foundCaldwell = mappedInfo.mc;
+        const canonical = MESSIER_TO_NGC_IC[mappedInfo.mc] || CALDWELL_TO_NGC_IC[mappedInfo.mc];
+        const canonicalParts = canonical ? canonical.split('/').map((s) => s.trim().toUpperCase()) : [firstMapped];
+        const matchedFromCandidates = foundNgcIc.filter((id) => canonicalParts.includes(id.toUpperCase()));
+        relevantNgcIc = matchedFromCandidates.length > 0 ? matchedFromCandidates : [firstMapped];
+      } else {
+        relevantNgcIc = [foundNgcIc[0]];
+      }
+    }
+
+    const formatted = formatCatalogDesignationWithPriority(foundMessier, foundCaldwell, relevantNgcIc);
+    if (formatted) return formatted;
+  }
+
+  if (foundOtherCatalog) return foundOtherCatalog;
+
+  // Priority 2: Named prominent astronomical objects (e.g. Andromeda, Orion Nebula, Pleiades, Spica, etc.)
   for (const item of candidates) {
     const clean = item.trim();
     if (
@@ -1275,11 +1555,12 @@ export function extractPrimaryObjectIdentifier(
       !clean.toLowerCase().includes('constellation') &&
       !clean.toLowerCase().includes('stars') &&
       !clean.toLowerCase().includes('local in-browser') &&
+      !clean.toLowerCase().includes('dual index:') &&
       !clean.toLowerCase().endsWith('.fits') &&
       !clean.toLowerCase().endsWith('.jpg') &&
       !clean.toLowerCase().endsWith('.png')
     ) {
-      return clean;
+      return formatTitleWithCatalogPriority(clean);
     }
   }
 
@@ -1288,7 +1569,7 @@ export function extractPrimaryObjectIdentifier(
 
 /**
  * Returns formatted title for a constellation's celestial objects,
- * e.g., "물고기 자리의 NGC 628", "오리온 자리의 M 42", "게 자리의 M 44", or fallback "물고기 자리의 천체".
+ * e.g., "물고기 자리의 M74 (NGC 628)", "안드로메다 자리의 C28 (NGC 752)", "오리온 자리의 IC 434", or fallback "물고기 자리의 천체".
  */
 export function getConstellationObjectTitle(
   constellationKo?: string,
@@ -1299,17 +1580,16 @@ export function getConstellationObjectTitle(
   title?: string
 ): string {
   let name = (constellationKo || '').trim();
+  let existingObjPart = '';
 
   // Strip previous placeholder suffixes like "의 천체"
   name = name.replace(/의\s*천체$/, '').trim();
 
-  // If already contains an object identifier and no new objects passed, keep it
-  if (name.includes('의 ') && (!objectsOrTags || objectsOrTags.length === 0) && !filename && !title) {
-    return name;
-  }
-  // If re-evaluating with objects, extract base constellation name
+  // Extract base constellation name and any existing object suffix
   if (name.includes('의 ')) {
-    name = name.split('의 ')[0].trim();
+    const parts = name.split('의 ');
+    name = parts[0].trim();
+    existingObjPart = parts.slice(1).join('의 ').trim();
   }
 
   // If unknown, placeholder, or not provided, calculate from RA/Dec coordinates or tags
@@ -1334,7 +1614,8 @@ export function getConstellationObjectTitle(
     formattedConstellation = name.replace(/자리$/, ' 자리');
   }
 
-  const primaryObj = extractPrimaryObjectIdentifier(objectsOrTags, filename, title);
+  const combinedCandidates = existingObjPart ? [...objectsOrTags, existingObjPart] : objectsOrTags;
+  const primaryObj = extractPrimaryObjectIdentifier(combinedCandidates, filename, title);
 
   if (formattedConstellation && formattedConstellation !== '천구 별자리' && formattedConstellation !== '천구' && formattedConstellation !== '성도 매칭 결과') {
     if (primaryObj) {
@@ -1349,3 +1630,4 @@ export function getConstellationObjectTitle(
 
   return '천구의 천체';
 }
+
