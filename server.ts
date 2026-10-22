@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { type Request, type Response } from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -658,7 +658,8 @@ app.get('/api/astrometry/jobs/:jobId/annotations', async (req: Request, res: Res
     const { jobId } = req.params;
     if (isLocalJobId(jobId)) {
       const hist = userHistory.find((h) => String(h.jobId) === String(jobId));
-      return res.json({ annotations: hist?.solvedData?.annotations || [] });
+      const localAnns = hist?.solvedData?.annotations;
+      return res.json({ annotations: Array.isArray(localAnns) ? localAnns : [] });
     }
     const resp = await fetch(`https://nova.astrometry.net/api/jobs/${jobId}/annotations/`, {
       headers: { 'User-Agent': 'AstroPlate/1.0' },
@@ -667,7 +668,12 @@ app.get('/api/astrometry/jobs/:jobId/annotations', async (req: Request, res: Res
       return res.status(resp.status).json({ error: `Job annotations fetch failed: ${resp.statusText}` });
     }
     const data = await resp.json();
-    res.json(data);
+    const list = Array.isArray(data?.annotations)
+      ? data.annotations
+      : Array.isArray(data)
+      ? data
+      : [];
+    res.json({ annotations: list });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -705,10 +711,11 @@ app.get('/api/astrometry/jobs/:jobId/full', async (req: Request, res: Response) 
     if (isLocalJobId(jobId)) {
       const hist = userHistory.find((h) => String(h.jobId) === String(jobId));
       if (hist && hist.solvedData) {
+        const localAnns = hist.solvedData.annotations;
         return res.json({
           jobId,
           calibration: hist.solvedData.calibration,
-          annotations: hist.solvedData.annotations || [],
+          annotations: Array.isArray(localAnns) ? localAnns : [],
           info: hist.solvedData.info || {},
         });
       }
@@ -726,14 +733,19 @@ app.get('/api/astrometry/jobs/:jobId/full', async (req: Request, res: Response) 
     }
 
     const calibration = await calResp.json();
-    const annotations = annResp.ok ? await annResp.json() : { annotations: [] };
-    const info = infoResp.ok ? await infoResp.json() : {};
+    const annotationsRaw = annResp.ok ? await annResp.json().catch(() => null) : null;
+    const normalizedAnnotations = Array.isArray(annotationsRaw?.annotations)
+      ? annotationsRaw.annotations
+      : Array.isArray(annotationsRaw)
+      ? annotationsRaw
+      : [];
+    const info = infoResp.ok ? await infoResp.json().catch(() => ({})) : {};
 
     res.json({
       jobId,
       calibration,
-      annotations: annotations.annotations || annotations || [],
-      info,
+      annotations: normalizedAnnotations,
+      info: info && typeof info === 'object' ? info : {},
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

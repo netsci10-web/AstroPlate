@@ -3058,11 +3058,17 @@ export function verifyAndSnapAnnotationsToDetectedStars(
   sourceCoordWidth?: number,
   sourceCoordHeight?: number
 ): AstroAnnotation[] {
+  const safeRawAnnotations = Array.isArray(rawAnnotations)
+    ? rawAnnotations
+    : Array.isArray((rawAnnotations as any)?.annotations)
+    ? (rawAnnotations as any).annotations
+    : [];
+
   // If no stars were detected, NEVER place floating star labels on dark empty sky!
   if (!detectedStars || detectedStars.length === 0) {
-    return rawAnnotations.filter((ann) => {
-      const type = (ann.type || '').toLowerCase();
-      const name0 = (ann.names?.[0] || '').toLowerCase();
+    return safeRawAnnotations.filter((ann: any) => {
+      const type = (ann?.type || '').toLowerCase();
+      const name0 = (ann?.names?.[0] || '').toLowerCase();
       return (
         type === 'ngc' ||
         type === 'ic' ||
@@ -3085,7 +3091,7 @@ export function verifyAndSnapAnnotationsToDetectedStars(
   const usedDetectedIndices = new Set<number>();
   const verifiedAnnotations: AstroAnnotation[] = [];
 
-  for (const ann of rawAnnotations) {
+  for (const ann of safeRawAnnotations) {
     const type = (ann.type || '').toLowerCase();
     const name0 = (ann.names?.[0] || '').toLowerCase();
     const isDso =

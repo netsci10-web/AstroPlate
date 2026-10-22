@@ -404,10 +404,12 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
         return;
       }
 
-      // 1. LOCAL IN-BROWSER SOLVER ENGINE (Zero External API, dstndstn/astrometry.net algorithm)
-      if (solverMode === 'local' && (activeTab === 'upload' || activeTab === 'url')) {
+      const runBrowserDirectSolve = async (reasonMsg?: string) => {
         setLocalProgressPct(10);
         setLocalDetectedCount(null);
+        if (reasonMsg) {
+          setCurrentStep(reasonMsg);
+        }
         const sourceToSolve = activeTab === 'upload' && selectedFile ? selectedFile : imageUrl.trim();
         const fileNameForSolve =
           activeTab === 'upload' && selectedFile
@@ -433,6 +435,11 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
           onSolveSuccess(solvedResult.jobId, solvedResult.rawImageUrl);
         }
         onClose();
+      };
+
+      // 1. LOCAL IN-BROWSER SOLVER ENGINE (Zero External API, dstndstn/astrometry.net algorithm)
+      if (solverMode === 'local' && (activeTab === 'upload' || activeTab === 'url')) {
+        await runBrowserDirectSolve();
         return;
       }
 
@@ -444,35 +451,26 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
       // Direct multipart file upload via FormData (no Base64 JSON overhead)
       if (activeTab === 'upload' && selectedFile) {
         let uploadResp: Response | null = null;
-        let lastError: any = null;
 
-        // Try multipart upload with 1 automatic retry if network blip happens
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            if (attempt > 0) {
-              setCurrentStep('서버 일시적 연결 지연 감지: 재전송 중 (2/2)...');
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-            }
-            const formData = new FormData();
-            formData.append('file', selectedFile);
-            if (hasScaleLower) formData.append('scaleLower', scaleLower);
-            if (hasScaleUpper) formData.append('scaleUpper', scaleUpper);
-            if ((hasScaleLower || hasScaleUpper) && scaleUnits) {
-              formData.append('scaleUnits', scaleUnits);
-            }
-
-            uploadResp = await fetch('/api/astrometry/upload-file', {
-              method: 'POST',
-              body: formData,
-            });
-            if (uploadResp.ok) break;
-          } catch (e: any) {
-            lastError = e;
+        try {
+          const formData = new FormData();
+          formData.append('file', selectedFile);
+          if (hasScaleLower) formData.append('scaleLower', scaleLower);
+          if (hasScaleUpper) formData.append('scaleUpper', scaleUpper);
+          if ((hasScaleLower || hasScaleUpper) && scaleUnits) {
+            formData.append('scaleUnits', scaleUnits);
           }
+
+          uploadResp = await fetch('/api/astrometry/upload-file', {
+            method: 'POST',
+            body: formData,
+          });
+        } catch {
+          uploadResp = null;
         }
 
-        // If multipart failed or threw network error, fallback to Base64 JSON upload
-        if (!uploadResp || !uploadResp.ok) {
+        // If multipart failed (and not 405 static host), fallback to Base64 JSON upload
+        if ((!uploadResp || !uploadResp.ok) && uploadResp?.status !== 405) {
           try {
             setCurrentStep('보조 전송 채널(JSON Base64)로 재시도 중...');
             const reader = new FileReader();
@@ -498,28 +496,34 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             });
-          } catch (fallbackErr: any) {
-            if (!lastError) lastError = fallbackErr;
+          } catch {
+            // Will seamlessly fall back to browser direct solver below
           }
         }
 
-        if (!uploadResp) {
-          throw lastError || new Error('서버와 통신할 수 없습니다.');
-        }
-
-        const contentType = uploadResp.headers.get('content-type') || '';
-        if (!contentType.includes('application/json')) {
-          if (uploadResp.status === 404 && window.location.hostname.endsWith('github.io')) {
-            throw new Error(
-              'GitHub Pages는 정적 호스팅(HTML/JS) 전용이므로 백엔드 업로드 API를 실행할 수 없습니다. 상단 메뉴바의 [Job ID 직접 입력] 또는 [샘플 성도]를 이용하시거나, 풀스택 백엔드가 작동하는 AI Studio 배포 URL을 이용해주세요.'
-            );
-          }
-          throw new Error(`서버 응답 오류 (HTTP ${uploadResp.status})`);
+        const contentType = uploadResp?.headers.get('content-type') || '';
+        if (
+          !uploadResp ||
+          uploadResp.status === 405 ||
+          uploadResp.status === 404 ||
+          uploadResp.status === 401 ||
+          uploadResp.status >= 500 ||
+          !contentType.includes('application/json')
+        ) {
+          // Static hosting (e.g., GitHub Pages / static preview returning HTTP 405) or unavailable API proxy:
+          // Automatically solve using the built-in browser Astrometry.net + CDS VizieR engine
+          await runBrowserDirectSolve(
+            '외부 API 프록시 대신 브라우저 내장 Astrometry.net + CDS VizieR 엔진으로 정밀 플레이트 솔빙 중...'
+          );
+          return;
         }
 
         const uploadData = await uploadResp.json();
         if (!uploadResp.ok || uploadData.error) {
-          throw new Error(uploadData.error || uploadData.message || '파일 업로드 실패');
+          await runBrowserDirectSolve(
+            'Astrometry.net 대기열 대신 브라우저 내장 Astrometry.net + CDS VizieR 엔진으로 즉시 솔빙 중...'
+          );
+          return;
         }
 
         const subid = uploadData.subid;
@@ -536,25 +540,38 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
           payload.scaleUnits = scaleUnits;
         }
 
-        const solveResp = await fetch('/api/astrometry/solve', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
+        let solveResp: Response | null = null;
+        try {
+          solveResp = await fetch('/api/astrometry/solve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+        } catch {
+          solveResp = null;
+        }
 
-        const contentType = solveResp.headers.get('content-type') || '';
-        if (!contentType.includes('application/json')) {
-          if (solveResp.status === 404 && window.location.hostname.endsWith('github.io')) {
-            throw new Error(
-              'GitHub Pages는 정적 호스팅 전용이므로 백엔드 분석 API를 지원하지 않습니다. [Job ID 직접 입력] 또는 AI Studio 배포 URL을 이용해주세요.'
-            );
-          }
-          throw new Error(`서버 응답 오류 (HTTP ${solveResp.status})`);
+        const contentType = solveResp?.headers.get('content-type') || '';
+        if (
+          !solveResp ||
+          solveResp.status === 405 ||
+          solveResp.status === 404 ||
+          solveResp.status === 401 ||
+          solveResp.status >= 500 ||
+          !contentType.includes('application/json')
+        ) {
+          await runBrowserDirectSolve(
+            '외부 API 프록시 대신 브라우저 내장 Astrometry.net + CDS VizieR 엔진으로 정밀 플레이트 솔빙 중...'
+          );
+          return;
         }
 
         const solveData = await solveResp.json();
         if (!solveResp.ok || solveData.error) {
-          throw new Error(solveData.error || solveData.message || 'URL 제출 실패');
+          await runBrowserDirectSolve(
+            'Astrometry.net 대기열 대신 브라우저 내장 Astrometry.net + CDS VizieR 엔진으로 즉시 솔빙 중...'
+          );
+          return;
         }
 
         const subid = solveData.subid;

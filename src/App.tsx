@@ -21,7 +21,7 @@ import {
   Activity,
   RotateCcw,
 } from 'lucide-react';
-import { Navbar } from './components/Navbar';
+import { Navbar, GlobalAppTheme } from './components/Navbar';
 import { StarPhotoViewer } from './components/StarPhotoViewer';
 import { CelestialStarChart } from './components/CelestialStarChart';
 import { AstroTelemetryPanel } from './components/AstroTelemetryPanel';
@@ -55,6 +55,7 @@ import {
 
 const STORAGE_KEY = 'astroplate_account_jobs';
 const LEGACY_STORAGE_KEY = 'astroplate_user_history';
+const THEME_STORAGE_KEY = 'astroplate_global_theme';
 
 export type MainTab = 'photo' | 'chart' | 'telemetry';
 
@@ -65,6 +66,24 @@ export default function App() {
   const [activeMainTab, setActiveMainTab] = useState<MainTab>('photo');
   const [hasApiKey, setHasApiKey] = useState(false);
   const [accountJobs, setAccountJobs] = useState<AnalysisHistoryItem[]>([]);
+  const [globalTheme, setGlobalTheme] = useState<GlobalAppTheme>(() => {
+    try {
+      const saved = localStorage.getItem(THEME_STORAGE_KEY);
+      if (saved === 'daylight' || saved === 'deep_space') return saved;
+    } catch {}
+    return 'deep_space';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', globalTheme);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, globalTheme);
+    } catch {}
+  }, [globalTheme]);
+
+  const handleToggleGlobalTheme = useCallback(() => {
+    setGlobalTheme((prev) => (prev === 'deep_space' ? 'daylight' : 'deep_space'));
+  }, []);
 
   // Modals state
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -333,7 +352,8 @@ export default function App() {
 
   // Save item to account jobs keyed by Job ID with full solved data cache
   const saveToAccountJobs = useCallback((solved: SolvedAstroData, customImgUrl?: string) => {
-    const primaryConst = solved.matchedConstellations[0];
+    const safeAnnotations = Array.isArray(solved.annotations) ? solved.annotations : [];
+    const primaryConst = solved.matchedConstellations?.[0];
     const constTitle = getConstellationObjectTitle(
       primaryConst?.nameKo,
       solved.calibration.ra,
@@ -342,10 +362,10 @@ export default function App() {
       solved.info?.original_filename,
       solved.title
     );
-    const starsCount = solved.annotations.filter(
+    const starsCount = safeAnnotations.filter(
       (a) => a.type === 'bright' || a.type === 'star' || a.type === 'hd'
     ).length;
-    const dsosCount = solved.annotations.length - starsCount;
+    const dsosCount = safeAnnotations.length - starsCount;
 
     // Use reliable image URLs linked to Job ID (preserve Data URLs for local in-browser jobs)
     const isLocalJob = String(solved.jobId).startsWith('local_');
@@ -389,6 +409,7 @@ export default function App() {
       objects: solved.info?.objects_in_field || solved.info?.tags || [],
       solvedData: {
         ...solved,
+        annotations: safeAnnotations,
         imageUrl: validImgUrl,
         rawImageUrl: validRawImgUrl,
       },
@@ -440,7 +461,13 @@ export default function App() {
     // 1. First, check if full solvedData is already cached in accountJobs for this Job ID
     const existingJob = accountJobs.find((h) => String(h.jobId) === String(jobId));
     if (existingJob?.solvedData && String(existingJob.solvedData.jobId) === String(jobId)) {
-      setSolvedData(existingJob.solvedData);
+      const cachedData: SolvedAstroData = {
+        ...existingJob.solvedData,
+        annotations: Array.isArray(existingJob.solvedData.annotations)
+          ? existingJob.solvedData.annotations
+          : [],
+      };
+      setSolvedData(cachedData);
       setActiveJobId(jobId);
       setLoading(false);
       return;
@@ -473,8 +500,12 @@ export default function App() {
 
       const raw = await resp.json();
       const calibration = raw.calibration;
-      const rawAnnotations = raw.annotations || [];
-      const info = raw.info || {};
+      const rawAnnotations = Array.isArray(raw.annotations)
+        ? raw.annotations
+        : Array.isArray(raw.annotations?.annotations)
+        ? raw.annotations.annotations
+        : [];
+      const info = raw.info && typeof raw.info === 'object' ? raw.info : {};
 
       // Determine photo URLs: canonical Astrometry image proxies for this specific Job ID
       const resolvedImageUrl = `/api/astrometry/image-proxy/${jobId}/annotated`;
@@ -492,7 +523,7 @@ export default function App() {
           : 0;
       let detectedStarsList: SolvedAstroData['detectedStars'] = undefined;
       let nebulaPipelineTelemetry: SolvedAstroData['nebulaPipelineTelemetry'] = undefined;
-      let verifiedAnnotations = rawAnnotations;
+      let verifiedAnnotations = Array.isArray(rawAnnotations) ? rawAnnotations : [];
 
       try {
         const ext = await extractStarsImage2XY(resolvedRawImageUrl, { keepOriginalCoords: true });
@@ -535,20 +566,24 @@ export default function App() {
         // Fallback if image proxy could not be decoded on canvas
       }
 
+      if (!Array.isArray(verifiedAnnotations)) {
+        verifiedAnnotations = [];
+      }
+
       if (!calW) calW = 1920;
       if (!calH) calH = 1080;
 
       // Match constellations using IAU definitions, Astrometry tags, coordinates, and verified star annotations
       const matched = identifyConstellations(
-        info.tags || [],
-        info.objects_in_field || [],
+        Array.isArray(info.tags) ? info.tags : [],
+        Array.isArray(info.objects_in_field) ? info.objects_in_field : [],
         calibration?.ra || 0,
         calibration?.dec || 0,
         verifiedAnnotations
       );
 
       const starAnnCount = verifiedAnnotations.filter((a: any) => {
-        const t = (a.type || '').toLowerCase();
+        const t = (a?.type || '').toLowerCase();
         return t === 'bright' || t === 'hd' || t === 'star';
       }).length;
 
@@ -561,7 +596,10 @@ export default function App() {
         primaryMatchedConstKo,
         calibration?.ra || 0,
         calibration?.dec || 0,
-        [...(info.objects_in_field || []), ...(info.tags || [])],
+        [
+          ...(Array.isArray(info.objects_in_field) ? info.objects_in_field : []),
+          ...(Array.isArray(info.tags) ? info.tags : []),
+        ],
         info.original_filename
       );
       const rawOriginalTitle = info.original_filename || '';
@@ -573,8 +611,8 @@ export default function App() {
       const resolvedTitle = isGenericOriginalFilename
         ? computedConstellationTitle
         : formatTitleWithCatalogPriority(rawOriginalTitle, [
-            ...(info.objects_in_field || []),
-            ...(info.tags || []),
+            ...(Array.isArray(info.objects_in_field) ? info.objects_in_field : []),
+            ...(Array.isArray(info.tags) ? info.tags : []),
           ]);
 
       const solved: SolvedAstroData = {
@@ -603,7 +641,12 @@ export default function App() {
     } catch (err: any) {
       console.error('Failed to load job data:', err);
       if (existingJob?.solvedData) {
-        setSolvedData(existingJob.solvedData);
+        setSolvedData({
+          ...existingJob.solvedData,
+          annotations: Array.isArray(existingJob.solvedData.annotations)
+            ? existingJob.solvedData.annotations
+            : [],
+        });
         setActiveJobId(jobId);
       } else if (sample) {
         setSolvedData(sample);
@@ -674,6 +717,8 @@ export default function App() {
         onReset={handleResetHome}
         accountJobsCount={accountJobs.length}
         hasApiKey={hasApiKey}
+        globalTheme={globalTheme}
+        onToggleTheme={handleToggleGlobalTheme}
       />
 
       {/* Top Sub-Navigation Tabs (Shown only when a photo is analyzed) */}

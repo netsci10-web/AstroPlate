@@ -1,5 +1,7 @@
 import React from 'react';
-import { Telescope, Clock, Database, Upload, Compass, HelpCircle } from 'lucide-react';
+import { Telescope, Database, Upload, Sun, Moon } from 'lucide-react';
+
+export type GlobalAppTheme = 'deep_space' | 'daylight';
 
 interface NavbarProps {
   onOpenUpload: () => void;
@@ -9,19 +11,23 @@ interface NavbarProps {
   onReset?: () => void;
   accountJobsCount: number;
   hasApiKey: boolean;
+  globalTheme: GlobalAppTheme;
+  onToggleTheme: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   onOpenUpload,
   onOpenJobInput,
   onOpenAccountJobs,
-  onOpenDualIndex,
   onReset,
   accountJobsCount,
-  hasApiKey,
+  globalTheme,
+  onToggleTheme,
 }) => {
+  const isDaylight = globalTheme === 'daylight';
+
   return (
-    <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-30 shadow-lg">
+    <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-30 shadow-lg transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Brand Logo & Title: Clicking resets/initializes the app */}
@@ -38,16 +44,43 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-sky-400 via-indigo-300 to-purple-300 bg-clip-text text-transparent group-hover:from-sky-300 group-hover:to-purple-200">
+                <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-sky-500 via-indigo-500 to-purple-500 bg-clip-text text-transparent">
                   AstroPlate
                 </span>
               </div>
-              <p className="text-xs text-slate-400 group-hover:text-slate-300 transition-colors">성도 및 별자리 자동 매칭 &amp; 정밀 좌표 오버레이</p>
+              <p className="text-xs text-slate-400 group-hover:text-slate-300 transition-colors">
+                성도 및 별자리 자동 매칭 &amp; 정밀 좌표 오버레이
+              </p>
             </div>
           </button>
 
           {/* Action Buttons */}
-          <div className="flex items-center space-x-2 sm:space-x-3">
+          <div className="flex items-center space-x-2 sm:space-x-2.5">
+            {/* Global Theme Toggle: Deep Space vs Daylight */}
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              aria-label={isDaylight ? 'Deep Space 다크 테마로 전환' : 'Daylight 라이트 테마로 전환'}
+              title={
+                isDaylight
+                  ? '현재: Daylight (주간 라이트 테마) — 클릭하여 Deep Space (심우주 다크 테마)로 전환'
+                  : '현재: Deep Space (심우주 다크 테마) — 클릭하여 Daylight (주간 라이트 테마)로 전환'
+              }
+              className="text-xs px-2.5 sm:px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center space-x-1.5 transition-all cursor-pointer"
+            >
+              {isDaylight ? (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="font-semibold hidden sm:inline">Daylight</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-sky-400" />
+                  <span className="font-semibold hidden sm:inline">Deep Space</span>
+                </>
+              )}
+            </button>
+
             {/* Work History Button */}
             <button
               onClick={onOpenAccountJobs}

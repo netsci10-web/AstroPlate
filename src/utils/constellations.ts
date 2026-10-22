@@ -1012,10 +1012,11 @@ export function identifyConstellations(
 
   // 3. Direct star annotations check (e.g., "μ Cep", "Alderamin (α Cep)", "Albireo (β1 Cyg)")
   // Bayer / Flamsteed stars belonging to constellations
-  if (annotations && annotations.length > 0) {
+  if (Array.isArray(annotations) && annotations.length > 0) {
     for (const ann of annotations) {
-      if (!ann.names) continue;
+      if (!ann || !Array.isArray(ann.names)) continue;
       for (const name of ann.names) {
+        if (typeof name !== 'string') continue;
         for (const [code, info] of Object.entries(IAU_CONSTELLATIONS)) {
           // Match boundary word like "μ Cep", "alpha Cep", "6 Cyg", "11 Cas"
           const regex = new RegExp(`\\b${code}\\b`, 'i');
@@ -1108,8 +1109,9 @@ export function getConstellationLinesForImage(
   const starMap = new Map<string, { x: number; y: number; fullName: string }>();
   const catalogIdMap = new Map<string, { x: number; y: number; fullName: string }>();
 
-  for (const ann of annotations) {
-    if (!ann.names || ann.names.length === 0) continue;
+  const safeAnnotations = Array.isArray(annotations) ? annotations : [];
+  for (const ann of safeAnnotations) {
+    if (!ann || !Array.isArray(ann.names) || ann.names.length === 0) continue;
     const primaryName = ann.names[0];
     for (const name of ann.names) {
       const compactId = name.replace(/\s+/g, ' ').trim().toUpperCase();
