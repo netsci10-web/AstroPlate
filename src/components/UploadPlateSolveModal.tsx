@@ -18,6 +18,7 @@ import {
   Globe,
   Download,
   Compass,
+  RotateCcw,
 } from 'lucide-react';
 import {
   getRememberedAccountJobs,
@@ -31,7 +32,7 @@ import {
 import { getConstellationObjectTitle } from '../utils/constellations';
 import { solvePlateLocallyInBrowser } from '../utils/localPlateSolver';
 import { getLocalDualIndexStats } from '../utils/dualIndexCatalog';
-import { SolvedAstroData } from '../types/astronomy';
+import { SolvedAstroData, AnalysisHistoryItem } from '../types/astronomy';
 
 interface UploadPlateSolveModalProps {
   isOpen: boolean;
@@ -43,6 +44,7 @@ interface UploadPlateSolveModalProps {
   initialUrl?: string;
   initialJobId?: string;
   initialTab?: 'upload' | 'url' | 'jobId' | 'myJobs';
+  accountJobs?: AnalysisHistoryItem[];
 }
 
 export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
@@ -55,6 +57,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
   initialUrl = '',
   initialJobId = '',
   initialTab = 'upload',
+  accountJobs = [],
 }) => {
   const [activeTab, setActiveTab] = useState<'upload' | 'url' | 'jobId' | 'myJobs'>(initialTab);
   const [solverMode, setSolverMode] = useState<'local' | 'api'>('local');
@@ -120,69 +123,47 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
   }, [isOpen, initialFile, initialUrl, initialJobId, initialTab]);
 
   // Fetch user account jobs from Astrometry.net and remembered jobs
-  const fetchMyJobs = async () => {
-    setLoadingMyJobs(true);
-    try {
-      const remembered = getRememberedAccountJobs();
-      const deletedIds = Array.from(getDeletedJobIds()).join(',');
-      const extraIds = remembered.filter((r) => !isJobDeleted(r.jobId)).map((r) => r.jobId).join(',');
-      const resp = await fetch(
-        `/api/astrometry/my-jobs?extraJobs=${encodeURIComponent(extraIds)}&deletedJobs=${encodeURIComponent(deletedIds)}`
-      );
-      if (resp.ok) {
-        const data = await resp.json();
-        const serverDetailed = (data.detailed || []).filter((j: any) => j && !isJobDeleted(j.jobId));
-        const map = new Map<string, any>();
-        serverDetailed.forEach((j: any) => map.set(String(j.jobId), j));
-        remembered.forEach((r) => {
-          if (!isJobDeleted(r.jobId) && !map.has(String(r.jobId))) {
-            map.set(String(r.jobId), {
-              jobId: r.jobId,
-              status: r.status || 'success',
-              filename: r.filename || `Astrometry Job #${r.jobId}`,
-              objects: r.objects || [],
-              calibration: r.calibration,
-              timestamp: (r as any).timestamp || 0,
-            });
-          }
+  const buildLocalMergedJobs = () => {
+    const remembered = getRememberedAccountJobs().filter((r) => !isJobDeleted(r.jobId));
+    const map = new Map<string, any>();
+    accountJobs
+      .filter((item) => !isJobDeleted(item.jobId))
+      .forEach((item) => {
+        map.set(String(item.jobId), {
+          jobId: item.jobId,
+          status: 'success',
+          filename: item.title || `Astrometry Job #${item.jobId}`,
+          objects: item.objects || [],
+          constellationKo: item.primaryConstellationKo,
+          calibration: {
+            ra: item.raDeg,
+            dec: item.decDeg,
+            radius: item.radiusDeg,
+          },
+          rawImageUrl: item.rawImageUrl || item.imageUrl,
+          timestamp: item.timestamp || 0,
         });
-        const sorted = Array.from(map.values()).sort((a, b) => {
-          const timeA = typeof a.timestamp === 'number' && !isNaN(a.timestamp) ? a.timestamp : 0;
-          const timeB = typeof b.timestamp === 'number' && !isNaN(b.timestamp) ? b.timestamp : 0;
-          if (timeB !== timeA) return timeB - timeA;
-          const numA = Number(String(a.jobId).replace(/\D/g, '')) || 0;
-          const numB = Number(String(b.jobId).replace(/\D/g, '')) || 0;
-          return numB - numA;
+      });
+    remembered.forEach((r) => {
+      if (!map.has(String(r.jobId))) {
+        map.set(String(r.jobId), {
+          jobId: r.jobId,
+          status: r.status || 'success',
+          filename: r.filename || `Astrometry Job #${r.jobId}`,
+          objects: r.objects || [],
+          calibration: r.calibration,
+          timestamp: (r as any).timestamp || 0,
         });
-        setMyJobs(sorted);
-      } else {
-        const sorted = remembered
-          .filter((r) => !isJobDeleted(r.jobId))
-          .map((r) => ({
-            jobId: r.jobId,
-            status: r.status || 'success',
-            filename: r.filename || `Astrometry Job #${r.jobId}`,
-            objects: r.objects || [],
-            calibration: r.calibration,
-            timestamp: (r as any).timestamp || 0,
-          }))
-          .sort((a, b) => {
-            const timeA = a.timestamp || 0;
-            const timeB = b.timestamp || 0;
-            if (timeB !== timeA) return timeB - timeA;
-            const numA = Number(String(a.jobId).replace(/\D/g, '')) || 0;
-            const numB = Number(String(b.jobId).replace(/\D/g, '')) || 0;
-            return numB - numA;
-          });
-        setMyJobs(sorted);
       }
-    } catch (e) {
-      console.error('Failed to fetch my jobs:', e);
-      const remembered = getRememberedAccountJobs().filter((r) => !isJobDeleted(r.jobId));
-      setMyJobs(remembered);
-    } finally {
-      setLoadingMyJobs(false);
-    }
+    });
+    return Array.from(map.values()).sort((a, b) => {
+      const timeA = typeof a.timestamp === 'number' && !isNaN(a.timestamp) ? a.timestamp : 0;
+      const timeB = typeof b.timestamp === 'number' && !isNaN(b.timestamp) ? b.timestamp : 0;
+      if (timeB !== timeA) return timeB - timeA;
+      const numA = Number(String(a.jobId).replace(/\D/g, '')) || 0;
+      const numB = Number(String(b.jobId).replace(/\D/g, '')) || 0;
+      return numB - numA;
+    });
   };
 
   const handleDeleteJob = (jobId: string | number) => {
@@ -212,10 +193,10 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
   }, []);
 
   useEffect(() => {
-    if (isOpen && activeTab === 'myJobs' && myJobs.length === 0) {
-      fetchMyJobs();
+    if (isOpen) {
+      setMyJobs(buildLocalMergedJobs());
     }
-  }, [isOpen, activeTab]);
+  }, [isOpen, accountJobs]);
 
   if (!isOpen) return null;
 
@@ -411,13 +392,37 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
           setCurrentStep(reasonMsg);
         }
         const sourceToSolve = activeTab === 'upload' && selectedFile ? selectedFile : imageUrl.trim();
+        const proxyJobMatch =
+          activeTab === 'url' ? imageUrl.trim().match(/image-proxy\/([^/?#]+)/i) : null;
+        const matchedHistJob = proxyJobMatch
+          ? myJobs.find((j) => String(j.jobId) === String(proxyJobMatch[1])) ||
+            accountJobs.find((j) => String(j.jobId) === String(proxyJobMatch[1]))
+          : null;
+
         const fileNameForSolve =
           activeTab === 'upload' && selectedFile
             ? selectedFile.name
-            : imageUrl.trim().split('/').pop() || 'astrophoto.jpg';
+            : matchedHistJob?.filename ||
+              (matchedHistJob as any)?.title ||
+              (proxyJobMatch ? `Astrometry Job #${proxyJobMatch[1]}` : imageUrl.trim().split('/').pop() || 'astrophoto.jpg');
+
+        const effectiveHint =
+          localTargetHint.trim() ||
+          matchedHistJob?.objects?.[0] ||
+          matchedHistJob?.constellationKo ||
+          (matchedHistJob as any)?.primaryConstellationKo ||
+          '';
+
+        const effectiveFovDeg =
+          matchedHistJob?.calibration?.radius && matchedHistJob.calibration.radius > 0
+            ? matchedHistJob.calibration.radius * 2
+            : (matchedHistJob as any)?.radiusDeg && (matchedHistJob as any).radiusDeg > 0
+            ? (matchedHistJob as any).radiusDeg * 2
+            : undefined;
 
         const solvedResult = await solvePlateLocallyInBrowser(sourceToSolve, {
-          targetHint: localTargetHint,
+          targetHint: effectiveHint,
+          fovHintDeg: effectiveFovDeg,
           filename: fileNameForSolve,
           onProgress: (prog) => {
             setCurrentStep(prog.message);
@@ -818,73 +823,93 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-slate-400 font-medium">
-                  Astrometry.net 계정에 등록된 솔빙 작업 목록:
+                  저장된 플레이트 솔빙 작업 히스토리 (Astrometry.net &amp; 브라우저 계산):
                 </span>
-                <button
-                  onClick={fetchMyJobs}
-                  disabled={loadingMyJobs}
-                  className="text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1 transition-colors"
-                >
-                  <RefreshCw className={`w-3 h-3 ${loadingMyJobs ? 'animate-spin' : ''}`} />
-                  <span>새로고침</span>
-                </button>
               </div>
 
-              {loadingMyJobs ? (
-                <div className="py-12 flex flex-col items-center justify-center space-y-2 text-slate-400">
-                  <Loader2 className="w-6 h-6 text-sky-400 animate-spin" />
-                  <p className="text-xs">작업 히스토리 목록 동기화 중...</p>
-                </div>
-              ) : myJobs.length > 0 ? (
-                <div className="max-h-60 overflow-y-auto divide-y divide-slate-800 border border-slate-800 rounded-xl bg-slate-950/60">
+              {myJobs.length > 0 ? (
+                <div className="max-h-64 overflow-y-auto divide-y divide-slate-800 border border-slate-800 rounded-xl bg-slate-950/60">
                   {myJobs.map((j) => {
                     const isSuccess = j.status === 'success';
+                    const isAstrometryJob = !String(j.jobId).startsWith('local_');
+                    const targetImageUrl =
+                      j.rawImageUrl || `/api/astrometry/image-proxy/${j.jobId}/original`;
                     return (
                       <div
                         key={j.jobId}
-                        className={`p-3 flex items-center justify-between transition-colors ${
+                        className={`p-3 flex items-center justify-between gap-2 transition-colors ${
                           isSuccess
                             ? 'hover:bg-slate-800/50 cursor-pointer group'
                             : 'opacity-60 cursor-not-allowed bg-rose-950/10'
                         }`}
                         onClick={() => {
                           if (isSuccess) {
-                            onSolveSuccess(j.jobId);
+                            onSolveSuccess(j.jobId, j.rawImageUrl);
                             onClose();
                           }
                         }}
                       >
-                        <div>
-                          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center flex-wrap gap-1.5">
+                            {isAstrometryJob ? (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-950/90 text-indigo-300 border border-indigo-500/60 shadow-sm"
+                                title="Astrometry.net 서버에서 분석된 작업"
+                              >
+                                <Globe className="w-2.5 h-2.5 text-indigo-400" />
+                                <span>Astrometry.net 분석</span>
+                              </span>
+                            ) : (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-500/60"
+                                title="웹 브라우저 내장 엔진에서 계산된 작업"
+                              >
+                                <Cpu className="w-2.5 h-2.5 text-emerald-400" />
+                                <span>브라우저 자체 계산</span>
+                              </span>
+                            )}
                             <span className="text-xs font-mono font-bold text-sky-400">#{j.jobId}</span>
                             <span className="text-[10px] font-bold text-sky-300 bg-sky-950/80 border border-sky-800/60 px-1.5 py-0.5 rounded truncate max-w-[150px]">
                               {getConstellationObjectTitle(j.constellationKo, j.calibration?.ra, j.calibration?.dec, j.objects, j.filename)}
                             </span>
-                            <span className="text-xs font-semibold text-white truncate max-w-xs">{j.filename}</span>
-                            <span
-                              className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                                isSuccess
-                                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/60'
-                                  : 'bg-rose-950 text-rose-400 border border-rose-800/60'
-                              }`}
-                            >
-                              {isSuccess ? '솔빙 성공' : '솔빙 실패'}
-                            </span>
+                            <span className="text-xs font-semibold text-white truncate max-w-[180px]">{j.filename}</span>
                           </div>
                           {j.objects && j.objects.length > 0 && (
-                            <p className="text-[11px] text-slate-400 mt-0.5 truncate max-w-sm">
-                              {j.objects.slice(0, 3).join(', ')}
+                            <p className="text-[11px] text-slate-400 mt-1 truncate max-w-sm">
+                              {j.objects.slice(0, 4).join(', ')}
                             </p>
                           )}
                         </div>
-                        <div className="flex items-center space-x-2 shrink-0">
+                        <div className="flex items-center space-x-1.5 shrink-0">
                           {isSuccess ? (
-                            <button
-                              type="button"
-                              className="text-xs px-2.5 py-1 rounded bg-slate-800 group-hover:bg-sky-600 text-slate-300 group-hover:text-white transition-all font-medium"
-                            >
-                              불러오기
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setErrorMessage(null);
+                                  setImageUrl(targetImageUrl);
+                                  setActiveTab('url');
+                                }}
+                                className="text-[11px] px-2.5 py-1 rounded bg-indigo-950/80 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-700/60 transition-all font-semibold flex items-center gap-1"
+                                title="이 작업의 원본 천체사진을 다시 불러와 재분석 실행"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                <span>다시 분석</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSolveSuccess(j.jobId, j.rawImageUrl);
+                                  onClose();
+                                }}
+                                className="text-[11px] px-2.5 py-1 rounded bg-slate-800 hover:bg-sky-600 text-slate-200 hover:text-white transition-all font-semibold"
+                                title="저장된 분석 결과 불러오기"
+                              >
+                                불러오기
+                              </button>
+                            </>
                           ) : (
                             <span className="text-[11px] text-slate-500">매칭 실패</span>
                           )}
@@ -908,7 +933,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
                 </div>
               ) : (
                 <div className="p-8 text-center text-xs text-slate-500 bg-slate-950/40 rounded-xl border border-slate-800">
-                  작업 히스토리를 불러오는 중이거나 작업이 없습니다. 상단의 새로고침을 눌러보세요.
+                  저장된 작업 히스토리가 없습니다. 천체 사진을 업로드하여 분석해보세요.
                 </div>
               )}
 
@@ -951,17 +976,53 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
 
           {/* URL Tab */}
           {activeTab === 'url' && (
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               <label className="text-xs font-semibold text-slate-300 block">
-                웹 상의 천체 사진 이미지 URL 입력:
+                천체 사진 이미지 URL 또는 히스토리 원본 경로 입력:
               </label>
               <input
-                type="url"
-                placeholder="https://example.com/astrophoto.jpg"
+                type="text"
+                placeholder="https://example.com/astrophoto.jpg 또는 /api/astrometry/image-proxy/..."
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
-                className="w-full text-xs px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                className="w-full text-xs px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
               />
+              {imageUrl.trim() && (
+                <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center gap-3">
+                  <img
+                    src={imageUrl.trim()}
+                    alt="불러온 천체사진 미리보기"
+                    className="w-16 h-16 object-cover rounded-lg border border-slate-700 bg-slate-900 shrink-0"
+                    onError={(e) => {
+                      const target = e.currentTarget as HTMLImageElement;
+                      const match = imageUrl.trim().match(/image-proxy\/([^/?#]+)/);
+                      if (match && !target.dataset.fallbackTried) {
+                        target.dataset.fallbackTried = '1';
+                        target.src = `/api/astrometry/image-proxy/${match[1]}/extraction`;
+                      } else {
+                        target.style.display = 'none';
+                      }
+                    }}
+                  />
+                  <div className="min-w-0 flex-1 space-y-1">
+                    {imageUrl.includes('/api/astrometry/image-proxy/') ? (
+                      <div className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-950/90 text-indigo-300 border border-indigo-500/60">
+                        <Globe className="w-2.5 h-2.5 text-indigo-400" />
+                        <span>
+                          Astrometry.net 작업 #{imageUrl.match(/image-proxy\/([^/]+)/)?.[1] || ''} 원본 사진 준비됨
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] font-semibold text-sky-400">
+                        외부 천체 사진 이미지 로드됨
+                      </div>
+                    )}
+                    <p className="text-[11px] text-slate-400 leading-snug">
+                      하단의 <strong className="text-white">솔빙 시작</strong> 버튼을 누르면 선택된 엔진({solverMode === 'local' ? '웹 브라우저 직접 계산' : 'Astrometry.net API'})으로 즉시 재분석합니다.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

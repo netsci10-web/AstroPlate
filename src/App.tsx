@@ -20,6 +20,7 @@ import {
   Camera,
   Activity,
   RotateCcw,
+  Cpu,
 } from 'lucide-react';
 import { Navbar, GlobalAppTheme } from './components/Navbar';
 import { StarPhotoViewer } from './components/StarPhotoViewer';
@@ -148,8 +149,16 @@ export default function App() {
       const targetHint = primaryConst?.nameKo || '';
       const fovDeg = solvedData.calibration?.radius ? solvedData.calibration.radius * 2 : undefined;
 
+      const rawOrigName = solvedData.info?.original_filename || solvedData.title || '';
+      const trailingFileMatch = rawOrigName.match(/\(([^()]+\.(?:jpg|jpeg|png|fit|fits|tif|tiff|webp))\)\s*\)*$/i);
+      const cleanReAnalyzeFilename = trailingFileMatch
+        ? trailingFileMatch[1].trim()
+        : /\.(?:jpg|jpeg|png|fit|fits|tif|tiff|webp)$/i.test(rawOrigName.trim())
+        ? rawOrigName.trim()
+        : formatTitleWithCatalogPriority(solvedData.title || `Job #${solvedData.jobId}`);
+
       const result = await solvePlateLocallyInBrowser(imgSrc, {
-        filename: solvedData.title || `Job #${solvedData.jobId}`,
+        filename: cleanReAnalyzeFilename,
         targetHint,
         fovHintDeg: fovDeg,
         onProgress: (p) => {
@@ -218,115 +227,24 @@ export default function App() {
       console.error('Failed to parse localStorage account jobs:', e);
     }
 
-    // Also sync with server my-jobs & remembered jobs in background
-    const remembered = getRememberedAccountJobs();
-    const deletedIds = Array.from(getDeletedJobIds()).join(',');
-    const extraIds = Array.from(
-      new Set([...localJobs.map((j) => j.jobId), ...remembered.map((r) => r.jobId)])
-    ).filter((id) => !isJobDeleted(id)).join(',');
+    const validLocalJobs = localJobs
+      .filter((item) => !isJobDeleted(item.jobId))
+      .map((item) => ({
+        ...item,
+        primaryConstellationKo: getConstellationObjectTitle(
+          item.primaryConstellationKo,
+          item.raDeg,
+          item.decDeg,
+          item.objects || [],
+          item.title,
+          item.solvedData?.title
+        ),
+      }));
 
-    fetch(`/api/astrometry/my-jobs?extraJobs=${encodeURIComponent(extraIds)}&deletedJobs=${encodeURIComponent(deletedIds)}`)
-      .then((r) => {
-        if (!r.ok) throw new Error('Static environment or no server account jobs');
-        const ct = r.headers.get('content-type') || '';
-        if (!ct.includes('application/json')) throw new Error('Not JSON response');
-        return r.json();
-      })
-      .then((data) => {
-        const serverJobs: any[] = data?.detailed || [];
-        const map = new Map<string, AnalysisHistoryItem>();
-
-        // 1. Populate from local
-        localJobs.filter((item) => !isJobDeleted(item.jobId)).forEach((item) => {
-          map.set(String(item.jobId), {
-            ...item,
-            primaryConstellationKo: getConstellationObjectTitle(item.primaryConstellationKo, item.raDeg, item.decDeg, item.objects || [], item.title, item.solvedData?.title),
-          });
-        });
-
-        // 2. Merge server account jobs
-        serverJobs.forEach((sj) => {
-          if (!sj || !sj.jobId || isJobDeleted(sj.jobId)) return;
-          const strId = String(sj.jobId);
-          const cal = sj.calibration;
-          const constTitle = getConstellationObjectTitle(
-            undefined,
-            cal?.ra,
-            cal?.dec,
-            sj.objects || [],
-            sj.filename
-          );
-          if (!map.has(strId)) {
-            const rawFilename = sj.filename || '';
-            const isGenericFilename =
-              !rawFilename ||
-              /^(image|img|photo|dsc|stacked|astrometry|plate|capture|test|frame|light)[_\-\d\s.]*\.(jpg|jpeg|png|fit|fits|tif|tiff|webp)$/i.test(
-                rawFilename.trim()
-              );
-            const displayJobTitle = isGenericFilename
-              ? constTitle
-              : formatTitleWithCatalogPriority(rawFilename, sj.objects || []);
-            map.set(strId, {
-              id: `job_${sj.jobId}`,
-              jobId: sj.jobId,
-              title: displayJobTitle || `Astrometry Job #${sj.jobId}`,
-              imageUrl: `/api/astrometry/image-proxy/${sj.jobId}/annotated`,
-              rawImageUrl: `/api/astrometry/image-proxy/${sj.jobId}/original`,
-              timestamp: Date.now(),
-              raDeg: cal?.ra || 0,
-              decDeg: cal?.dec || 0,
-              radiusDeg: cal?.radius || 1,
-              primaryConstellationKo: constTitle,
-              primaryConstellationCode: '',
-              starsCount: 0,
-              dsosCount: 0,
-              objects: sj.objects || [],
-            });
-          } else {
-            const existing = map.get(strId)!;
-            const mergedObjects = Array.from(new Set([...(existing.objects || []), ...(sj.objects || [])]));
-            const updatedTitle = getConstellationObjectTitle(
-              existing.primaryConstellationKo,
-              existing.raDeg,
-              existing.decDeg,
-              mergedObjects,
-              sj.filename,
-              existing.title
-            );
-            map.set(strId, {
-              ...existing,
-              primaryConstellationKo: updatedTitle,
-              objects: mergedObjects,
-            });
-          }
-        });
-
-        const combined = Array.from(map.values()).sort((a, b) => {
-          const timeA = typeof a.timestamp === 'number' && !isNaN(a.timestamp) ? a.timestamp : 0;
-          const timeB = typeof b.timestamp === 'number' && !isNaN(b.timestamp) ? b.timestamp : 0;
-          if (timeB !== timeA) return timeB - timeA;
-          const numA = Number(String(a.jobId).replace(/\D/g, '')) || 0;
-          const numB = Number(String(b.jobId).replace(/\D/g, '')) || 0;
-          return numB - numA;
-        });
-        setAccountJobs(combined);
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(combined));
-        } catch (e) {}
-
-        // Keep clean empty state before user starts analyzing a photo
-        setSolvedData(null);
-        setActiveJobId(null);
-        setLoading(false);
-      })
-      .catch(() => {
-        if (localJobs.length > 0) {
-          setAccountJobs(localJobs);
-        }
-        setSolvedData(null);
-        setActiveJobId(null);
-        setLoading(false);
-      });
+    setAccountJobs(validLocalJobs);
+    setSolvedData(null);
+    setActiveJobId(null);
+    setLoading(false);
   }, []);
 
   // Sync with job update / delete events across components
@@ -458,9 +376,25 @@ export default function App() {
     setErrorNotice(null);
     setActiveMainTab('photo');
 
-    // 1. First, check if full solvedData is already cached in accountJobs for this Job ID
-    const existingJob = accountJobs.find((h) => String(h.jobId) === String(jobId));
-    if (existingJob?.solvedData && String(existingJob.solvedData.jobId) === String(jobId)) {
+    const strJobId = String(jobId);
+    const isLocalJob = strJobId.startsWith('local_');
+
+    // 1. Search cached job record in accountJobs or localStorage
+    let existingJob = accountJobs.find((h) => String(h.jobId) === strJobId);
+    if (!existingJob) {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            existingJob = parsed.find((h: any) => String(h?.jobId) === strJobId);
+          }
+        }
+      } catch {}
+    }
+
+    // If full solvedData is already preserved
+    if (existingJob?.solvedData && String(existingJob.solvedData.jobId) === strJobId) {
       const cachedData: SolvedAstroData = {
         ...existingJob.solvedData,
         annotations: Array.isArray(existingJob.solvedData.annotations)
@@ -474,7 +408,7 @@ export default function App() {
     }
 
     // 2. Check pre-computed sample jobs
-    const sample = SAMPLE_SOLVED_JOBS.find((s) => String(s.jobId) === String(jobId));
+    const sample = SAMPLE_SOLVED_JOBS.find((s) => String(s.jobId) === strJobId);
     if (sample && (!customImageUrl || customImageUrl.startsWith('blob:'))) {
       setSolvedData(sample);
       setActiveJobId(sample.jobId);
@@ -485,7 +419,79 @@ export default function App() {
       return;
     }
 
-    // 3. Fetch from Astrometry.net API using Job ID
+    // 3. Reconstruct local in-browser job if record exists in storage
+    if (existingJob && (isLocalJob || typeof existingJob.raDeg === 'number')) {
+      const ra = typeof existingJob.raDeg === 'number' ? existingJob.raDeg : 0;
+      const dec = typeof existingJob.decDeg === 'number' ? existingJob.decDeg : 0;
+      const radius =
+        typeof existingJob.radiusDeg === 'number' && existingJob.radiusDeg > 0
+          ? existingJob.radiusDeg
+          : 1;
+      const matched = identifyConstellations(ra, dec, radius);
+      const dualIndexTelemetry = buildDualIndexTelemetryForCalibration(ra, dec, radius);
+      const resolvedImg =
+        existingJob.imageUrl ||
+        customImageUrl ||
+        (isLocalJob ? '' : `/api/astrometry/image-proxy/${jobId}/annotated`);
+      const resolvedRaw =
+        existingJob.rawImageUrl ||
+        customImageUrl ||
+        (isLocalJob ? '' : `/api/astrometry/image-proxy/${jobId}/original`) ||
+        resolvedImg;
+
+      const reconstructed: SolvedAstroData = {
+        jobId,
+        title: existingJob.title || `Job #${jobId}`,
+        imageUrl: resolvedImg,
+        rawImageUrl: resolvedRaw,
+        calibration: {
+          ra,
+          dec,
+          radius,
+          pixscale: 1.5,
+          orientation: 0,
+          parity: 1,
+          width_arcsec: Math.round(radius * 3600),
+          height_arcsec: Math.round(radius * 3600),
+        },
+        matchedConstellations: matched,
+        annotations: Array.isArray(existingJob.objects)
+          ? existingJob.objects.map((name, i) => ({
+              names: [name],
+              type: 'star' as const,
+              pixelx: 200 + (i * 60) % 400,
+              pixely: 150 + (i * 50) % 300,
+              radius: 6,
+            }))
+          : [],
+        dualIndexTelemetry,
+        info: {
+          original_filename: existingJob.title || `Job #${jobId}`,
+          objects_in_field: existingJob.objects || [],
+        },
+      };
+
+      setSolvedData(reconstructed);
+      setActiveJobId(jobId);
+      setLoading(false);
+      return;
+    }
+
+    // 4. If this is a local job with no local cache, never hit external Astrometry API
+    if (isLocalJob) {
+      if (sample) {
+        setSolvedData(sample);
+        setActiveJobId(sample.jobId);
+      } else {
+        setErrorNotice(
+          `로컬 계산 작업 #${jobId}의 상세 캐시를 찾을 수 없습니다. 원본 사진 파일을 다시 선택하여 솔빙해주세요.`
+        );
+      }
+      setLoading(false);
+      return;
+    }
+
+    // 5. Fetch from Astrometry.net API using Job ID
     try {
       const resp = await fetch(`/api/astrometry/jobs/${jobId}/full`);
       if (!resp.ok) {
@@ -495,7 +501,12 @@ export default function App() {
           if (shouldSaveToAccountJobs) saveToAccountJobs(sample);
           return;
         }
-        throw new Error(`Job #${jobId} 데이터 조회 실패 (HTTP ${resp.status})`);
+        if (existingJob) {
+          setErrorNotice(`Job #${jobId} 원격 데이터를 불러올 수 없어 저장된 요약 정보로 표시합니다.`);
+          return;
+        }
+        setErrorNotice(`Job #${jobId} 데이터 조회 실패 (HTTP ${resp.status})`);
+        return;
       }
 
       const raw = await resp.json();
@@ -639,7 +650,7 @@ export default function App() {
         saveToAccountJobs(solved, resolvedRawImageUrl);
       }
     } catch (err: any) {
-      console.error('Failed to load job data:', err);
+      console.warn('Job data load fallback warning:', err);
       if (existingJob?.solvedData) {
         setSolvedData({
           ...existingJob.solvedData,
@@ -863,10 +874,21 @@ export default function App() {
         {!loading && solvedData && (
           <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-5 shadow-xl flex flex-wrap items-center justify-between gap-4">
             <div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center flex-wrap gap-2">
                 <span className="text-xs uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800">
                   실시간 솔빙 완료 (Solved)
                 </span>
+                {!String(solvedData.jobId).startsWith('local_') ? (
+                  <span className="text-xs px-2 py-0.5 rounded bg-indigo-950/90 text-indigo-300 border border-indigo-500/60 flex items-center gap-1 font-semibold">
+                    <Globe className="w-3 h-3 text-indigo-400" />
+                    Astrometry.net 분석
+                  </span>
+                ) : (
+                  <span className="text-xs px-2 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-500/60 flex items-center gap-1 font-semibold">
+                    <Cpu className="w-3 h-3 text-emerald-400" />
+                    브라우저 자체 계산
+                  </span>
+                )}
                 <span className="text-xs font-mono text-slate-400">
                   Job ID: #{solvedData.jobId}
                 </span>
@@ -1041,6 +1063,7 @@ export default function App() {
         initialFile={modalInitialFile}
         initialUrl={modalInitialUrl}
         initialTab={modalInitialTab}
+        accountJobs={accountJobs}
       />
 
       {/* My Astrometry Account Jobs Drawer */}
@@ -1050,94 +1073,19 @@ export default function App() {
         jobs={accountJobs}
         activeJobId={activeJobId}
         onSelectJob={(jobId) => loadJobData(jobId, undefined, false)}
+        onReAnalyzeJob={(item) => {
+          loadJobData(item.jobId, item.rawImageUrl, false);
+          const targetUrl =
+            item.rawImageUrl ||
+            item.imageUrl ||
+            `/api/astrometry/image-proxy/${item.jobId}/original`;
+          setModalInitialFile(null);
+          setModalInitialUrl(targetUrl);
+          setModalInitialTab('url');
+          setIsUploadModalOpen(true);
+        }}
         onDeleteJob={handleDeleteAccountJob}
         onClearAllJobs={handleClearAllAccountJobs}
-        onSyncAccountJobs={async () => {
-          try {
-            const remembered = getRememberedAccountJobs();
-            const deletedIds = Array.from(getDeletedJobIds()).join(',');
-            const extraIds = Array.from(
-              new Set([...accountJobs.map((j) => j.jobId), ...remembered.map((r) => r.jobId)])
-            ).filter((id) => !isJobDeleted(id)).join(',');
-            const resp = await fetch(
-              `/api/astrometry/my-jobs?extraJobs=${encodeURIComponent(extraIds)}&deletedJobs=${encodeURIComponent(deletedIds)}`
-            );
-            if (resp.ok) {
-              const data = await resp.json();
-              const serverJobs: any[] = data.detailed || [];
-              const map = new Map<string, AnalysisHistoryItem>();
-              accountJobs.filter((item) => !isJobDeleted(item.jobId)).forEach((item) => {
-                map.set(String(item.jobId), {
-                  ...item,
-                  primaryConstellationKo: getConstellationObjectTitle(item.primaryConstellationKo, item.raDeg, item.decDeg, item.objects || [], item.title, item.solvedData?.title),
-                });
-              });
-              serverJobs.forEach((sj) => {
-                if (!sj || !sj.jobId || isJobDeleted(sj.jobId)) return;
-                const strId = String(sj.jobId);
-                const cal = sj.calibration;
-                const constTitle = getConstellationObjectTitle(
-                  undefined,
-                  cal?.ra,
-                  cal?.dec,
-                  sj.objects || [],
-                  sj.filename
-                );
-                if (!map.has(strId)) {
-                  map.set(strId, {
-                    id: `job_${sj.jobId}`,
-                    jobId: sj.jobId,
-                    title: sj.filename || `Astrometry Job #${sj.jobId}`,
-                    imageUrl: `/api/astrometry/image-proxy/${sj.jobId}/annotated`,
-                    rawImageUrl: `/api/astrometry/image-proxy/${sj.jobId}/original`,
-                    timestamp: Date.now(),
-                    raDeg: cal?.ra || 0,
-                    decDeg: cal?.dec || 0,
-                    radiusDeg: cal?.radius || 1,
-                    primaryConstellationKo: constTitle,
-                    primaryConstellationCode: '',
-                    starsCount: 0,
-                    dsosCount: 0,
-                    objects: sj.objects || [],
-                  });
-                } else {
-                  const existing = map.get(strId)!;
-                  const mergedObjects = Array.from(new Set([...(existing.objects || []), ...(sj.objects || [])]));
-                  const updatedTitle = getConstellationObjectTitle(
-                    existing.primaryConstellationKo,
-                    existing.raDeg,
-                    existing.decDeg,
-                    mergedObjects,
-                    sj.filename,
-                    existing.title
-                  );
-                  map.set(strId, {
-                    ...existing,
-                    primaryConstellationKo: updatedTitle,
-                    objects: mergedObjects,
-                  });
-                }
-              });
-              const combined = Array.from(map.values()).sort((a, b) => {
-                const timeA = typeof a.timestamp === 'number' && !isNaN(a.timestamp) ? a.timestamp : 0;
-                const timeB = typeof b.timestamp === 'number' && !isNaN(b.timestamp) ? b.timestamp : 0;
-                if (timeB !== timeA) return timeB - timeA;
-                const numA = Number(String(a.jobId).replace(/\D/g, '')) || 0;
-                const numB = Number(String(b.jobId).replace(/\D/g, '')) || 0;
-                return numB - numA;
-              });
-              setAccountJobs(combined);
-              try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(combined));
-              } catch (e) {}
-              if (combined.length > 0 && (!activeJobId || !solvedData)) {
-                loadJobData(combined[0].jobId, undefined, true);
-              }
-            }
-          } catch (e) {
-            console.error('Failed to sync account jobs:', e);
-          }
-        }}
       />
 
       {/* CDS SIMBAD Real-time Database Inspector Modal */}

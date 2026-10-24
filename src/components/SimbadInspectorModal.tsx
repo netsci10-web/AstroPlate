@@ -11,6 +11,59 @@ interface SimbadInspectorModalProps {
   onClose: () => void;
 }
 
+const SIMBAD_OTYPE_KO_MAP: Record<string, string> = {
+  '*': '항성 (Star)',
+  '**': '이중성 / 다중성 (Double or Multiple Star)',
+  'SB*': '분광쌍성 (Spectroscopic Binary)',
+  'EB*': '식쌍성 (Eclipsing Binary)',
+  'PM*': '고유운동성 (High Proper-Motion Star)',
+  'V*': '변광성 (Variable Star)',
+  'Pu*': '맥동변광성 (Pulsating Variable)',
+  'Er*': '폭발변광성 (Eruptive Variable)',
+  'Ro*': '회전변광성 (Rotating Variable)',
+  'Ce*': '세페이드 변광성 (Cepheid Variable)',
+  'RR*': 'RR Lyrae형 변광성',
+  'Mi*': '미라형 장주기 변광성 (Mira Variable)',
+  'RG*': '적색거성 (Red Giant Branch Star)',
+  's*r': '적색초거성 (Red Supergiant)',
+  's*b': '청색초거성 (Blue Supergiant)',
+  's*y': '황색초거성 (Yellow Supergiant)',
+  'WD*': '백색왜성 (White Dwarf)',
+  'Be*': 'Be형 방출선 항성 (Be Star)',
+  'YSO': '젊은 성체 (Young Stellar Object)',
+  'OpC': '산개성단 (Open Cluster)',
+  'GlC': '구상성단 (Globular Cluster)',
+  'Cl*': '성단 (Cluster of Stars)',
+  'As*': '성협 (Association of Stars)',
+  'G': '은하 (Galaxy)',
+  'GiG': '은하군 소속 은하 (Galaxy in Group)',
+  'GiC': '은하단 소속 은하 (Galaxy in Cluster)',
+  'GiP': '상호작용 은하쌍 (Galaxy in Pair)',
+  'IG': '상호작용 은하 (Interacting Galaxies)',
+  'SBG': '폭발적 항성생성 은하 (Starburst Galaxy)',
+  'AGN': '활동은하핵 (Active Galactic Nucleus)',
+  'Sy1': '세이퍼트 1형 은하 (Seyfert 1 Galaxy)',
+  'Sy2': '세이퍼트 2형 은하 (Seyfert 2 Galaxy)',
+  'LIN': 'LINER 활동은하',
+  'HII': '전리수소영역 / 발광성운 (HII Region)',
+  'RNe': '반사성운 (Reflection Nebula)',
+  'PN': '행성상성운 (Planetary Nebula)',
+  'SNR': '초신성잔해 (Supernova Remnant)',
+  'ISM': '성간물질 / 성운 (Interstellar Matter)',
+  'GNe': '은하 성운 (Galactic Nebula)',
+  'BNe': '밝은 성운 (Bright Nebula)',
+  'DNe': '암흑성운 (Dark Nebula)',
+};
+
+function formatObjectTypeWithKo(otype: string): string {
+  const clean = (otype || '').trim();
+  if (!clean) return 'Astronomical Object';
+  if (SIMBAD_OTYPE_KO_MAP[clean]) {
+    return `${clean} · ${SIMBAD_OTYPE_KO_MAP[clean]}`;
+  }
+  return clean;
+}
+
 function parseSesameXml(xml: string, fallbackQuery: string): SimbadObjectData | null {
   if (!xml || xml.includes('Nothing found')) return null;
 
@@ -19,6 +72,10 @@ function parseSesameXml(xml: string, fallbackQuery: string): SimbadObjectData | 
   const jdedegMatch = xml.match(/<jdedeg>([^<]+)<\/jdedeg>/);
   const onameMatch = xml.match(/<oname>([^<]+)<\/oname>/);
   const otypeMatch = xml.match(/<otype>([^<]+)<\/otype>/);
+  const spTypeMatch = xml.match(/<spType>([^<]+)<\/spType>/);
+  const plxMatch = xml.match(/<plx>\s*<v>([^<]+)<\/v>/);
+  const velMatch = xml.match(/<Vel>\s*<v>([^<]+)<\/v>/);
+  const pmMatch = xml.match(/<pm>\s*<v>([^<]+)<\/v>/);
   const magvMatch =
     xml.match(/<mag[^>]*band=["']V["'][^>]*>\s*<v>([^<]+)<\/v>/i) ||
     xml.match(/<mag[^>]*band=["']V["'][^>]*>([^<]+)<\/mag>/i) ||
@@ -44,8 +101,58 @@ function parseSesameXml(xml: string, fallbackQuery: string): SimbadObjectData | 
     raDeg: raDeg !== null && !isNaN(raDeg) ? raDeg : null,
     decDeg: decDeg !== null && !isNaN(decDeg) ? decDeg : null,
     vMag: magvMatch && !isNaN(parseFloat(magvMatch[1])) ? parseFloat(magvMatch[1]) : null,
+    spectralType: spTypeMatch ? spTypeMatch[1].trim() : null,
+    parallaxMas: plxMatch && !isNaN(parseFloat(plxMatch[1])) ? parseFloat(plxMatch[1]) : null,
+    radialVelocityKms: velMatch && !isNaN(parseFloat(velMatch[1])) ? parseFloat(velMatch[1]) : null,
+    properMotionMasYr: pmMatch && !isNaN(parseFloat(pmMatch[1])) ? parseFloat(pmMatch[1]) : null,
     source: 'CDS SIMBAD / Sesame Live Astronomical Database',
   };
+}
+
+async function querySimbadTapDirect(candidate: string): Promise<Partial<SimbadObjectData> | null> {
+  try {
+    const safeIdent = candidate.replace(/'/g, "''").trim();
+    const adql = `SELECT TOP 1 main_id, ra, dec, otype_txt, sp_type, plx_value, rvz_radvel, pmra, pmdec, V, B, G, J FROM basic JOIN ident ON oid = ident.oidref LEFT JOIN allfluxes ON oid = allfluxes.oidref WHERE id = '${safeIdent}'`;
+    const tapUrl = `https://simbad.cds.unistra.fr/simbad/sim-tap/sync?request=doQuery&lang=adql&format=json&query=${encodeURIComponent(adql)}`;
+    const resp = await fetch(tapUrl);
+    if (!resp.ok) return null;
+    const json = await resp.json();
+    const row = json?.data?.[0];
+    if (!Array.isArray(row)) return null;
+    const [main_id, ra, dec, otype_txt, sp_type, plx_value, rvz_radvel, pmra, pmdec, V, B, G, J] = row;
+    const raDeg = typeof ra === 'number' ? ra : null;
+    const decDeg = typeof dec === 'number' ? dec : null;
+    return {
+      standardName: typeof main_id === 'string' ? main_id.replace(/\s+/g, ' ').trim() : candidate,
+      objectType: typeof otype_txt === 'string' && otype_txt.trim() ? otype_txt.trim() : undefined,
+      raDeg,
+      decDeg,
+      coordinatesHMS:
+        raDeg !== null && decDeg !== null ? `${degToRA_HMS(raDeg)} ${degToDec_DMS(decDeg)}` : null,
+      vMag:
+        typeof V === 'number'
+          ? V
+          : typeof G === 'number'
+          ? G
+          : typeof B === 'number'
+          ? B
+          : typeof J === 'number'
+          ? J
+          : null,
+      bMag: typeof B === 'number' ? B : null,
+      gMag: typeof G === 'number' ? G : null,
+      jMag: typeof J === 'number' ? J : null,
+      spectralType: typeof sp_type === 'string' && sp_type.trim() ? sp_type.trim() : null,
+      parallaxMas: typeof plx_value === 'number' ? plx_value : null,
+      radialVelocityKms: typeof rvz_radvel === 'number' ? rvz_radvel : null,
+      properMotionMasYr:
+        typeof pmra === 'number' && typeof pmdec === 'number'
+          ? Number(Math.hypot(pmra, pmdec).toFixed(2))
+          : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function buildLocalCatalogFallback(rawTarget: string, candidates: string[]): SimbadObjectData | null {
@@ -110,8 +217,8 @@ function buildLocalCatalogFallback(rawTarget: string, candidates: string[]): Sim
     names: [rawTarget, ...candidates],
     type: 'dso',
     pixelx: 0,
-    pixely: 0,
-  });
+    pixel_y: 0,
+  } as any);
   if (detail && detail.apparentMagnitude !== '미기재') {
     const parsedMag = parseFloat(detail.apparentMagnitude);
     return {
@@ -144,19 +251,40 @@ export const SimbadInspectorModal: React.FC<SimbadInspectorModalProps> = ({ targ
 
     const runQuery = async () => {
       const candidates = resolveSimbadIdentifiers(targetName);
+      const localFallback = buildLocalCatalogFallback(targetName, candidates);
 
-      // 1. Try direct browser CORS query to CDS Sesame & backend proxy across candidate identifiers
+      // 1. Try direct browser CORS query to SIMBAD TAP + CDS Sesame & backend proxy across candidate identifiers
       for (const candidate of candidates.slice(0, 4)) {
-        // 1A. Browser direct CDS Sesame XML query (supports CORS '*')
         try {
-          const sesameUrl = `https://cds.unistra.fr/cgi-bin/nph-sesame/-oxp/SNV?${encodeURIComponent(candidate)}`;
-          const directResp = await fetch(sesameUrl);
-          if (directResp.ok) {
-            const xml = await directResp.text();
-            const parsed = parseSesameXml(xml, candidate);
-            if (parsed && (parsed.raDeg !== null || parsed.coordinatesHMS)) {
+          const [tapRes, sesameXmlRes] = await Promise.all([
+            querySimbadTapDirect(candidate),
+            fetch(`https://cds.unistra.fr/cgi-bin/nph-sesame/-oxp/SNV?${encodeURIComponent(candidate)}`)
+              .then((r) => (r.ok ? r.text() : ''))
+              .catch(() => ''),
+          ]);
+          const sesameParsed = sesameXmlRes ? parseSesameXml(sesameXmlRes, candidate) : null;
+
+          if (sesameParsed || (tapRes && tapRes.raDeg !== null)) {
+            const merged: SimbadObjectData = {
+              query: targetName,
+              standardName: tapRes?.standardName || sesameParsed?.standardName || candidate,
+              objectType: tapRes?.objectType || sesameParsed?.objectType || 'Astronomical Object',
+              coordinatesHMS: sesameParsed?.coordinatesHMS || tapRes?.coordinatesHMS || null,
+              raDeg: tapRes?.raDeg ?? sesameParsed?.raDeg ?? localFallback?.raDeg ?? null,
+              decDeg: tapRes?.decDeg ?? sesameParsed?.decDeg ?? localFallback?.decDeg ?? null,
+              vMag: tapRes?.vMag ?? sesameParsed?.vMag ?? localFallback?.vMag ?? null,
+              bMag: tapRes?.bMag ?? null,
+              gMag: tapRes?.gMag ?? null,
+              jMag: tapRes?.jMag ?? null,
+              spectralType: tapRes?.spectralType ?? sesameParsed?.spectralType ?? null,
+              parallaxMas: tapRes?.parallaxMas ?? sesameParsed?.parallaxMas ?? null,
+              radialVelocityKms: tapRes?.radialVelocityKms ?? sesameParsed?.radialVelocityKms ?? null,
+              properMotionMasYr: tapRes?.properMotionMasYr ?? sesameParsed?.properMotionMasYr ?? null,
+              source: 'CDS SIMBAD TAP & Sesame Live Astronomical Database',
+            };
+            if (merged.raDeg !== null || merged.coordinatesHMS) {
               if (isMounted) {
-                setData(parsed);
+                setData(merged);
                 setLoading(false);
               }
               return;
@@ -172,6 +300,9 @@ export const SimbadInspectorModal: React.FC<SimbadInspectorModalProps> = ({ targ
           if (apiResp.ok) {
             const json: SimbadObjectData = await apiResp.json();
             if (json && (json.raDeg !== null || json.coordinatesHMS)) {
+              if (json.vMag === null && localFallback?.vMag !== undefined) {
+                json.vMag = localFallback.vMag;
+              }
               if (isMounted) {
                 setData(json);
                 setLoading(false);
@@ -185,10 +316,9 @@ export const SimbadInspectorModal: React.FC<SimbadInspectorModalProps> = ({ targ
       }
 
       // 2. Fallback to built-in astronomical catalog if CDS Sesame did not match or was unreachable
-      const fallbackData = buildLocalCatalogFallback(targetName, candidates);
-      if (fallbackData) {
+      if (localFallback) {
         if (isMounted) {
-          setData(fallbackData);
+          setData(localFallback);
           setLoading(false);
         }
         return;
@@ -213,6 +343,61 @@ export const SimbadInspectorModal: React.FC<SimbadInspectorModalProps> = ({ targ
   const cleanSimbadIdent = data?.standardName
     ? resolveSimbadIdentifiers(data.standardName)[0] || data.standardName
     : candidates[0] || targetName;
+
+  // Compute formatted magnitude or alternative primary measurement so it is never '미기재'
+  const renderFourthCard = (d: SimbadObjectData) => {
+    if (d.vMag !== null && !isNaN(d.vMag)) {
+      const subParts: string[] = [];
+      if (typeof d.bMag === 'number') subParts.push(`B: ${d.bMag.toFixed(2)}`);
+      if (typeof d.gMag === 'number') subParts.push(`Gaia G: ${d.gMag.toFixed(2)}`);
+      if (typeof d.bMag === 'number' && typeof d.vMag === 'number') {
+        const bv = d.bMag - d.vMag;
+        subParts.push(`B-V: ${bv >= 0 ? '+' : ''}${bv.toFixed(2)}`);
+      }
+      return {
+        label: '실시등급 (Apparent Mag)',
+        value: `${d.vMag.toFixed(2)} mag`,
+        sub: subParts.length > 0 ? subParts.join(' · ') : 'SIMBAD 광학 측광 등급',
+      };
+    }
+    if (typeof d.parallaxMas === 'number' && d.parallaxMas > 0) {
+      const distPc = 1000 / d.parallaxMas;
+      const distLy = distPc * 3.26156;
+      return {
+        label: '연주시차 · 거리 (Parallax)',
+        value: `${d.parallaxMas.toFixed(2)} mas`,
+        sub: `약 ${distLy >= 100 ? Math.round(distLy).toLocaleString() : distLy.toFixed(1)} 광년 (${distPc.toFixed(1)} pc)`,
+      };
+    }
+    if (typeof d.radialVelocityKms === 'number') {
+      return {
+        label: '시선속도 (Radial Velocity)',
+        value: `${d.radialVelocityKms >= 0 ? '+' : ''}${d.radialVelocityKms.toFixed(1)} km/s`,
+        sub: d.radialVelocityKms < 0 ? '청색편이 (접근 중)' : '적색편이 (후퇴 중)',
+      };
+    }
+    if (d.spectralType) {
+      return {
+        label: '분광형 (Spectral Type)',
+        value: d.spectralType,
+        sub: 'SIMBAD 항성 분광 분류',
+      };
+    }
+    return {
+      label: '카탈로그 측광 상태',
+      value: '광학 성운/성단 확장원',
+      sub: 'SIMBAD J2000 정밀 위치 등록 천체',
+    };
+  };
+
+  const fourthCard = data ? renderFourthCard(data) : null;
+  const hasAstrophysicalExtras = Boolean(
+    data &&
+      (data.spectralType ||
+        (typeof data.parallaxMas === 'number' && data.parallaxMas > 0) ||
+        typeof data.radialVelocityKms === 'number' ||
+        typeof data.properMotionMasYr === 'number')
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
@@ -245,7 +430,7 @@ export const SimbadInspectorModal: React.FC<SimbadInspectorModalProps> = ({ targ
           {loading && (
             <div className="py-12 flex flex-col items-center justify-center text-slate-400 space-y-3">
               <Loader2 className="w-8 h-8 text-sky-400 animate-spin" />
-              <p className="text-xs">CDS Sesame / SIMBAD 실시간 데이터베이스 조회 중...</p>
+              <p className="text-xs">CDS SIMBAD TAP &amp; Sesame 실시간 데이터베이스 조회 중...</p>
             </div>
           )}
 
@@ -272,7 +457,7 @@ export const SimbadInspectorModal: React.FC<SimbadInspectorModalProps> = ({ targ
           )}
 
           {data && !loading && (
-            <div className="space-y-4">
+            <div className="space-y-3.5">
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
                   <span className="text-slate-400 block font-medium">표준 명칭 (Standard Name)</span>
@@ -284,7 +469,7 @@ export const SimbadInspectorModal: React.FC<SimbadInspectorModalProps> = ({ targ
                 <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
                   <span className="text-slate-400 block font-medium">천체 유형 (Object Type)</span>
                   <span className="text-sm font-bold text-indigo-300 mt-1 block">
-                    {data.objectType}
+                    {formatObjectTypeWithKo(data.objectType)}
                   </span>
                 </div>
 
@@ -295,13 +480,49 @@ export const SimbadInspectorModal: React.FC<SimbadInspectorModalProps> = ({ targ
                   </span>
                 </div>
 
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <span className="text-slate-400 block font-medium">실시등급 (V-Band Mag)</span>
-                  <span className="text-sm font-bold text-amber-300 mt-1 block">
-                    {data.vMag !== null ? `${data.vMag.toFixed(2)} mag` : '미기재'}
-                  </span>
-                </div>
+                {fourthCard && (
+                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                    <span className="text-slate-400 block font-medium">{fourthCard.label}</span>
+                    <span className="text-sm font-bold text-amber-300 mt-1 block">
+                      {fourthCard.value}
+                    </span>
+                    {fourthCard.sub && (
+                      <span className="text-[11px] font-mono text-slate-400 mt-0.5 block truncate">
+                        {fourthCard.sub}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
+
+              {hasAstrophysicalExtras && (
+                <div className="grid grid-cols-3 gap-2.5 text-xs">
+                  <div className="bg-slate-950/90 p-2.5 rounded-xl border border-slate-800/90">
+                    <span className="text-[11px] text-slate-400 block">분광형 (Spectral)</span>
+                    <span className="text-xs font-mono font-bold text-emerald-300 mt-0.5 block">
+                      {data.spectralType || '비항성/복합체'}
+                    </span>
+                  </div>
+                  <div className="bg-slate-950/90 p-2.5 rounded-xl border border-slate-800/90">
+                    <span className="text-[11px] text-slate-400 block">연주시차 · 거리</span>
+                    <span className="text-xs font-mono font-bold text-sky-300 mt-0.5 block truncate">
+                      {typeof data.parallaxMas === 'number' && data.parallaxMas > 0
+                        ? `${Math.round((1000 / data.parallaxMas) * 3.26156).toLocaleString()} ly (${data.parallaxMas.toFixed(2)} mas)`
+                        : '심우주 원거리'}
+                    </span>
+                  </div>
+                  <div className="bg-slate-950/90 p-2.5 rounded-xl border border-slate-800/90">
+                    <span className="text-[11px] text-slate-400 block">시선속도 (Radial Vel)</span>
+                    <span className="text-xs font-mono font-bold text-purple-300 mt-0.5 block">
+                      {typeof data.radialVelocityKms === 'number'
+                        ? `${data.radialVelocityKms >= 0 ? '+' : ''}${data.radialVelocityKms.toFixed(1)} km/s`
+                        : typeof data.properMotionMasYr === 'number'
+                        ? `PM ${data.properMotionMasYr.toFixed(1)} mas/yr`
+                        : '측정값 없음'}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {data.raDeg !== null && data.decDeg !== null && (
                 <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-between text-xs">

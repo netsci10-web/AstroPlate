@@ -423,13 +423,16 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
   }, [dsos, stars, data.info, data.title, calWidth, calHeight]);
 
   const [selectedTarget, setSelectedTarget] = useState<AstrometryAnnotationItem | null>(null);
-  const [isPhysicalCardOpen, setIsPhysicalCardOpen] = useState<boolean>(true);
+  const [isPhysicalCardOpen, setIsPhysicalCardOpen] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 768 : true
+  );
 
   // Auto-select primary target when photo or selectableTargets change
+  // Default: closed (false) on mobile phones (< 768px), open (true) on desktop computers (>= 768px)
   useEffect(() => {
     if (selectableTargets.length > 0) {
       setSelectedTarget(selectableTargets[0]);
-      setIsPhysicalCardOpen(true);
+      setIsPhysicalCardOpen(typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
     } else {
       setSelectedTarget(null);
     }
@@ -573,10 +576,10 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
                   ? 'bg-sky-500/25 text-sky-200 border-sky-400/70 ring-1 ring-sky-400/40'
                   : 'bg-slate-900/90 text-slate-300 hover:text-white border-slate-700/80 hover:bg-slate-800'
               }`}
-              title="선택된 천체의 주요 물리량(겉보기 등급, 크기, 거리) 요약 팝오버 열기/닫기"
+              title="선택된 주요천체의 상세 정보(겉보기 등급, 크기, 거리) 팝오버 열기/닫기"
             >
               <Info className="w-3.5 h-3.5 text-sky-400" />
-              <span>천체 물리량</span>
+              <span>주요천체 상세</span>
               <span className="text-[11px] font-mono px-1.5 py-0.2 rounded bg-slate-950/80 text-sky-300 border border-sky-800/60 max-w-[130px] truncate">
                 {selectedPhysicalSummary.displayName}
               </span>
@@ -662,7 +665,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
                 type="button"
                 onClick={() => setIsPhysicalCardOpen(false)}
                 className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-                title="물리량 요약 카드 닫기"
+                title="주요천체 상세 카드 닫기"
               >
                 <X className="w-4 h-4" />
               </button>

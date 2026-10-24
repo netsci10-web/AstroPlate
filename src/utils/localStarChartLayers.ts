@@ -114,32 +114,35 @@ function drawHeaderBadge(
   scaleFactor: number
 ) {
   ctx.save();
-  const padX = 14 * scaleFactor;
-  const padY = 12 * scaleFactor;
-  ctx.font = `bold ${Math.round(13 * scaleFactor)}px sans-serif`;
-  const w1 = ctx.measureText(title).width;
-  ctx.font = `${Math.round(11 * scaleFactor)}px monospace`;
-  const w2 = ctx.measureText(subtitle).width;
-  const boxW = Math.max(w1, w2) + 28 * scaleFactor;
-  const boxH = 44 * scaleFactor;
+  const padX = 16 * scaleFactor;
+  const padY = 14 * scaleFactor;
+  const titleFontSize = Math.round(16.5 * scaleFactor);
+  const subFontSize = Math.round(15.5 * scaleFactor);
 
-  ctx.fillStyle = 'rgba(2, 6, 23, 0.88)';
+  ctx.font = `bold ${titleFontSize}px sans-serif`;
+  const w1 = ctx.measureText(title).width;
+  ctx.font = `bold ${subFontSize}px monospace`;
+  const w2 = ctx.measureText(subtitle).width;
+  const boxW = Math.max(w1, w2) + 34 * scaleFactor;
+  const boxH = 58 * scaleFactor;
+
+  ctx.fillStyle = 'rgba(2, 6, 23, 0.92)';
   ctx.strokeStyle = accentColor;
-  ctx.lineWidth = 1.5 * scaleFactor;
+  ctx.lineWidth = 2.0 * scaleFactor;
 
   ctx.beginPath();
-  ctx.roundRect(padX, padY, boxW, boxH, 8 * scaleFactor);
+  ctx.roundRect(padX, padY, boxW, boxH, 10 * scaleFactor);
   ctx.fill();
   ctx.stroke();
 
-  ctx.fillStyle = '#f8fafc';
-  ctx.font = `bold ${Math.round(13 * scaleFactor)}px sans-serif`;
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${titleFontSize}px sans-serif`;
   ctx.textBaseline = 'top';
-  ctx.fillText(title, padX + 12 * scaleFactor, padY + 8 * scaleFactor);
+  ctx.fillText(title, padX + 15 * scaleFactor, padY + 9 * scaleFactor);
 
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = `${Math.round(11 * scaleFactor)}px monospace`;
-  ctx.fillText(subtitle, padX + 12 * scaleFactor, padY + 26 * scaleFactor);
+  ctx.fillStyle = '#e0f2fe';
+  ctx.font = `bold ${subFontSize}px monospace`;
+  ctx.fillText(subtitle, padX + 15 * scaleFactor, padY + 33 * scaleFactor);
   ctx.restore();
 }
 
@@ -539,10 +542,11 @@ export async function generateBrowserStarChartLayers(
         stepCandidates.find((s) => s >= rawStep / cosDec) || decStep;
 
       ctx.save();
-      ctx.strokeStyle = 'rgba(129, 140, 248, 0.68)';
-      ctx.lineWidth = 1.4 * uiScale;
-      ctx.font = `bold ${Math.round(12.5 * uiScale)}px monospace`;
-      ctx.fillStyle = '#c7d2fe';
+      ctx.strokeStyle = 'rgba(129, 140, 248, 0.78)';
+      ctx.lineWidth = 1.7 * uiScale;
+      const gridLabelFontSize = Math.round(16 * uiScale);
+      ctx.font = `bold ${gridLabelFontSize}px monospace`;
+      ctx.fillStyle = '#e0e7ff';
 
       // Draw Constant-Dec Parallels
       const startDec = Math.floor(minDec / decStep) * decStep;
@@ -568,27 +572,41 @@ export async function generateBrowserStarChartLayers(
             } else {
               ctx.lineTo(sx, sy);
             }
-            if (!labelPos && sx > 30 * uiScale && sx < cw - 105 * uiScale && sy > 55 * uiScale && sy < ch - 20 * uiScale) {
+            if (
+              !labelPos &&
+              sx > 32 * uiScale &&
+              sx < cw - 135 * uiScale &&
+              sy > 78 * uiScale &&
+              sy < ch - 28 * uiScale
+            ) {
               labelPos = { x: sx, y: sy };
             }
           } else {
             started = false;
           }
         }
+        ctx.strokeStyle = 'rgba(129, 140, 248, 0.78)';
+        ctx.lineWidth = 1.7 * uiScale;
         ctx.stroke();
 
         if (labelPos) {
           const decText = `Dec ${dec >= 0 ? '+' : ''}${dec.toFixed(decStep < 1 ? 2 : 1)}°`;
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+          ctx.font = `bold ${gridLabelFontSize}px monospace`;
           const tw = ctx.measureText(decText).width;
-          ctx.fillRect(labelPos.x - 2, labelPos.y - 14 * uiScale, tw + 8, 17 * uiScale);
-          ctx.fillStyle = '#a5b4fc';
-          ctx.fillText(decText, labelPos.x + 2, labelPos.y - 2 * uiScale);
+          const boxH = 24 * uiScale;
+          ctx.fillStyle = 'rgba(2, 6, 23, 0.92)';
+          ctx.strokeStyle = 'rgba(129, 140, 248, 0.85)';
+          ctx.lineWidth = 1.2 * uiScale;
+          ctx.beginPath();
+          ctx.roundRect(labelPos.x - 4 * uiScale, labelPos.y - 19 * uiScale, tw + 14 * uiScale, boxH, 5 * uiScale);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#e0e7ff';
+          ctx.fillText(decText, labelPos.x + 3 * uiScale, labelPos.y - 2 * uiScale);
         }
       }
 
       // Draw Constant-RA Meridians
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.65)';
       const startRaOffset = Math.floor((-raSpan / 2) / raStep) * raStep;
       const endRaOffset = Math.ceil((raSpan / 2) / raStep) * raStep;
       const baseRa = Math.round(cal.ra / raStep) * raStep;
@@ -612,22 +630,37 @@ export async function generateBrowserStarChartLayers(
             } else {
               ctx.lineTo(sx, sy);
             }
-            if (!labelPos && sx > 30 * uiScale && sx < cw - 120 * uiScale && sy > ch * 0.25 && sy < ch - 25 * uiScale) {
+            if (
+              !labelPos &&
+              sx > 32 * uiScale &&
+              sx < cw - 145 * uiScale &&
+              sy > Math.max(82 * uiScale, ch * 0.25) &&
+              sy < ch - 30 * uiScale
+            ) {
               labelPos = { x: sx, y: sy };
             }
           } else {
             started = false;
           }
         }
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.75)';
+        ctx.lineWidth = 1.7 * uiScale;
         ctx.stroke();
 
         if (labelPos) {
           const raText = `RA ${ra.toFixed(raStep < 1 ? 2 : 1)}°`;
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+          ctx.font = `bold ${gridLabelFontSize}px monospace`;
           const tw = ctx.measureText(raText).width;
-          ctx.fillRect(labelPos.x + 3, labelPos.y - 13 * uiScale, tw + 8, 17 * uiScale);
-          ctx.fillStyle = '#7dd3fc';
-          ctx.fillText(raText, labelPos.x + 7, labelPos.y - 1 * uiScale);
+          const boxH = 24 * uiScale;
+          ctx.fillStyle = 'rgba(2, 6, 23, 0.92)';
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
+          ctx.lineWidth = 1.2 * uiScale;
+          ctx.beginPath();
+          ctx.roundRect(labelPos.x + 2 * uiScale, labelPos.y - 18 * uiScale, tw + 14 * uiScale, boxH, 5 * uiScale);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#bae6fd';
+          ctx.fillText(raText, labelPos.x + 9 * uiScale, labelPos.y - 1 * uiScale);
         }
       }
 

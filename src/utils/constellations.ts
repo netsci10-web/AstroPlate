@@ -1350,6 +1350,25 @@ export function formatTitleWithCatalogPriority(
   if (!rawTitle || typeof rawTitle !== 'string') return rawTitle || '';
   let result = rawTitle.trim();
 
+  // Case 0: Deduplicate nested repeated titles when re-analyzing
+  // e.g. "전갈자리 ω¹·ω² Scorpii (Jabhat Acrabi 이중성) (전갈자리 ω¹·ω² Scorpii (Jabhat Acrabi 이중성) (stacked.jpg))"
+  // -> "전갈자리 ω¹·ω² Scorpii (Jabhat Acrabi 이중성) (stacked.jpg)"
+  let prevResult = '';
+  while (prevResult !== result) {
+    prevResult = result;
+    for (let splitIdx = 3; splitIdx < result.length - 4; splitIdx++) {
+      if (result.slice(splitIdx, splitIdx + 2) === ' (') {
+        const prefix = result.slice(0, splitIdx).trim();
+        const rest = result.slice(splitIdx + 2);
+        if (prefix.length >= 3 && rest.startsWith(prefix) && rest.endsWith(')')) {
+          const innerAfterPrefix = rest.slice(prefix.length, -1).trim();
+          result = innerAfterPrefix ? `${prefix} ${innerAfterPrefix}` : prefix;
+          break;
+        }
+      }
+    }
+  }
+
   // Case 1: Parenthesized "(NGC 628 / M74)" or "(M31 / NGC 224)" or "(NGC 891 / Caldwell 23)"
   result = result.replace(
     /\(\s*(?:(NGC|IC)\s*(\d+[A-Z]?)\s*\/\s*(?:(Messier|M|Caldwell|C)\s*(\d+))|(?:(Messier|M|Caldwell|C)\s*(\d+))\s*\/\s*(NGC|IC)\s*(\d+[A-Z]?))\s*\)/gi,

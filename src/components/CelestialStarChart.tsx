@@ -238,11 +238,6 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
       let normalized = raDeg % 360;
       if (normalized < 0) normalized += 360;
 
-      if (chartMode === 'all_sky' && zoomLevel === 1 && panOffset.raDeg === 0) {
-        // Standard RA 0..360 -> X 0..width
-        return (normalized / 360) * width;
-      }
-
       // Projection centered at current view center
       const targetCenter = chartMode === 'all_sky' ? allSkyCenterRa : currentCenterRa;
       let diff = normalized - targetCenter;
@@ -252,21 +247,16 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
       // In celestial sphere, East is to the left (increasing RA moves left)
       return width / 2 - (diff / fovSpan) * width;
     },
-    [chartMode, zoomLevel, panOffset.raDeg, allSkyCenterRa, currentCenterRa, fovSpan]
+    [chartMode, allSkyCenterRa, currentCenterRa, fovSpan]
   );
 
   const decToY = useCallback(
     (decDeg: number): number => {
-      if (chartMode === 'all_sky' && zoomLevel === 1 && panOffset.decDeg === 0) {
-        // Dec +90 at top (y=0), -90 at bottom (y=height)
-        return ((90 - decDeg) / 180) * height;
-      }
-
       const targetCenter = chartMode === 'all_sky' ? panOffset.decDeg : currentCenterDec;
       const diff = decDeg - targetCenter;
       return height / 2 - (diff / decSpan) * height;
     },
-    [chartMode, zoomLevel, panOffset.decDeg, currentCenterDec, decSpan]
+    [chartMode, panOffset.decDeg, currentCenterDec, decSpan]
   );
 
   // Convert SVG mouse position to celestial coordinates
@@ -283,29 +273,29 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
       const raDelta = (dx / rect.width) * fovSpan;
       const decDelta = (dy / rect.height) * decSpan;
 
+      const baseDec = chartMode === 'all_sky' ? 0 : centerDec;
+      const minDecOffset = -85 - baseDec;
+      const maxDecOffset = 85 - baseDec;
+      const nextDec = Math.max(
+        minDecOffset,
+        Math.min(maxDecOffset, dragStartRef.current.initDec + decDelta)
+      );
+
       setPanOffset({
         raDeg: dragStartRef.current.initRa + raDelta,
-        decDeg: dragStartRef.current.initDec - decDelta,
+        decDeg: nextDec,
       });
       return;
     }
 
     // Coordinate readout
-    let ra = 0;
-    let dec = 0;
+    const targetCenterRa = chartMode === 'all_sky' ? allSkyCenterRa : currentCenterRa;
+    const targetCenterDec = chartMode === 'all_sky' ? panOffset.decDeg : currentCenterDec;
 
-    if (chartMode === 'all_sky' && zoomLevel === 1 && panOffset.raDeg === 0 && panOffset.decDeg === 0) {
-      ra = (x / width) * 360;
-      dec = 90 - (y / height) * 180;
-    } else {
-      const targetCenterRa = chartMode === 'all_sky' ? allSkyCenterRa : currentCenterRa;
-      const targetCenterDec = chartMode === 'all_sky' ? panOffset.decDeg : currentCenterDec;
-
-      const relX = (x - width / 2) / width;
-      const relY = (y - height / 2) / height;
-      ra = targetCenterRa - relX * fovSpan;
-      dec = targetCenterDec - relY * decSpan;
-    }
+    const relX = (x - width / 2) / width;
+    const relY = (y - height / 2) / height;
+    let ra = targetCenterRa - relX * fovSpan;
+    const dec = targetCenterDec - relY * decSpan;
 
     if (ra < 0) ra += 360;
     if (ra >= 360) ra -= 360;
@@ -425,11 +415,22 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
     ).length;
   }, [showConstellationLines, showConstellationNames, isConstellationLineVisible, isConstellationLabelVisible]);
 
-  // Milky way SVG path generator
+  // Milky way SVG path generator (breaks path across meridian wrap seam)
   const milkyWayPath = useMemo(() => {
     if (MILKY_WAY_COORDINATES.length === 0) return '';
-    const points = MILKY_WAY_COORDINATES.map(([ra, dec]) => `${raToX(ra)},${decToY(dec)}`);
-    return `M ${points.join(' L ')}`;
+    let path = '';
+    let prevX: number | null = null;
+    for (const [ra, dec] of MILKY_WAY_COORDINATES) {
+      const x = raToX(ra);
+      const y = decToY(dec);
+      if (prevX === null || Math.abs(x - prevX) > width * 0.5) {
+        path += ` M ${x},${y}`;
+      } else {
+        path += ` L ${x},${y}`;
+      }
+      prevX = x;
+    }
+    return path.trim();
   }, [raToX, decToY]);
 
   // Helper to split lines across meridian in All-sky mode
@@ -440,9 +441,6 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
     isMatched: boolean,
     isHovered: boolean
   ) => {
-    // Check if line wraps around 0h/24h meridian in all_sky mode
-    const isWrapping = Math.abs(ra1 - ra2) > 180 && chartMode === 'all_sky' && zoomLevel === 1;
-
     let strokeColor = '#38bdf8'; // Default electric sky blue
     let strokeOpacity = 0.85;
 
@@ -471,18 +469,27 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
 
     const currentWidth = isPrimary || isHovered ? strokeWidthPx * 1.4 : strokeWidthPx;
 
-    if (isWrapping) {
-      // Split into two segments to avoid ugly horizontal streaks across the map
-      const [leftRa, leftDec, rightRa, rightDec] = ra1 < ra2 ? [ra1, dec1, ra2, dec2] : [ra2, dec2, ra1, dec1];
-      const midDec = (dec1 + dec2) / 2;
+    const x1 = raToX(ra1);
+    const y1 = decToY(dec1);
+    const x2 = raToX(ra2);
+    const y2 = decToY(dec2);
+
+    // Check if line wraps across left/right boundary of the viewport
+    if (Math.abs(x1 - x2) > width * 0.5) {
+      const isP1Left = x1 < x2;
+      const lx = isP1Left ? x1 : x2;
+      const ly = isP1Left ? y1 : y2;
+      const rx = isP1Left ? x2 : x1;
+      const ry = isP1Left ? y2 : y1;
+      const midY = (ly + ry) / 2;
 
       return (
         <g key={key}>
           <line
-            x1={raToX(leftRa)}
-            y1={decToY(leftDec)}
-            x2={raToX(0)}
-            y2={decToY(midDec)}
+            x1={lx}
+            y1={ly}
+            x2={0}
+            y2={midY}
             stroke={strokeColor}
             strokeWidth={currentWidth}
             strokeOpacity={strokeOpacity}
@@ -490,10 +497,10 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
             filter={lineStyle === 'glow' || isPrimary ? 'url(#line-glow)' : undefined}
           />
           <line
-            x1={raToX(360)}
-            y1={decToY(midDec)}
-            x2={raToX(rightRa)}
-            y2={decToY(rightDec)}
+            x1={width}
+            y1={midY}
+            x2={rx}
+            y2={ry}
             stroke={strokeColor}
             strokeWidth={currentWidth}
             strokeOpacity={strokeOpacity}
@@ -503,11 +510,6 @@ export const CelestialStarChart: React.FC<CelestialStarChartProps> = ({
         </g>
       );
     }
-
-    const x1 = raToX(ra1);
-    const y1 = decToY(dec1);
-    const x2 = raToX(ra2);
-    const y2 = decToY(dec2);
 
     // Skip if totally outside viewport in focused mode
     if (chartMode === 'focused') {

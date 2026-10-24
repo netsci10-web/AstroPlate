@@ -128,10 +128,18 @@ export interface SimbadObjectData {
   query: string;
   standardName: string;
   objectType: string;
+  objectTypeDescKo?: string | null;
   coordinatesHMS: string | null;
   raDeg: number | null;
   decDeg: number | null;
   vMag: number | null;
+  bMag?: number | null;
+  gMag?: number | null;
+  jMag?: number | null;
+  spectralType?: string | null;
+  parallaxMas?: number | null;
+  radialVelocityKms?: number | null;
+  properMotionMasYr?: number | null;
   source: string;
 }
 
