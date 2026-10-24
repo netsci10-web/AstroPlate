@@ -357,14 +357,9 @@ function parseCorrBuffer(buf: Buffer): { fx: number; fy: number; ira: number; id
 // Server-assisted blind index lookup using detected stars (x, y, flux) for custom-framed deep-sky fields
 app.post('/api/astrometry/assist-local-solve', async (req: Request, res: Response) => {
   try {
-    const { detectedStars, width = 1920, height = 1080 } = req.body;
+    const { detectedStars, width = 1920, height = 1080, existingJobId, calibrationHint } = req.body;
     if (!Array.isArray(detectedStars) || detectedStars.length < 4) {
       return res.status(404).json({ error: 'Not enough stars' });
-    }
-
-    const session = await getAstrometrySession().catch(() => null);
-    if (!session) {
-      return res.status(404).json({ error: 'No session available' });
     }
 
     const cookie = await getHumanSessionCookie();
@@ -418,6 +413,30 @@ app.post('/api/astrometry/assist-local-solve', async (req: Request, res: Respons
       };
     };
 
+    // 0. If re-analyzing an existing numeric Astrometry job ID, fetch its exact calibration & corr_file directly
+    const numericExistingId = existingJobId ? Number(String(existingJobId).replace(/\D/g, '')) : NaN;
+    if (!isNaN(numericExistingId) && numericExistingId > 1000 && !String(existingJobId).startsWith('local_')) {
+      try {
+        const corrRes = await fetch(`https://nova.astrometry.net/corr_file/${numericExistingId}`, {
+          headers: { Cookie: cookie },
+          signal: AbortSignal.timeout(3500),
+        }).catch(() => null);
+        const corrStars =
+          corrRes && corrRes.ok ? parseCorrBuffer(Buffer.from(await corrRes.arrayBuffer())) : [];
+        const payload = await buildAssistPayloadFromJob(numericExistingId, corrStars);
+        if (payload) {
+          return res.json(payload);
+        }
+      } catch {
+        // continue to general lookup
+      }
+    }
+
+    const session = await getAstrometrySession().catch(() => null);
+    if (!session) {
+      return res.status(404).json({ error: 'No session available' });
+    }
+
     // 1. Check recent solved jobs on nova.astrometry.net first
     const myJobsRes = await fetch('https://nova.astrometry.net/api/myjobs/', {
       method: 'POST',
@@ -429,7 +448,7 @@ app.post('/api/astrometry/assist-local-solve', async (req: Request, res: Respons
     if (myJobsRes && myJobsRes.ok) {
       const { jobs } = await myJobsRes.json().catch(() => ({ jobs: [] }));
       const recentJobs: number[] = Array.isArray(jobs)
-        ? jobs.map((n: any) => Number(n)).filter((n) => !isNaN(n)).sort((a, b) => b - a).slice(0, 15)
+        ? jobs.map((n: any) => Number(n)).filter((n) => !isNaN(n)).sort((a, b) => b - a).slice(0, 20)
         : [];
 
       for (const jid of recentJobs) {
@@ -443,14 +462,31 @@ app.post('/api/astrometry/assist-local-solve', async (req: Request, res: Respons
           const corrStars = parseCorrBuffer(buf);
           if (corrStars.length < 4) continue;
 
+          // Check direct pixel match OR normalized coordinate match OR calibrationHint RA/Dec match
           let matchCount = 0;
+          const maxCorrX = Math.max(...corrStars.map((c) => c.fx), 1);
+          const maxCorrY = Math.max(...corrStars.map((c) => c.fy), 1);
           for (const ds of detectedStars.slice(0, 25)) {
-            if (corrStars.some((cs) => Math.hypot(cs.fx - ds.x, cs.fy - ds.y) <= 14)) {
+            if (
+              corrStars.some(
+                (cs) =>
+                  Math.hypot(cs.fx - ds.x, cs.fy - ds.y) <= 16 ||
+                  Math.hypot(cs.fx / maxCorrX - ds.x / Math.max(1, width), cs.fy / maxCorrY - ds.y / Math.max(1, height)) <= 0.018
+              )
+            ) {
               matchCount++;
             }
           }
 
-          if (matchCount >= 5) {
+          const calHintMatches =
+            calibrationHint &&
+            typeof calibrationHint.ra === 'number' &&
+            typeof calibrationHint.dec === 'number' &&
+            corrStars.some(
+              (cs) => Math.hypot(cs.ira - calibrationHint.ra, cs.idec - calibrationHint.dec) <= Math.max(1.5, calibrationHint.radius || 1.5)
+            );
+
+          if (matchCount >= 5 || (calHintMatches && matchCount >= 2)) {
             const payload = await buildAssistPayloadFromJob(jid, corrStars);
             if (payload) {
               return res.json(payload);
@@ -1445,12 +1481,15 @@ async function resolveJobImageBuffer(
       `https://nova.astrometry.net/grid_display/${strJobId}`,
     ];
   } else if (type === 'original' || type === 'raw' || type === 'image') {
+    const cdsClean = await getCdsSkyImage(strJobId);
+    if (cdsClean) {
+      const item = { buffer: cdsClean, mimetype: 'image/jpeg' };
+      originalPhotoCache.set(strJobId, item);
+      return item;
+    }
     candidateUrls = [
       `https://nova.astrometry.net/annotated_full/${strJobId}`,
-      `https://nova.astrometry.net/extraction_image_full/${strJobId}`,
       `https://nova.astrometry.net/annotated_display/${strJobId}`,
-      `https://nova.astrometry.net/extraction_image_display/${strJobId}`,
-      `https://nova.astrometry.net/image/${strJobId}`,
     ];
   } else {
     candidateUrls = [
@@ -1717,7 +1756,11 @@ async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false,
+        watch: null,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

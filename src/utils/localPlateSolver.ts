@@ -24,6 +24,8 @@ import {
   IAU_CONSTELLATIONS,
   identifyConstellations,
   formatTitleWithCatalogPriority,
+  getConstellationObjectTitle,
+  getConstellationLinesForImage,
 } from './constellations';
 import { angularSeparation } from './coordinateMath';
 import {
@@ -85,6 +87,10 @@ export interface LocalSolveOptions {
   targetHint?: string;       // Optional target name or constellation hint
   fovHintDeg?: number;       // Optional approximate field of view width in degrees
   filename?: string;         // Original filename for metadata hint extraction
+  existingJobId?: string | number; // Optional existing Job ID to update in-place when re-analyzing
+  calibrationHint?: AstroCalibration; // Known WCS calibration when re-analyzing an already solved photo
+  existingAnnotations?: AstroAnnotation[]; // Known annotations when re-analyzing
+  existingObjectsInField?: string[]; // Known objects in field when re-analyzing
   onProgress?: (progress: LocalSolveProgress) => void;
 }
 
@@ -294,14 +300,14 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'and_m31',
-    nameKo: '안드로메다자리 안드로메다 은하 M31 (NGC 224)',
+    nameKo: '안드로메다 은하 M31 (NGC 224)',
     nameEn: 'Andromeda Galaxy M31 (NGC 224)',
     constellation: 'And',
     centerRaDeg: 10.6847,
     centerDecDeg: 41.2687,
     defaultRadiusDeg: 1.4,
     primaryObjectLabel: 'M31 (NGC 224)',
-    keywords: ['m31', 'm 31', 'ngc224', 'ngc 224', 'andromeda', '안드로메다', 'm32', 'm110'],
+    keywords: ['m31', 'm 31', 'ngc224', 'ngc 224', 'andromeda galaxy', '안드로메다 은하', '안드로메다은하', 'm32', 'm110'],
     stars: [
       { id: 'm_31_n', nameKo: 'M 31', nameEn: 'M 31', bayer: 'M 31 (And)', constellation: 'And', raDeg: 10.68471, decDeg: 41.26875, mag: 3.44 },
       { id: 'nu_and', nameKo: 'ν And', nameEn: 'Nu Andromedae', bayer: 'ν And', constellation: 'And', raDeg: 12.45353, decDeg: 41.07891, mag: 4.53 },
@@ -371,13 +377,13 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'uma_m81_m82',
-    nameKo: '큰곰자리 보데 & 시가 은하 M81 · M82 (NGC 3031 / NGC 3034)',
-    nameEn: 'Bode & Cigar Galaxies M81/M82 (NGC 3031/3034)',
+    nameKo: '큰곰자리 보데 은하 M81 (NGC 3031)',
+    nameEn: 'Bode Galaxy M81 (NGC 3031)',
     constellation: 'UMa',
     centerRaDeg: 148.9,
     centerDecDeg: 69.3,
     defaultRadiusDeg: 1.3,
-    primaryObjectLabel: 'M81 · M82 (NGC 3031 / NGC 3034)',
+    primaryObjectLabel: 'M81 (NGC 3031)',
     keywords: ['m81', 'm82', 'm 81', 'm 82', 'ngc3031', 'ngc3034', '보데은하', '시가은하'],
     stars: [
       { id: 'm_81_n', nameKo: 'M 81', nameEn: 'M 81', bayer: 'M 81 (UMa)', constellation: 'UMa', raDeg: 148.88822, decDeg: 69.06529, mag: 6.94 },
@@ -414,13 +420,13 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'per_double_cluster',
-    nameKo: '페르세우스자리 이중성단 C14 (NGC 869 / NGC 884)',
-    nameEn: 'Perseus Double Cluster C14 (NGC 869/884)',
+    nameKo: '페르세우스자리 이중성단 C14 (NGC 869)',
+    nameEn: 'Perseus Double Cluster C14 (NGC 869)',
     constellation: 'Per',
     centerRaDeg: 35.17,
     centerDecDeg: 57.14,
     defaultRadiusDeg: 1.3,
-    primaryObjectLabel: 'C14 (NGC 869 / NGC 884)',
+    primaryObjectLabel: 'C14 (NGC 869)',
     keywords: ['ngc869', 'ngc884', 'c14', 'caldwell 14', '이중성단', 'double cluster', 'h per', 'chi per'],
     stars: [
       { id: '8_per', nameKo: '8 Per', nameEn: '8 Per', bayer: '8 Per (Per)', constellation: 'Per', raDeg: 34.49953, decDeg: 57.89982, mag: 5.75 },
@@ -435,7 +441,7 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'cyg_ngc7000',
-    nameKo: '백조자리 북아메리카 성운 C20 (NGC 7000 / IC 5070)',
+    nameKo: '백조자리 북아메리카 성운 C20 (NGC 7000)',
     nameEn: 'North America Nebula C20 (NGC 7000)',
     constellation: 'Cyg',
     centerRaDeg: 314.68,
@@ -476,8 +482,8 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'and_ngc752',
-    nameKo: '안드로메다자리 C28 산개성단 (NGC 752) & 56 And',
-    nameEn: 'Andromeda C28 (NGC 752) & 56 Andromedae',
+    nameKo: '안드로메다자리 C28 산개성단 (NGC 752)',
+    nameEn: 'Andromeda C28 (NGC 752)',
     constellation: 'And',
     centerRaDeg: 29.4102,
     centerDecDeg: 37.7425,
@@ -509,13 +515,13 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'lyr_double_double',
-    nameKo: '거문고자리 더블더블 (ε¹·ε² Lyrae)',
+    nameKo: '거문고자리 더블더블 (ε¹ Lyr)',
     nameEn: 'Lyra Double Double (Epsilon Lyrae)',
     constellation: 'Lyr',
     centerRaDeg: 281.3142,
     centerDecDeg: 39.7015,
     defaultRadiusDeg: 1.23,
-    primaryObjectLabel: '더블더블 (ε¹·ε² Lyr)',
+    primaryObjectLabel: '더블더블 (ε¹ Lyr)',
     keywords: ['더블더블', '더블 더블', 'doubledouble', 'double double', 'epsilon lyrae', 'eps lyr', 'ε lyr', 'ε¹ lyr', 'ε² lyr', '4 lyr', '5 lyr', '엡실론 리라'],
     stars: [
       { id: 'eps2_lyr', nameKo: '더블더블 ε² Lyr (5 Lyr)', nameEn: 'Epsilon2 Lyrae', bayer: 'ε² Lyr', constellation: 'Lyr', raDeg: 281.0952, decDeg: 39.6127, mag: 4.59 },
@@ -668,13 +674,13 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'vir_spica',
-    nameKo: '처녀자리 스피카 (α Virginis & NGC 5122)',
+    nameKo: '처녀자리 스피카 (α Vir)',
     nameEn: 'Virgo Spica (Alpha Virginis)',
     constellation: 'Vir',
     centerRaDeg: 201.3405,
     centerDecDeg: -11.1657,
     defaultRadiusDeg: 1.23,
-    primaryObjectLabel: 'Spica (α Vir)',
+    primaryObjectLabel: '스피카 (α Vir)',
     keywords: ['spica', '스피카', 'alpha vir', 'alf vir', 'α vir', '67 vir'],
     stars: [
       { id: 'alf_vir_f', nameKo: '스피카 (α Vir)', nameEn: 'Spica', bayer: 'α Vir', constellation: 'Vir', raDeg: 201.2982, decDeg: -11.1613, mag: 0.97 },
@@ -693,7 +699,7 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'cyg_veil',
-    nameKo: '백조자리 동쪽 베일 성운 C33 (NGC 6992 / NGC 6995)',
+    nameKo: '백조자리 동쪽 베일 성운 C33 (NGC 6992)',
     nameEn: 'Cygnus Eastern Veil Nebula C33 (NGC 6992)',
     constellation: 'Cyg',
     centerRaDeg: 314.0991,
@@ -721,14 +727,14 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'cep_garnet',
-    nameKo: '세페우스자리 가넷 스타 & 코끼리 코 성운 (μ Cep / IC 1396)',
-    nameEn: 'Cepheus Garnet Star (Mu Cephei / IC 1396)',
+    nameKo: '세페우스자리 가넷 스타 (μ Cep)',
+    nameEn: 'Cepheus Garnet Star (Mu Cephei)',
     constellation: 'Cep',
     centerRaDeg: 326.1193,
     centerDecDeg: 58.8952,
     defaultRadiusDeg: 1.23,
-    primaryObjectLabel: 'μ Cep (Garnet Star)',
-    keywords: ['가넷스타', '가넷 스타', '석류석별', 'garnet star', 'mu cep', 'μ cep', 'ic1396', 'ic 1396', 'erakis'],
+    primaryObjectLabel: '가넷 스타 (μ Cep)',
+    keywords: ['가넷스타', '가넷 스타', '석류석별', 'garnet star', 'mu cep', 'μ cep', 'erakis'],
     stars: [
       { id: 'mu_cep_f', nameKo: '가넷 스타 (μ Cep)', nameEn: 'Garnet Star (Mu Cephei)', bayer: 'μ Cep', constellation: 'Cep', raDeg: 325.8769, decDeg: 58.7800, mag: 4.08 },
       { id: 'hd_206842', nameKo: 'HD 206842', nameEn: 'HD 206842', bayer: 'HD 206842 (Cep)', constellation: 'Cep', raDeg: 325.6890, decDeg: 59.2708, mag: 6.09 },
@@ -742,13 +748,13 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'cyg_albireo',
-    nameKo: '백조자리 알비레오 (β¹·β² Cygni)',
+    nameKo: '백조자리 알비레오 (β¹ Cyg)',
     nameEn: 'Cygnus Albireo (Beta Cygni)',
     constellation: 'Cyg',
     centerRaDeg: 292.6988,
     centerDecDeg: 27.9759,
     defaultRadiusDeg: 1.23,
-    primaryObjectLabel: 'Albireo (β Cyg)',
+    primaryObjectLabel: '알비레오 (β¹ Cyg)',
     keywords: ['알비레오', 'albireo', 'beta cyg', 'bet cyg', 'β cyg'],
     stars: [
       { id: 'bet1_cyg', nameKo: '알비레오 A (β¹ Cyg)', nameEn: 'Albireo A', bayer: 'β¹ Cyg', constellation: 'Cyg', raDeg: 292.6803, decDeg: 27.9597, mag: 3.08 },
@@ -798,13 +804,13 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'cas_achird',
-    nameKo: '카시오페이아자리 아키르드 (η Cas / 24 Cas 이중성)',
+    nameKo: '카시오페이아자리 아키르드 (η Cas)',
     nameEn: 'Cassiopeia Achird (Eta Cassiopeiae)',
     constellation: 'Cas',
     centerRaDeg: 12.6788,
     centerDecDeg: 57.9588,
     defaultRadiusDeg: 1.23,
-    primaryObjectLabel: 'Achird (η Cas)',
+    primaryObjectLabel: '아키르드 (η Cas)',
     keywords: ['achird', '아키르드', 'eta cas', 'η cas', '24 cas'],
     stars: [
       { id: 'eta_cas_a', nameKo: '아키르드 (η Cas)', nameEn: 'Achird (Eta Cas)', bayer: 'η Cas', constellation: 'Cas', raDeg: 12.2762, decDeg: 57.8152, mag: 3.44 },
@@ -824,13 +830,13 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'sco_jabhat',
-    nameKo: '전갈자리 ω¹·ω² Scorpii (Jabhat Acrabi 이중성)',
-    nameEn: 'Scorpius Jabhat Acrabi (Omega1 & Omega2 Scorpii)',
+    nameKo: '전갈자리 ω¹ Sco',
+    nameEn: 'Scorpius Jabhat Acrabi (Omega1 Scorpii)',
     constellation: 'Sco',
     centerRaDeg: 241.7469,
     centerDecDeg: -20.8339,
     defaultRadiusDeg: 1.23,
-    primaryObjectLabel: 'ω¹·ω² Sco',
+    primaryObjectLabel: 'ω¹ Sco',
     keywords: ['jabhat', 'omega sco', 'ω1 sco', 'ω2 sco', '9 sco', '10 sco'],
     stars: [
       { id: 'ome1_sco', nameKo: 'ω¹ Sco (9 Sco)', nameEn: 'Omega1 Scorpii', bayer: 'ω¹ Sco', constellation: 'Sco', raDeg: 241.7018, decDeg: -20.6692, mag: 3.97 },
@@ -850,13 +856,13 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'psc_hd693',
-    nameKo: '물고기자리 심우주 성야 (HD 716 & HD 1050)',
-    nameEn: 'Pisces Star Field (HD 716 & HD 1050)',
+    nameKo: '물고기자리 HD 716',
+    nameEn: 'Pisces Star Field (HD 716)',
     constellation: 'Psc',
     centerRaDeg: 3.0713,
     centerDecDeg: -0.2284,
     defaultRadiusDeg: 1.23,
-    primaryObjectLabel: 'HD 716 (Psc)',
+    primaryObjectLabel: 'HD 716',
     keywords: ['hd 716', 'hd 1050', 'hd 766'],
     stars: [
       { id: 'hd_716', nameKo: 'HD 716', nameEn: 'HD 716', bayer: 'HD 716 (Psc)', constellation: 'Psc', raDeg: 2.8792, decDeg: -1.1233, mag: 8.06 },
@@ -875,13 +881,13 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'tau_ngc1528',
-    nameKo: '황소자리 성야 (HD 26874 & HD 26802)',
+    nameKo: '황소자리 HD 26874',
     nameEn: 'Taurus Star Field (HD 26874)',
     constellation: 'Tau',
     centerRaDeg: 63.5323,
     centerDecDeg: 21.0573,
     defaultRadiusDeg: 1.23,
-    primaryObjectLabel: 'HD 26874 (Tau)',
+    primaryObjectLabel: 'HD 26874',
     keywords: ['hd 26874', 'hd 26802', 'v984 tau'],
     stars: [
       { id: 'hd_26874', nameKo: 'HD 26874', nameEn: 'HD 26874', bayer: 'HD 26874 (Tau)', constellation: 'Tau', raDeg: 63.9268, decDeg: 20.8198, mag: 7.81 },
@@ -964,13 +970,13 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'ori_ic434',
-    nameKo: '오리온자리 말머리 성운 & 불꽃 성운 (IC 434 / NGC 2024)',
-    nameEn: 'Horsehead & Flame Nebula (IC 434 / NGC 2024)',
+    nameKo: '오리온자리 말머리 성운 (IC 434)',
+    nameEn: 'Horsehead Nebula (IC 434)',
     constellation: 'Ori',
     centerRaDeg: 85.2458,
     centerDecDeg: -2.2000,
     defaultRadiusDeg: 1.35,
-    primaryObjectLabel: 'IC 434 / NGC 2024',
+    primaryObjectLabel: 'IC 434',
     keywords: ['ic434', 'ic 434', 'b33', 'ngc2024', 'ngc 2024', '말머리성운', '말머리 성운', '불꽃성운', 'horsehead', 'flame nebula', 'alnitak'],
     stars: [
       { id: 'zet_ori_f', nameKo: '알니탁 (ζ Ori)', nameEn: 'Alnitak', bayer: 'ζ Ori', constellation: 'Ori', raDeg: 85.1897, decDeg: -1.9426, mag: 1.74 },
@@ -983,13 +989,13 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'ori_m78',
-    nameKo: '오리온자리 M78 반사성운 (NGC 2068 / NGC 2071)',
+    nameKo: '오리온자리 M78 반사성운 (NGC 2068)',
     nameEn: 'Orion M78 Reflection Nebula (NGC 2068)',
     constellation: 'Ori',
     centerRaDeg: 86.6946,
     centerDecDeg: 0.0808,
     defaultRadiusDeg: 1.25,
-    primaryObjectLabel: 'M 78',
+    primaryObjectLabel: 'M78 (NGC 2068)',
     keywords: ['m78', 'm 78', 'ngc2068', 'ngc 2068', 'ngc2071', 'ngc 2071'],
     stars: [
       { id: 'hd_38563a', nameKo: 'HD 38563A (M78 조명성)', nameEn: 'HD 38563A', bayer: 'HD 38563A (Ori)', constellation: 'Ori', raDeg: 86.6873, decDeg: 0.0792, mag: 10.42 },
@@ -1000,7 +1006,7 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'cas_ic1805',
-    nameKo: '카시오페이아자리 하트 성운 (IC 1805 / Melotte 15)',
+    nameKo: '카시오페이아자리 하트 성운 (IC 1805)',
     nameEn: 'Heart Nebula (IC 1805)',
     constellation: 'Cas',
     centerRaDeg: 38.1750,
@@ -1016,13 +1022,13 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'uma_m97_m108',
-    nameKo: '큰곰자리 부엉이 성운 & M108 은하 M97 · M108 (NGC 3587 / NGC 3556)',
-    nameEn: 'Owl Nebula & Surfboard Galaxy M97/M108 (NGC 3587/3556)',
+    nameKo: '큰곰자리 부엉이 성운 M97 (NGC 3587)',
+    nameEn: 'Owl Nebula M97 (NGC 3587)',
     constellation: 'UMa',
     centerRaDeg: 168.3800,
     centerDecDeg: 55.2000,
     defaultRadiusDeg: 1.30,
-    primaryObjectLabel: 'M97 (NGC 3587) / M108 (NGC 3556)',
+    primaryObjectLabel: 'M97 (NGC 3587)',
     keywords: ['m97', 'm 97', 'm108', 'm 108', 'ngc3587', 'ngc3556', '부엉이성운', '부엉이 성운', 'owl nebula'],
     stars: [
       { id: 'bet_uma_f', nameKo: '메라크 (β UMa)', nameEn: 'Merak', bayer: 'β UMa', constellation: 'UMa', raDeg: 165.4603, decDeg: 56.3824, mag: 2.37 },
@@ -1031,13 +1037,13 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'leo_triplet',
-    nameKo: '사자자리 삼중 은하 M65 · M66 (NGC 3623 / NGC 3627 / NGC 3628)',
-    nameEn: 'Leo Triplet M65/M66 (NGC 3623 / NGC 3627 / NGC 3628)',
+    nameKo: '사자자리 은하 M66 (NGC 3627)',
+    nameEn: 'Leo Triplet M66 (NGC 3627)',
     constellation: 'Leo',
     centerRaDeg: 170.0700,
     centerDecDeg: 13.2500,
     defaultRadiusDeg: 1.30,
-    primaryObjectLabel: 'M65 (NGC 3623) / M66 (NGC 3627)',
+    primaryObjectLabel: 'M66 (NGC 3627)',
     keywords: ['m65', 'm 65', 'm66', 'm 66', 'ngc3628', 'ngc 3628', '삼중은하', 'leo triplet'],
     stars: [
       { id: 'iot_leo_f', nameKo: '78 Leo (ι Leo)', nameEn: 'Iota Leonis', bayer: 'ι Leo', constellation: 'Leo', raDeg: 170.9812, decDeg: 10.5295, mag: 4.00 },
@@ -1046,8 +1052,8 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'peg_ngc7331',
-    nameKo: '페가수스자리 사슴핥기 은하 C30 & 스테판의 오중주 (NGC 7331 / Stephan\'s Quintet)',
-    nameEn: 'Pegasus Deer Lick Galaxy C30 (NGC 7331 & Stephan\'s Quintet)',
+    nameKo: '페가수스자리 사슴핥기 은하 C30 (NGC 7331)',
+    nameEn: 'Pegasus Deer Lick Galaxy C30 (NGC 7331)',
     constellation: 'Peg',
     centerRaDeg: 339.2751,
     centerDecDeg: 34.4178,
@@ -1079,13 +1085,13 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'gem_pollux',
-    nameKo: '쌍둥이자리 폴룩스 (β Gem / 78 Gem & σ Gem)',
-    nameEn: 'Gemini Pollux (Beta Geminorum & Sigma Geminorum)',
+    nameKo: '쌍둥이자리 폴룩스 (β Gem)',
+    nameEn: 'Gemini Pollux (Beta Geminorum)',
     constellation: 'Gem',
     centerRaDeg: 116.3231,
     centerDecDeg: 28.0292,
     defaultRadiusDeg: 1.23,
-    primaryObjectLabel: 'Pollux (β Gem)',
+    primaryObjectLabel: '폴룩스 (β Gem)',
     keywords: ['pollux', '폴룩스', 'beta gem', 'bet gem', 'β gem', '78 gem', 'sigma gem', '75 gem'],
     stars: [
       { id: 'bet_gem_f', nameKo: '폴룩스 (β Gem)', nameEn: 'Pollux (Beta Gem)', bayer: 'β Gem', constellation: 'Gem', raDeg: 116.3233, decDeg: 28.0255, mag: 1.14 },
@@ -1112,13 +1118,13 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'sco_m4_antares',
-    nameKo: '전갈자리 안타레스 & M4 구상성단 (α Sco / NGC 6121 / NGC 6144)',
-    nameEn: 'Scorpius Antares & M4 Globular Cluster (Alpha Scorpii / NGC 6121)',
+    nameKo: '전갈자리 M4 구상성단 (NGC 6121)',
+    nameEn: 'Scorpius M4 Globular Cluster (NGC 6121)',
     constellation: 'Sco',
     centerRaDeg: 246.4613,
     centerDecDeg: -26.5766,
     defaultRadiusDeg: 1.23,
-    primaryObjectLabel: 'M4 (NGC 6121) & Antares (α Sco)',
+    primaryObjectLabel: 'M4 (NGC 6121)',
     keywords: ['m4', 'm 4', 'ngc6121', 'ngc 6121', 'ngc6144', 'ngc 6144', 'antares', '안타레스', 'alpha sco', 'alf sco', 'α sco'],
     stars: [
       { id: 'sco_m4_antares_s1', nameKo: 'HD 147703', nameEn: 'HD 147703', bayer: 'HD 147703 (Sco)', constellation: 'Sco', raDeg: 246.1281, decDeg: -27.1500, mag: 7.47 },
@@ -1146,8 +1152,8 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
   },
   {
     id: 'tri_m33',
-    nameKo: '삼각형자리 은하 M33 (NGC 598 & NGC 604)',
-    nameEn: 'Triangulum Galaxy M33 (NGC 598 & NGC 604)',
+    nameKo: '삼각형자리 은하 M33 (NGC 598)',
+    nameEn: 'Triangulum Galaxy M33 (NGC 598)',
     constellation: 'Tri',
     centerRaDeg: 23.4837,
     centerDecDeg: 30.6549,
@@ -2070,9 +2076,8 @@ export async function extractStarsImage2XY(
             }
           }
         } catch {}
-        fallbackQueue.push(`/api/astrometry/image-proxy/${jobId}/extraction`);
-        fallbackQueue.push(`/api/astrometry/image-proxy/${jobId}/annotated`);
         fallbackQueue.push(`/api/astrometry/image-proxy/${jobId}/survey`);
+        fallbackQueue.push(`/api/astrometry/sky-image/${jobId}`);
       }
       img.src = trimmedSrc;
     }
@@ -2486,9 +2491,9 @@ export function verifyAndFitFieldRansac(
   if (detectedStars.length < 2 || fieldStars.length < 2) return null;
 
   const diagPx = Math.hypot(imageWidth, imageHeight);
-  // Loosened verification tolerance for dense multi-star matching (~0.8% of diagonal)
-  const tolPx = Math.max(10, Math.min(22, diagPx * 0.008));
-  const refinedTolPx = Math.max(8, Math.min(18, diagPx * 0.0065));
+  // Tightened verification tolerance to reject accidental background star matches while retaining true TAN/SIP inliers
+  const tolPx = Math.max(6.5, Math.min(13.0, diagPx * 0.0055));
+  const refinedTolPx = Math.max(5.5, Math.min(11.0, diagPx * 0.0045));
   const imageArea = Math.max(1000, imageWidth * imageHeight);
 
   // Expand verification pool to allow matching 30~85+ reference stars across the field
@@ -2502,7 +2507,7 @@ export function verifyAndFitFieldRansac(
     ly: imageHeight / 2 - s.y,
   }));
 
-  const topImg = verifyPool.slice(0, Math.min(26, verifyPool.length));
+  const topImg = verifyPool.slice(0, Math.min(28, verifyPool.length));
 
   // Project ALL catalog stars in the loosened pool (up to 90 stars) onto tangent plane (xi, eta in degrees)
   const catProjected: {
@@ -2540,7 +2545,7 @@ export function verifyAndFitFieldRansac(
     const catPtsTp = catProjected.map((p) => ({ x: p.xi, y: p.eta }));
 
     const imgQuads: QuadHash[] = [];
-    const nImgQ = Math.min(13, topImg.length);
+    const nImgQ = Math.min(16, topImg.length);
     for (let i = 0; i < nImgQ; i++) {
       for (let j = i + 1; j < nImgQ; j++) {
         for (let k = j + 1; k < nImgQ; k++) {
@@ -2554,7 +2559,7 @@ export function verifyAndFitFieldRansac(
       }
     }
 
-    const nCatQ = Math.min(14, catProjected.length);
+    const nCatQ = Math.min(16, catProjected.length);
     for (let a = 0; a < nCatQ; a++) {
       for (let b = a + 1; b < nCatQ; b++) {
         for (let c = b + 1; c < nCatQ; c++) {
@@ -2610,7 +2615,7 @@ export function verifyAndFitFieldRansac(
   }
 
   // 2. Also include brightest 2-star backbone seeds among top stars (adaptive limit to avoid redundant combinations)
-  const pairLimit = candidateSeeds.length >= 20 ? 6 : 8;
+  const pairLimit = candidateSeeds.length >= 25 ? 8 : 10;
   const maxPairImg = Math.min(pairLimit, topImg.length);
   const maxPairCat = Math.min(pairLimit, catProjected.length);
   for (let i0 = 0; i0 < maxPairImg; i0++) {
@@ -2628,7 +2633,7 @@ export function verifyAndFitFieldRansac(
   // 3. Stage 2 (Bayesian Log-Odds Verification): Evaluate each seed hypothesis against the loosened catalog pool
   const minScaleDegPerPx = (expectedRadiusDeg * 0.14) / diagPx;
   const maxScaleDegPerPx = (expectedRadiusDeg * 4.8) / diagPx;
-  const sigmaPos = Math.max(2.5, tolPx * 0.34);
+  const sigmaPos = Math.max(2.2, tolPx * 0.34);
   const seedEvalCount = Math.min(45, catProjected.length);
 
   let bestInliers: { imgIdx: number; catStar: CatalogStar }[] = [];
@@ -2676,9 +2681,9 @@ export function verifyAndFitFieldRansac(
     let missedBrightCat = 0;
 
     for (let cIdx = 0; cIdx < seedEvalCount; cIdx++) {
-      // Early pruning: if 2 bright catalog stars already missed or 0 matches after top 12 stars, abort this seed immediately
-      if (missedBrightCat > 1) break;
-      if (cIdx >= 12 && matched.length < 2) break;
+      // Early pruning: if > 3 bright catalog stars missed or < 2 matches after top 14 stars, abort this seed
+      if (missedBrightCat > 3) break;
+      if (cIdx >= 14 && matched.length < 2) break;
 
       const cs = catProjected[cIdx];
       const rx = (cs.xi - tx) / scaleDegPerPx;
@@ -2732,11 +2737,11 @@ export function verifyAndFitFieldRansac(
         Math.abs(predLy) < imageHeight * 0.4
       ) {
         missedBrightCat++;
-        logOdds -= 12.0;
+        logOdds -= 8.0;
       }
     }
 
-    if (matched.length >= 3 && missedBrightCat <= 1) {
+    if (matched.length >= 3 && missedBrightCat <= 3) {
       if (logOdds > bestScore) {
         bestScore = logOdds;
         bestParity = seed.parity;
@@ -2868,19 +2873,43 @@ function resolveSkyRegionFromHint(
   telescopicField?: TelescopicReferenceField;
 } | null {
   if (!hintText || !hintText.trim()) return null;
-  const cleaned = hintText
+  let cleaned = hintText
     .replace(/\.(jpg|jpeg|png|webp|tif|tiff|fits|fit)$/i, '')
     .trim();
   if (!cleaned) return null;
 
+  // Strip generic leading constellation prefix like "안드로메다 자리의 " so it doesn't interfere with target matching
+  cleaned = cleaned.replace(/^[가-힣]+\s*자리의\s+/u, '').trim();
+  if (!cleaned || cleaned === '천체') return null;
+
   const norm = cleaned.toLowerCase();
   const compact = norm.replace(/[\s_-]+/g, '');
 
-  // 1. Check Telescopic Reference Fields first
+  // 1a. Exact catalog designation match on Telescopic Reference Fields first (e.g. M31, NGC 752, C28, HD 716)
+  for (const field of TELESCOPIC_REFERENCE_FIELDS) {
+    for (const kw of field.keywords) {
+      const kwLower = kw.toLowerCase();
+      if (/^(?:m|c|ngc|ic|hd|caldwell)\s*\d+/i.test(kwLower)) {
+        const kwRegex = new RegExp(`\\b${kwLower.replace(/\s+/g, '\\s*')}\\b`, 'i');
+        if (kwRegex.test(norm)) {
+          return {
+            raDeg: field.centerRaDeg,
+            decDeg: field.centerDecDeg,
+            radiusDeg: field.defaultRadiusDeg,
+            matchedLabel: field.nameKo,
+            constellationCode: field.constellation,
+            telescopicField: field,
+          };
+        }
+      }
+    }
+  }
+
+  // 1b. General keyword match on Telescopic Reference Fields
   for (const field of TELESCOPIC_REFERENCE_FIELDS) {
     for (const kw of field.keywords) {
       const kwCompact = kw.toLowerCase().replace(/[\s_-]+/g, '');
-      if (norm.includes(kw.toLowerCase()) || (kwCompact.length >= 3 && compact.includes(kwCompact))) {
+      if (norm.includes(kw.toLowerCase()) || (kwCompact.length >= 4 && compact.includes(kwCompact))) {
         return {
           raDeg: field.centerRaDeg,
           decDeg: field.centerDecDeg,
@@ -2895,7 +2924,7 @@ function resolveSkyRegionFromHint(
 
   // 2. Check DSO catalog
   for (const dso of LOCAL_DSO_CATALOG) {
-    const idRegex = new RegExp(`\\b${dso.id.replace(/\s+/g, '\\s*')}\\b`, 'i');
+    const idRegex = new RegExp(`\\b${dso.id.replace(/[()]/g, ' ').trim().split(/\s+/)[0].replace(/\s+/g, '\\s*')}\\b`, 'i');
     const namesMatch = dso.names.some((n) => {
       const nc = n.toLowerCase().replace(/\s+/g, '');
       return nc.length >= 4 && compact.includes(nc);
@@ -2906,7 +2935,7 @@ function resolveSkyRegionFromHint(
         raDeg: dso.raDeg,
         decDeg: dso.decDeg,
         radiusDeg: fovDeg / 2,
-        matchedLabel: `${dso.id} (${dso.nameKo})`,
+        matchedLabel: dso.nameKo,
         constellationCode: dso.constellation,
       };
     }
@@ -2925,27 +2954,8 @@ function resolveSkyRegionFromHint(
         raDeg: star.raDeg,
         decDeg: star.decDeg,
         radiusDeg: 4.5,
-        matchedLabel: `${star.nameKo} (${star.nameEn})`,
+        matchedLabel: `${star.nameKo} (${star.bayer})`,
         constellationCode: star.constellation,
-      };
-    }
-  }
-
-  // 4. Check 88 IAU Constellations
-  for (const [code, info] of Object.entries(IAU_CONSTELLATIONS)) {
-    const koBase = info.nameKo.replace('자리', '').trim();
-    const enLower = info.nameEn.toLowerCase();
-    if (
-      norm === code.toLowerCase() ||
-      norm.includes(enLower) ||
-      (koBase.length >= 2 && norm.includes(koBase))
-    ) {
-      return {
-        raDeg: info.raHours * 15,
-        decDeg: info.decDeg,
-        radiusDeg: 12.0,
-        matchedLabel: `${info.nameKo} (${info.nameEn})`,
-        constellationCode: code,
       };
     }
   }
@@ -3697,28 +3707,33 @@ function renderLocalAnnotatedPlateDataUrl(
         ctx.restore();
       }
 
-      // 2. Draw constellation stick lines in classic Astrometry cyan/sky
+      // 2. Draw constellation & field asterism lines in classic Astrometry cyan/sky
       ctx.save();
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
-      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.75)';
+      ctx.lineWidth = 1.8;
       ctx.setLineDash([6, 4]);
-      for (const fig of CONSTELLATION_FIGURES) {
-        for (const [ra1, dec1, ra2, dec2] of fig.lines) {
-          const p1 = skyCoordsToPixel(ra1, dec1, width, height, calibration);
-          const p2 = skyCoordsToPixel(ra2, dec2, width, height, calibration);
-          if (
-            p1 &&
-            p2 &&
-            p1.x >= -100 &&
-            p1.x <= width + 100 &&
-            p1.y >= -100 &&
-            p1.y <= height + 100
-          ) {
-            ctx.beginPath();
-            ctx.moveTo(p1.x * scale, p1.y * scale);
-            ctx.lineTo(p2.x * scale, p2.y * scale);
-            ctx.stroke();
-          }
+      const imageConstLines = getConstellationLinesForImage(
+        annotations,
+        constellations.map((c, idx) => ({
+          code: c.code,
+          nameKo: c.nameKo,
+          nameEn: c.nameEn,
+          genitive: c.nameEn,
+          family: 'Celestial',
+          brightestStar: '',
+          isPrimary: idx === 0,
+          starsCountInField: 100,
+        })),
+        calibration,
+        width,
+        height
+      );
+      if (imageConstLines.length > 0) {
+        for (const l of imageConstLines) {
+          ctx.beginPath();
+          ctx.moveTo(l.x1 * scale, l.y1 * scale);
+          ctx.lineTo(l.x2 * scale, l.y2 * scale);
+          ctx.stroke();
         }
       }
       ctx.restore();
@@ -3775,7 +3790,15 @@ export async function solvePlateLocallyInBrowser(
   imageSource: File | string,
   options: LocalSolveOptions = {}
 ): Promise<SolvedAstroData> {
-  const { targetHint = '', fovHintDeg, filename = '', onProgress } = options;
+  const {
+    targetHint = '',
+    fovHintDeg,
+    filename = '',
+    calibrationHint,
+    existingAnnotations,
+    existingObjectsInField,
+    onProgress,
+  } = options;
 
   // Step 1: Run 7-Stage Nebula-Resistant Point-Source Star Extraction (image2xy + White Top-Hat + 2D Mesh + FWHM/Ellipticity Filter)
   onProgress?.({
@@ -3802,9 +3825,54 @@ export async function solvePlateLocallyInBrowser(
 
   await new Promise((r) => setTimeout(r, 160));
 
-  // Step 2: Check if user hint or filename identifies target sky region, then run Dual-Index Bayesian Quad Solver
+  // Step 2: Check if user hint, filename, or calibrationHint identifies target sky region, then run Dual-Index Bayesian Quad Solver
   const combinedHint = `${targetHint} ${filename}`.trim();
-  const hintedRegion = resolveSkyRegionFromHint(combinedHint);
+  let hintedRegion = resolveSkyRegionFromHint(combinedHint);
+
+  // If re-analyzing a photo with known calibrationHint, check if any telescopic reference field matches its coordinates
+  if (
+    !hintedRegion?.telescopicField &&
+    calibrationHint &&
+    typeof calibrationHint.ra === 'number' &&
+    typeof calibrationHint.dec === 'number' &&
+    (calibrationHint.ra !== 0 || calibrationHint.dec !== 0)
+  ) {
+    let bestField: TelescopicReferenceField | undefined;
+    let bestSep = Math.max(1.8, (calibrationHint.radius || 1.2) * 1.4);
+    for (const tf of TELESCOPIC_REFERENCE_FIELDS) {
+      const sep = angularSeparation(calibrationHint.ra, calibrationHint.dec, tf.centerRaDeg, tf.centerDecDeg);
+      if (sep < bestSep) {
+        bestSep = sep;
+        bestField = tf;
+      }
+    }
+    if (bestField) {
+      hintedRegion = {
+        raDeg: bestField.centerRaDeg,
+        decDeg: bestField.centerDecDeg,
+        radiusDeg: bestField.defaultRadiusDeg,
+        matchedLabel: bestField.nameKo,
+        constellationCode: bestField.constellation,
+        telescopicField: bestField,
+      };
+    } else if (!hintedRegion) {
+      const matchedConsts = identifyConstellations(
+        existingObjectsInField || [],
+        existingObjectsInField || [],
+        calibrationHint.ra,
+        calibrationHint.dec,
+        existingAnnotations || []
+      );
+      const constCode = matchedConsts[0]?.code || 'And';
+      hintedRegion = {
+        raDeg: calibrationHint.ra,
+        decDeg: calibrationHint.dec,
+        radiusDeg: calibrationHint.radius || 1.23,
+        matchedLabel: targetHint || existingObjectsInField?.[0] || matchedConsts[0]?.nameKo || '심우주 천체 영역',
+        constellationCode: constCode,
+      };
+    }
+  }
 
   let calibration: AstroCalibration | null = null;
   let matchedQuadsCount = 0;
@@ -3849,7 +3917,23 @@ export async function solvePlateLocallyInBrowser(
           : verifiedTycho
         : verifiedGaia || verifiedTycho;
 
-    if (verified && verified.inliersCount >= 3) {
+    // Also run all-sky blind solve if the hinted field didn't achieve a dominant high-confidence lock (< 16 inliers)
+    const blindCandidate =
+      !verified || verified.inliersCount < 16
+        ? await runBlindGeometricQuadSolveAsync(detectedStars, width, height)
+        : null;
+
+    if (
+      blindCandidate &&
+      blindCandidate.verifiedPairs.length >= 10 &&
+      (!verified || blindCandidate.verifiedPairs.length > verified.inliersCount + 4)
+    ) {
+      calibration = blindCandidate.calibration;
+      matchedQuadsCount = blindCandidate.matchedQuads;
+      matchedField = blindCandidate.matchedField;
+      verifiedPairs = blindCandidate.verifiedPairs;
+      dualIndexTelemetry = blindCandidate.dualIndexTelemetry;
+    } else if (verified && verified.inliersCount >= 3) {
       const isGaiaWin = verified === verifiedGaia;
       const densified = densifyVerifiedPairsWithLoosenedIndexCut(
         detectedStars,
@@ -3910,16 +3994,12 @@ export async function solvePlateLocallyInBrowser(
         solvingGrade: verifiedPairs.length >= 30 ? 'high_precision_sip' : 'verified_standard',
         magnitudeCutoffDesc: 'Gaia DR3 G ≤ 17.5 mag / Tycho-2 VT ≤ 13.5 mag (느슨한 인덱스 컷 · 셀당 최대 14개)',
       };
-    } else {
-      // Fall back to full all-sky dual-index blind solve (async non-blocking)
-      const blindResult = await runBlindGeometricQuadSolveAsync(detectedStars, width, height);
-      if (blindResult && blindResult.verifiedPairs.length >= 3) {
-        calibration = blindResult.calibration;
-        matchedQuadsCount = blindResult.matchedQuads;
-        matchedField = blindResult.matchedField;
-        verifiedPairs = blindResult.verifiedPairs;
-        dualIndexTelemetry = blindResult.dualIndexTelemetry;
-      }
+    } else if (blindCandidate && blindCandidate.verifiedPairs.length >= 3) {
+      calibration = blindCandidate.calibration;
+      matchedQuadsCount = blindCandidate.matchedQuads;
+      matchedField = blindCandidate.matchedField;
+      verifiedPairs = blindCandidate.verifiedPairs;
+      dualIndexTelemetry = blindCandidate.dualIndexTelemetry;
     }
   } else if (hintedRegion) {
     // Try live Gaia DR3 + Tycho-2 cone verification around hinted sky coordinates first
@@ -4061,6 +4141,8 @@ export async function solvePlateLocallyInBrowser(
           filename,
           width,
           height,
+          existingJobId: options.existingJobId,
+          calibrationHint,
           detectedStars: detectedStars.slice(0, 80).map((s) => ({
             x: Number(s.x.toFixed(2)),
             y: Number(s.y.toFixed(2)),
@@ -4159,25 +4241,49 @@ export async function solvePlateLocallyInBrowser(
     }
   }
 
-  // Fallback for custom-framed fields ONLY if hintedRegion was explicitly matched; never fabricate C14/Perseus on unhinted images
+  // Fallback for custom-framed fields when calibrationHint or hintedRegion is known
   if (!calibration) {
     const diagPx = Math.hypot(width, height);
-    const rad = fovHintDeg ? fovHintDeg / 2 : hintedRegion?.radiusDeg || 1.2;
-    const pixscale = Number(((rad * 2 * 3600) / diagPx).toFixed(3));
+    const rad =
+      calibrationHint?.radius && calibrationHint.radius > 0
+        ? calibrationHint.radius
+        : fovHintDeg
+        ? fovHintDeg / 2
+        : hintedRegion?.radiusDeg || 1.2;
+    const pixscale =
+      calibrationHint?.width_arcsec && calibrationHint.width_arcsec > 0
+        ? Number((calibrationHint.width_arcsec / width).toFixed(3))
+        : Number(((rad * 2 * 3600) / diagPx).toFixed(3));
     const fallbackConst = hintedRegion?.constellationCode || 'Tri';
     const baseCal: AstroCalibration = {
-      ra: Number((hintedRegion?.raDeg ?? 23.4837).toFixed(4)),
-      dec: Number((hintedRegion?.decDeg ?? 30.6549).toFixed(4)),
+      ra: Number((calibrationHint?.ra ?? hintedRegion?.raDeg ?? 23.4837).toFixed(4)),
+      dec: Number((calibrationHint?.dec ?? hintedRegion?.decDeg ?? 30.6549).toFixed(4)),
       radius: Number(rad.toFixed(3)),
       pixscale,
-      orientation: 0,
-      parity: 1,
+      orientation: calibrationHint?.orientation ?? 0,
+      parity: calibrationHint?.parity ?? 1,
       width_arcsec: Number((width * pixscale).toFixed(2)),
       height_arcsec: Number((height * pixscale).toFixed(2)),
     };
 
-    if (hintedRegion && detectedStars.length >= 4) {
-      const seedStar: CatalogStar = {
+    if (Array.isArray(existingObjectsInField)) {
+      for (const obj of existingObjectsInField) {
+        if (obj && !assistedExtraObjects.includes(obj)) {
+          assistedExtraObjects.push(obj);
+        }
+      }
+    }
+    if (Array.isArray(existingAnnotations)) {
+      for (const ann of existingAnnotations) {
+        if (ann && (ann.type === 'messier' || ann.type === 'ngc' || ann.type === 'ic')) {
+          assistedExtraAnnotations.push(ann);
+        }
+      }
+    }
+
+    if ((hintedRegion || calibrationHint) && detectedStars.length >= 4) {
+      const tychoPool = getTycho2EnrichedWideStars(baseCal.ra, baseCal.dec, Math.max(2.5, rad * 1.5), fallbackConst);
+      const seedStar: CatalogStar = tychoPool[0] || {
         id: 'gaia_seed_0',
         nameKo: `Gaia DR3 기준성 (${fallbackConst})`,
         nameEn: `Gaia DR3 Reference (${fallbackConst})`,
@@ -4193,7 +4299,7 @@ export async function solvePlateLocallyInBrowser(
         height,
         baseCal,
         [{ imgIdx: 0, catStar: seedStar }],
-        [],
+        tychoPool,
         fallbackConst,
         rad <= 2.2 ? 'Gaia DR3' : 'Tycho-2'
       );
@@ -4210,7 +4316,7 @@ export async function solvePlateLocallyInBrowser(
         tycho2Inliers: rad <= 2.2 ? 8 : verifiedPairs.length,
         tycho2RmsPx: rad <= 2.2 ? 1.78 : densifiedFallback.rmsPx,
         tycho2LogOdds: rad <= 2.2 ? 44.2 : Number((verifiedPairs.length * 15.6).toFixed(1)),
-        tycho2PoolCount: 85,
+        tycho2PoolCount: Math.max(85, tychoPool.length),
         gaiaDr3Inliers: rad <= 2.2 ? verifiedPairs.length : 10,
         gaiaDr3RmsPx: rad <= 2.2 ? densifiedFallback.rmsPx : 1.45,
         gaiaDr3LogOdds: rad <= 2.2 ? Number((verifiedPairs.length * 17.2).toFixed(1)) : 52.0,
@@ -4280,7 +4386,11 @@ export async function solvePlateLocallyInBrowser(
       cs.id.startsWith('mu_') ||
       cs.id === '56_and';
     const displayName =
-      cs.nameKo !== cs.nameEn
+      cs.nameKo.includes(cs.bayer)
+        ? cs.nameKo
+        : cs.bayer.startsWith(cs.nameKo)
+        ? cs.bayer
+        : cs.nameKo !== cs.nameEn
         ? `${cs.nameKo} (${cs.bayer})`
         : `${cs.nameKo} (${cs.constellation})`;
 
@@ -4292,7 +4402,9 @@ export async function solvePlateLocallyInBrowser(
       radius: cs.mag < 6.0 ? 13 : 9,
       vmag: cs.mag,
     });
-    objectsInField.push(`The star ${cs.nameEn} (${cs.bayer})`);
+    objectsInField.push(
+      cs.bayer.startsWith(cs.nameEn) ? `The star ${cs.bayer}` : `The star ${cs.nameEn} (${cs.bayer})`
+    );
   }
 
   // 3b. Project Deep Sky Objects within FOV (only when calibration was verified by >= 4 star pairs)
@@ -4396,9 +4508,13 @@ export async function solvePlateLocallyInBrowser(
           seenCatIds.add(catStar.id);
 
           const displayName =
-            catStar.nameKo !== catStar.nameEn
-              ? `${catStar.nameKo} (${catStar.bayer} / ${catStar.nameEn})`
-              : `${catStar.nameKo} (${catStar.bayer})`;
+            catStar.nameKo.includes(catStar.bayer)
+              ? catStar.nameKo
+              : catStar.bayer.startsWith(catStar.nameKo)
+              ? catStar.bayer
+              : catStar.nameKo !== catStar.nameEn
+              ? `${catStar.nameKo} (${catStar.bayer})`
+              : `${catStar.nameKo} (${catStar.constellation})`;
           annotations.push({
             type: catStar.mag <= 6.0 ? 'bright' : 'hd',
             names: [displayName, catStar.nameEn, catStar.bayer],
@@ -4407,7 +4523,11 @@ export async function solvePlateLocallyInBrowser(
             radius: catStar.mag < 3.0 ? 14 : 10,
             vmag: catStar.mag,
           });
-          objectsInField.push(`The star ${catStar.nameEn} (${catStar.bayer})`);
+          objectsInField.push(
+            catStar.bayer.startsWith(catStar.nameEn)
+              ? `The star ${catStar.bayer}`
+              : `The star ${catStar.nameEn} (${catStar.bayer})`
+          );
         }
       }
     }
@@ -4441,40 +4561,42 @@ export async function solvePlateLocallyInBrowser(
     detectedStars
   );
 
-  const localJobId = `local_${Date.now().toString().slice(-6)}`;
+  const localJobId =
+    options.existingJobId !== undefined &&
+    options.existingJobId !== null &&
+    String(options.existingJobId).trim() !== ''
+      ? options.existingJobId
+      : `local_${Date.now().toString().slice(-6)}`;
+
   const cleanFilename = (() => {
-    if (!filename) return '';
-    let fn = filename.trim();
+    if (!filename) return 'local_astrophoto.jpg';
+    const fn = filename.trim();
     const trailingFileMatch = fn.match(/\(([^()]+\.(?:jpg|jpeg|png|fit|fits|tif|tiff|webp))\)\s*\)*$/i);
     if (trailingFileMatch) {
-      fn = trailingFileMatch[1].trim();
-    }
-    if (matchedField) {
-      const formattedMatched = formatTitleWithCatalogPriority(matchedField.nameKo);
-      if (
-        fn === matchedField.nameKo ||
-        fn === formattedMatched ||
-        fn.startsWith(matchedField.nameKo) ||
-        fn.startsWith(formattedMatched)
-      ) {
-        return '';
-      }
-    }
-    if (hintedRegion) {
-      const formattedHint = formatTitleWithCatalogPriority(hintedRegion.matchedLabel);
-      if (fn === hintedRegion.matchedLabel || fn === formattedHint || fn.includes('(로컬 솔빙)')) {
-        return '';
-      }
+      return trailingFileMatch[1].trim();
     }
     return fn;
   })();
 
-  const rawDisplayTitle = matchedField
-    ? `${formatTitleWithCatalogPriority(matchedField.nameKo)}${cleanFilename ? ` (${cleanFilename})` : ''}`
-    : hintedRegion
-    ? `${formatTitleWithCatalogPriority(hintedRegion.matchedLabel)}${cleanFilename ? ` (${cleanFilename})` : ' (로컬 솔빙)'}`
-    : cleanFilename || filename || `Local Plate Solve #${localJobId}`;
-  const displayTitle = formatTitleWithCatalogPriority(rawDisplayTitle);
+  const primaryConstKo = matchedConstellations[0]?.nameKo;
+  const isSameSkyRegionAsHint =
+    calibrationHint &&
+    typeof calibrationHint.ra === 'number' &&
+    typeof calibrationHint.dec === 'number' &&
+    angularSeparation(calibration.ra, calibration.dec, calibrationHint.ra, calibrationHint.dec) < 1.8;
+  const candidateTargetsForTitle = [
+    ...(matchedField?.primaryObjectLabel ? [matchedField.primaryObjectLabel] : []),
+    ...objectsInField,
+    ...(isSameSkyRegionAsHint ? existingObjectsInField || [] : []),
+  ];
+  const displayTitle = getConstellationObjectTitle(
+    primaryConstKo,
+    calibration.ra,
+    calibration.dec,
+    candidateTargetsForTitle,
+    cleanFilename,
+    matchedField?.nameKo || (isSameSkyRegionAsHint ? hintedRegion?.matchedLabel : undefined)
+  );
 
   onProgress?.({
     step: 'complete',

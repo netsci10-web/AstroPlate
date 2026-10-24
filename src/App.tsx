@@ -36,6 +36,7 @@ import {
   identifyConstellations,
   getConstellationObjectTitle,
   formatTitleWithCatalogPriority,
+  extractPrimaryObjectIdentifier,
 } from './utils/constellations';
 import { degToRA_HMS, degToDec_DMS } from './utils/coordinateMath';
 import { SAMPLE_SOLVED_JOBS } from './data/sampleShowcase';
@@ -92,6 +93,7 @@ export default function App() {
   const [isDualIndexModalOpen, setIsDualIndexModalOpen] = useState(false);
   const [modalInitialFile, setModalInitialFile] = useState<File | null>(null);
   const [modalInitialUrl, setModalInitialUrl] = useState<string>('');
+  const [modalInitialJobId, setModalInitialJobId] = useState<string>('');
   const [modalInitialTab, setModalInitialTab] = useState<'upload' | 'url' | 'jobId' | 'myJobs'>('upload');
   const [selectedTargetForSimbad, setSelectedTargetForSimbad] = useState<string | null>(null);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
@@ -110,6 +112,7 @@ export default function App() {
     setIsDualIndexModalOpen(false);
     setModalInitialFile(null);
     setModalInitialUrl('');
+    setModalInitialJobId('');
     setModalInitialTab('upload');
   }, []);
 
@@ -117,6 +120,7 @@ export default function App() {
   const handleOpenNewPhoto = () => {
     setModalInitialFile(null);
     setModalInitialUrl('');
+    setModalInitialJobId('');
     setModalInitialTab('upload');
     setIsUploadModalOpen(true);
   };
@@ -125,6 +129,7 @@ export default function App() {
   const handleOpenJobInput = () => {
     setModalInitialFile(null);
     setModalInitialUrl('');
+    setModalInitialJobId('');
     setModalInitialTab('jobId');
     setIsUploadModalOpen(true);
   };
@@ -145,22 +150,42 @@ export default function App() {
         solvedData.imageUrl ||
         `/api/astrometry/image-proxy/${solvedData.jobId}/original`;
 
-      const primaryConst = solvedData.matchedConstellations[0];
-      const targetHint = primaryConst?.nameKo || '';
-      const fovDeg = solvedData.calibration?.radius ? solvedData.calibration.radius * 2 : undefined;
+      const isAuthenticRemoteJob = !String(solvedData.jobId).startsWith('local_');
+      const allFieldObjects = isAuthenticRemoteJob
+        ? [
+            ...(solvedData.info?.objects_in_field || []),
+            ...(solvedData.info?.tags || []),
+          ]
+        : [];
+      const extractedPrimaryTarget = isAuthenticRemoteJob
+        ? extractPrimaryObjectIdentifier(
+            allFieldObjects,
+            solvedData.info?.original_filename,
+            solvedData.title
+          )
+        : null;
+      const targetHint = extractedPrimaryTarget || '';
+      const fovDeg =
+        isAuthenticRemoteJob && solvedData.calibration?.radius
+          ? solvedData.calibration.radius * 2
+          : undefined;
 
-      const rawOrigName = solvedData.info?.original_filename || solvedData.title || '';
+      const rawOrigName = solvedData.info?.original_filename || '';
       const trailingFileMatch = rawOrigName.match(/\(([^()]+\.(?:jpg|jpeg|png|fit|fits|tif|tiff|webp))\)\s*\)*$/i);
       const cleanReAnalyzeFilename = trailingFileMatch
         ? trailingFileMatch[1].trim()
         : /\.(?:jpg|jpeg|png|fit|fits|tif|tiff|webp)$/i.test(rawOrigName.trim())
         ? rawOrigName.trim()
-        : formatTitleWithCatalogPriority(solvedData.title || `Job #${solvedData.jobId}`);
+        : 'astrophoto.jpg';
 
       const result = await solvePlateLocallyInBrowser(imgSrc, {
         filename: cleanReAnalyzeFilename,
         targetHint,
         fovHintDeg: fovDeg,
+        existingJobId: solvedData.jobId,
+        calibrationHint: isAuthenticRemoteJob ? solvedData.calibration : undefined,
+        existingAnnotations: isAuthenticRemoteJob ? solvedData.annotations : undefined,
+        existingObjectsInField: isAuthenticRemoteJob ? solvedData.info?.objects_in_field || [] : [],
         onProgress: (p) => {
           if (p.message) setReAnalyzeStatus(p.message);
         },
@@ -229,17 +254,27 @@ export default function App() {
 
     const validLocalJobs = localJobs
       .filter((item) => !isJobDeleted(item.jobId))
-      .map((item) => ({
-        ...item,
-        primaryConstellationKo: getConstellationObjectTitle(
+      .map((item) => {
+        const cleanConstTitle = getConstellationObjectTitle(
           item.primaryConstellationKo,
           item.raDeg,
           item.decDeg,
-          item.objects || [],
+          item.objects || item.solvedData?.info?.objects_in_field || [],
           item.title,
           item.solvedData?.title
-        ),
-      }));
+        );
+        return {
+          ...item,
+          title: cleanConstTitle,
+          primaryConstellationKo: cleanConstTitle,
+          solvedData: item.solvedData
+            ? {
+                ...item.solvedData,
+                title: cleanConstTitle,
+              }
+            : item.solvedData,
+        };
+      });
 
     setAccountJobs(validLocalJobs);
     setSolvedData(null);
@@ -297,53 +332,62 @@ export default function App() {
           ? customImgUrl
           : `/api/astrometry/image-proxy/${solved.jobId}/original`);
 
-    const formattedSolvedTitle = formatTitleWithCatalogPriority(
-      solved.title || solved.info?.original_filename || '',
-      [...(solved.info?.objects_in_field || []), ...(solved.info?.tags || [])]
-    );
-    const isGenericSolvedTitle =
-      !formattedSolvedTitle ||
-      /^(image|img|photo|dsc|stacked|astrometry|plate|capture|test|frame|light)[_\-\d\s.]*\.(jpg|jpeg|png|fit|fits|tif|tiff|webp)$/i.test(
-        formattedSolvedTitle.trim()
-      ) ||
-      /^Astrometry Plate Solve #/i.test(formattedSolvedTitle.trim());
+    const effectiveTitle = constTitle;
 
-    const effectiveTitle = isGenericSolvedTitle ? constTitle : formattedSolvedTitle;
-
-    const newItem: AnalysisHistoryItem = {
-      id: `job_${solved.jobId}`,
-      jobId: solved.jobId,
-      title: effectiveTitle || `Job #${solved.jobId}`,
-      imageUrl: validImgUrl,
-      rawImageUrl: validRawImgUrl,
-      timestamp: Date.now(),
-      raDeg: solved.calibration.ra,
-      decDeg: solved.calibration.dec,
-      radiusDeg: solved.calibration.radius,
-      primaryConstellationKo: constTitle,
-      primaryConstellationCode: primaryConst?.code || '',
-      starsCount,
-      dsosCount,
-      objects: solved.info?.objects_in_field || solved.info?.tags || [],
-      solvedData: {
-        ...solved,
-        annotations: safeAnnotations,
-        imageUrl: validImgUrl,
-        rawImageUrl: validRawImgUrl,
-      },
-    };
-
-    // Remember Job ID in accountJobs store
-    rememberAccountJob(
-      solved.jobId,
-      solved.title,
-      solved.info?.objects_in_field || [],
-      'success',
-      solved.calibration
-    );
+    const nowTs = Date.now();
+    let finalItemToSync: AnalysisHistoryItem | null = null;
 
     setAccountJobs((prev) => {
-      const filtered = prev.filter((h) => String(h.jobId) !== String(solved.jobId));
+      // Find existing job by Job ID or by matching rawImageUrl for local jobs so we update in-place
+      const matchedExisting = prev.find((h) => {
+        if (String(h.jobId) === String(solved.jobId)) return true;
+        if (isLocalJob && String(h.jobId).startsWith('local_')) {
+          if (validRawImgUrl && h.rawImageUrl && h.rawImageUrl === validRawImgUrl) return true;
+        }
+        return false;
+      });
+
+      const resolvedJobId = matchedExisting ? matchedExisting.jobId : solved.jobId;
+      const newItem: AnalysisHistoryItem = {
+        id: `job_${resolvedJobId}`,
+        jobId: resolvedJobId,
+        title: effectiveTitle || `Job #${resolvedJobId}`,
+        imageUrl: validImgUrl,
+        rawImageUrl: validRawImgUrl,
+        timestamp: nowTs,
+        raDeg: solved.calibration.ra,
+        decDeg: solved.calibration.dec,
+        radiusDeg: solved.calibration.radius,
+        primaryConstellationKo: constTitle,
+        primaryConstellationCode: primaryConst?.code || '',
+        starsCount,
+        dsosCount,
+        objects: solved.info?.objects_in_field || solved.info?.tags || [],
+        solvedData: {
+          ...solved,
+          jobId: resolvedJobId,
+          annotations: safeAnnotations,
+          imageUrl: validImgUrl,
+          rawImageUrl: validRawImgUrl,
+        },
+      };
+
+      finalItemToSync = newItem;
+
+      // Remember Job ID in accountJobs store with refreshed timestamp
+      rememberAccountJob(
+        resolvedJobId,
+        solved.title,
+        solved.info?.objects_in_field || [],
+        'success',
+        solved.calibration
+      );
+
+      const filtered = prev.filter(
+        (h) =>
+          String(h.jobId) !== String(resolvedJobId) &&
+          String(h.jobId) !== String(solved.jobId)
+      );
       const updated = [newItem, ...filtered].sort((a, b) => {
         const timeA = typeof a.timestamp === 'number' && !isNaN(a.timestamp) ? a.timestamp : 0;
         const timeB = typeof b.timestamp === 'number' && !isNaN(b.timestamp) ? b.timestamp : 0;
@@ -355,15 +399,23 @@ export default function App() {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       } catch (e) {}
+
+      if (String(resolvedJobId) !== String(solved.jobId)) {
+        setActiveJobId(resolvedJobId);
+        setSolvedData((cur) => (cur ? { ...cur, jobId: resolvedJobId } : cur));
+      }
+
       return updated;
     });
 
     // Sync to server endpoint
-    fetch('/api/astrometry/history', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newItem),
-    }).catch(() => {});
+    if (finalItemToSync) {
+      fetch('/api/astrometry/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalItemToSync),
+      }).catch(() => {});
+    }
   }, []);
 
   // Fetch full Astrometry solved data for a specific Job ID
@@ -403,6 +455,9 @@ export default function App() {
       };
       setSolvedData(cachedData);
       setActiveJobId(jobId);
+      if (shouldSaveToAccountJobs) {
+        saveToAccountJobs(cachedData, cachedData.rawImageUrl || existingJob.rawImageUrl);
+      }
       setLoading(false);
       return;
     }
@@ -427,7 +482,13 @@ export default function App() {
         typeof existingJob.radiusDeg === 'number' && existingJob.radiusDeg > 0
           ? existingJob.radiusDeg
           : 1;
-      const matched = identifyConstellations(ra, dec, radius);
+      const matched = identifyConstellations(
+        existingJob.objects || [],
+        existingJob.objects || [],
+        ra,
+        dec,
+        []
+      );
       const dualIndexTelemetry = buildDualIndexTelemetryForCalibration(ra, dec, radius);
       const resolvedImg =
         existingJob.imageUrl ||
@@ -473,6 +534,9 @@ export default function App() {
 
       setSolvedData(reconstructed);
       setActiveJobId(jobId);
+      if (shouldSaveToAccountJobs) {
+        saveToAccountJobs(reconstructed, resolvedRaw);
+      }
       setLoading(false);
       return;
     }
@@ -603,6 +667,9 @@ export default function App() {
         : undefined;
 
       const primaryMatchedConstKo = matched[0]?.nameKo;
+      const annotationObjectNames = verifiedAnnotations
+        .slice(0, 12)
+        .flatMap((a: any) => (Array.isArray(a?.names) ? a.names : []));
       const computedConstellationTitle = getConstellationObjectTitle(
         primaryMatchedConstKo,
         calibration?.ra || 0,
@@ -610,21 +677,11 @@ export default function App() {
         [
           ...(Array.isArray(info.objects_in_field) ? info.objects_in_field : []),
           ...(Array.isArray(info.tags) ? info.tags : []),
+          ...annotationObjectNames,
         ],
         info.original_filename
       );
-      const rawOriginalTitle = info.original_filename || '';
-      const isGenericOriginalFilename =
-        !rawOriginalTitle ||
-        /^(image|img|photo|dsc|stacked|astrometry|plate|capture|test|frame|light)[_\-\d\s.]*\.(jpg|jpeg|png|fit|fits|tif|tiff|webp)$/i.test(
-          rawOriginalTitle.trim()
-        );
-      const resolvedTitle = isGenericOriginalFilename
-        ? computedConstellationTitle
-        : formatTitleWithCatalogPriority(rawOriginalTitle, [
-            ...(Array.isArray(info.objects_in_field) ? info.objects_in_field : []),
-            ...(Array.isArray(info.tags) ? info.tags : []),
-          ]);
+      const resolvedTitle = computedConstellationTitle;
 
       const solved: SolvedAstroData = {
         jobId,
@@ -1048,6 +1105,7 @@ export default function App() {
           setIsUploadModalOpen(false);
           setModalInitialFile(null);
           setModalInitialUrl('');
+          setModalInitialJobId('');
           setModalInitialTab('upload');
         }}
         onSolveSuccess={(jobId, imgUrl) => loadJobData(jobId, imgUrl, true)}
@@ -1062,6 +1120,7 @@ export default function App() {
         hasApiKey={hasApiKey}
         initialFile={modalInitialFile}
         initialUrl={modalInitialUrl}
+        initialJobId={modalInitialJobId}
         initialTab={modalInitialTab}
         accountJobs={accountJobs}
       />
@@ -1072,15 +1131,16 @@ export default function App() {
         onClose={() => setIsAccountJobsDrawerOpen(false)}
         jobs={accountJobs}
         activeJobId={activeJobId}
-        onSelectJob={(jobId) => loadJobData(jobId, undefined, false)}
+        onSelectJob={(jobId) => loadJobData(jobId, undefined, true)}
         onReAnalyzeJob={(item) => {
-          loadJobData(item.jobId, item.rawImageUrl, false);
+          loadJobData(item.jobId, item.rawImageUrl, true);
           const targetUrl =
             item.rawImageUrl ||
             item.imageUrl ||
             `/api/astrometry/image-proxy/${item.jobId}/original`;
           setModalInitialFile(null);
           setModalInitialUrl(targetUrl);
+          setModalInitialJobId(String(item.jobId));
           setModalInitialTab('url');
           setIsUploadModalOpen(true);
         }}

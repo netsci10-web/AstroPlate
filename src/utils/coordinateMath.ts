@@ -152,4 +152,49 @@ export function pixelToSkyCoords(
   };
 }
 
+// Convert celestial coordinates (RA, Dec in degrees) to 2D image pixel coordinates (X, Y)
+// Inverse of pixelToSkyCoords using exact Gnomonic (TAN) projection
+export function skyCoordsToPixel(
+  raDeg: number,
+  decDeg: number,
+  imageWidth: number,
+  imageHeight: number,
+  centerRaDeg: number,
+  centerDecDeg: number,
+  pixscaleArcsec: number,
+  orientationDeg: number = 0,
+  parity: number = 1.0
+): { x: number; y: number } | null {
+  if (!pixscaleArcsec || pixscaleArcsec <= 0) return null;
+  const deg2rad = Math.PI / 180;
+  const rad2deg = 180 / Math.PI;
 
+  const ra = raDeg * deg2rad;
+  const dec = decDeg * deg2rad;
+  const ra0 = centerRaDeg * deg2rad;
+  const dec0 = centerDecDeg * deg2rad;
+
+  const cosC =
+    Math.sin(dec0) * Math.sin(dec) + Math.cos(dec0) * Math.cos(dec) * Math.cos(ra - ra0);
+  if (cosC <= 0.05) return null; // Behind or too far from tangent center
+
+  const xiRad = (Math.cos(dec) * Math.sin(ra - ra0)) / cosC;
+  const etaRad =
+    (Math.cos(dec0) * Math.sin(dec) - Math.sin(dec0) * Math.cos(dec) * Math.cos(ra - ra0)) /
+    cosC;
+
+  const xiDeg = xiRad * rad2deg;
+  const etaDeg = etaRad * rad2deg;
+
+  const rotRad = (orientationDeg || 0) * deg2rad;
+  const p = parity || 1.0;
+
+  // Inverse rotation from local tangent plane (xi, eta) back to image frame (ux, uy)
+  const uxDeg = xiDeg * Math.cos(rotRad) + etaDeg * Math.sin(rotRad);
+  const uyDeg = -xiDeg * Math.sin(rotRad) + etaDeg * Math.cos(rotRad);
+
+  const pixelX = imageWidth / 2 - (uxDeg * 3600) / (p * pixscaleArcsec);
+  const pixelY = imageHeight / 2 - (uyDeg * 3600) / pixscaleArcsec;
+
+  return { x: pixelX, y: pixelY };
+}

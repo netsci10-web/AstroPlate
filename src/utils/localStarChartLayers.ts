@@ -241,7 +241,13 @@ export async function generateBrowserStarChartLayers(
     const { canvas, ctx } = createBaseCanvas(0.08);
 
     // Draw constellation lines from matched constellations + sky projection
-    const imageLines = getConstellationLinesForImage(annotations, data.matchedConstellations || []);
+    const imageLines = getConstellationLinesForImage(
+      annotations,
+      data.matchedConstellations || [],
+      cal,
+      origW,
+      origH
+    );
     ctx.save();
     ctx.strokeStyle = 'rgba(56, 189, 248, 0.72)';
     ctx.lineWidth = 2.0 * uiScale;

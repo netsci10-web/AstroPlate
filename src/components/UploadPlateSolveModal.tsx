@@ -66,6 +66,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
   const [localDetectedCount, setLocalDetectedCount] = useState<number | null>(null);
   const [imageUrl, setImageUrl] = useState('');
   const [jobIdInput, setJobIdInput] = useState('');
+  const [reAnalyzeTargetJobId, setReAnalyzeTargetJobId] = useState<string | number | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const dualIndexStats = getLocalDualIndexStats();
@@ -92,18 +93,23 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
   // Sync initial props when opened
   useEffect(() => {
     if (isOpen) {
+      setLocalTargetHint('');
       if (initialFile) {
         setSelectedFile(initialFile);
         setPreviewUrl(URL.createObjectURL(initialFile));
+        setReAnalyzeTargetJobId(null);
         setActiveTab('upload');
       } else if (initialUrl) {
         setImageUrl(initialUrl);
+        setReAnalyzeTargetJobId(initialJobId || null);
         setActiveTab('url');
       } else if (initialJobId) {
         setJobIdInput(initialJobId);
+        setReAnalyzeTargetJobId(null);
         setActiveTab('jobId');
       } else if (initialTab) {
         setActiveTab(initialTab);
+        setReAnalyzeTargetJobId(null);
         if (initialTab !== 'upload') {
           setSelectedFile(null);
           setPreviewUrl(null);
@@ -112,6 +118,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
         // Reset state so user can immediately accept and analyze a new photo
         setSelectedFile(null);
         setPreviewUrl(null);
+        setReAnalyzeTargetJobId(null);
         setErrorMessage(null);
         setIsProcessing(false);
         setActiveTab('upload');
@@ -207,6 +214,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
       const url = URL.createObjectURL(file);
       setPreviewUrl(url);
       setErrorMessage(null);
+      setReAnalyzeTargetJobId(null);
     }
   };
 
@@ -218,6 +226,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
       const url = URL.createObjectURL(file);
       setPreviewUrl(url);
       setErrorMessage(null);
+      setReAnalyzeTargetJobId(null);
     }
   };
 
@@ -394,9 +403,17 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
         const sourceToSolve = activeTab === 'upload' && selectedFile ? selectedFile : imageUrl.trim();
         const proxyJobMatch =
           activeTab === 'url' ? imageUrl.trim().match(/image-proxy\/([^/?#]+)/i) : null;
-        const matchedHistJob = proxyJobMatch
-          ? myJobs.find((j) => String(j.jobId) === String(proxyJobMatch[1])) ||
-            accountJobs.find((j) => String(j.jobId) === String(proxyJobMatch[1]))
+        const targetIdToMatch = reAnalyzeTargetJobId || (proxyJobMatch ? proxyJobMatch[1] : null);
+        const matchedHistJob = targetIdToMatch
+          ? myJobs.find((j) => String(j.jobId) === String(targetIdToMatch)) ||
+            accountJobs.find((j) => String(j.jobId) === String(targetIdToMatch))
+          : activeTab === 'url'
+          ? myJobs.find((j) => j.rawImageUrl && j.rawImageUrl === imageUrl.trim()) ||
+            accountJobs.find(
+              (j) =>
+                (j.rawImageUrl && j.rawImageUrl === imageUrl.trim()) ||
+                (j.imageUrl && j.imageUrl === imageUrl.trim())
+            )
           : null;
 
         const fileNameForSolve =
@@ -409,21 +426,31 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
         const effectiveHint =
           localTargetHint.trim() ||
           matchedHistJob?.objects?.[0] ||
-          matchedHistJob?.constellationKo ||
-          (matchedHistJob as any)?.primaryConstellationKo ||
+          (matchedHistJob as any)?.solvedData?.info?.objects_in_field?.[0] ||
           '';
 
+        const effectiveCalibration =
+          matchedHistJob?.calibration || (matchedHistJob as any)?.solvedData?.calibration;
+
         const effectiveFovDeg =
-          matchedHistJob?.calibration?.radius && matchedHistJob.calibration.radius > 0
-            ? matchedHistJob.calibration.radius * 2
+          effectiveCalibration?.radius && effectiveCalibration.radius > 0
+            ? effectiveCalibration.radius * 2
             : (matchedHistJob as any)?.radiusDeg && (matchedHistJob as any).radiusDeg > 0
             ? (matchedHistJob as any).radiusDeg * 2
             : undefined;
+
+        const existingJobIdToReuse =
+          reAnalyzeTargetJobId || matchedHistJob?.jobId || undefined;
 
         const solvedResult = await solvePlateLocallyInBrowser(sourceToSolve, {
           targetHint: effectiveHint,
           fovHintDeg: effectiveFovDeg,
           filename: fileNameForSolve,
+          existingJobId: existingJobIdToReuse,
+          calibrationHint: effectiveCalibration,
+          existingAnnotations: (matchedHistJob as any)?.solvedData?.annotations,
+          existingObjectsInField:
+            matchedHistJob?.objects || (matchedHistJob as any)?.solvedData?.info?.objects_in_field,
           onProgress: (prog) => {
             setCurrentStep(prog.message);
             setLocalProgressPct(prog.progressPct);
@@ -888,6 +915,7 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setErrorMessage(null);
+                                  setReAnalyzeTargetJobId(j.jobId);
                                   setImageUrl(targetImageUrl);
                                   setActiveTab('url');
                                 }}

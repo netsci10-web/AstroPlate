@@ -447,10 +447,10 @@ export const SimbadInspectorModal: React.FC<SimbadInspectorModalProps> = ({ targ
                   href={`https://simbad.cds.unistra.fr/simbad/sim-id?Ident=${encodeURIComponent(cleanSimbadIdent)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium inline-flex items-center space-x-1.5 transition-colors"
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium inline-flex items-center space-x-1.5 transition-colors whitespace-nowrap shrink-0"
                 >
-                  <span>SIMBAD 웹페이지 열기</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span className="whitespace-nowrap">SIMBAD 웹페이지 열기</span>
+                  <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                 </a>
               </div>
             </div>
@@ -533,16 +533,16 @@ export const SimbadInspectorModal: React.FC<SimbadInspectorModalProps> = ({ targ
                 </div>
               )}
 
-              <div className="pt-2 flex items-center justify-between text-xs border-t border-slate-800">
-                <span className="text-slate-400">출처: {data.source}</span>
+              <div className="pt-2 flex items-center justify-between gap-3 text-xs border-t border-slate-800">
+                <span className="text-slate-400 truncate min-w-0">출처: {data.source}</span>
                 <a
                   href={`https://simbad.cds.unistra.fr/simbad/sim-id?Ident=${encodeURIComponent(cleanSimbadIdent)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center space-x-1.5 transition-colors"
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium inline-flex items-center space-x-1.5 transition-colors whitespace-nowrap shrink-0"
                 >
-                  <span>SIMBAD 웹페이지 열기</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span className="whitespace-nowrap">SIMBAD 웹페이지 열기</span>
+                  <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                 </a>
               </div>
             </div>

@@ -348,12 +348,6 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
     return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
 
-  // Compute constellation lines connecting detected stars
-  const constellationLines = React.useMemo(() => {
-    if (!data.annotations || data.annotations.length === 0) return [];
-    return getConstellationLinesForImage(data.annotations, data.matchedConstellations);
-  }, [data.annotations, data.matchedConstellations]);
-
   // Separate stars and DSOs
   const { stars, dsos } = React.useMemo(() => {
     const starsList: AstrometryAnnotationItem[] = [];
@@ -389,10 +383,23 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
             data.imageWidth || calWidth,
             data.imageHeight || calHeight
           )
-        : [];
+        : starsList;
 
     return { stars: verifiedStars, dsos: dsosList };
   }, [data.annotations, data.imageWidth, data.imageHeight, effectiveDetectedStars, calWidth, calHeight]);
+
+  // Compute constellation lines connecting verified catalog stars in the image
+  const constellationLines = React.useMemo(() => {
+    const sourceAnnotations = stars.length > 0 ? stars : data.annotations || [];
+    if (sourceAnnotations.length === 0 && !cal) return [];
+    return getConstellationLinesForImage(
+      sourceAnnotations,
+      data.matchedConstellations || [],
+      cal,
+      calWidth,
+      calHeight
+    );
+  }, [stars, data.annotations, data.matchedConstellations, cal, calWidth, calHeight]);
 
   // Selectable targets in field (DSOs first, then named bright stars, or fallback from objects_in_field)
   const selectableTargets = React.useMemo<AstrometryAnnotationItem[]>(() => {
@@ -423,19 +430,17 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
   }, [dsos, stars, data.info, data.title, calWidth, calHeight]);
 
   const [selectedTarget, setSelectedTarget] = useState<AstrometryAnnotationItem | null>(null);
-  const [isPhysicalCardOpen, setIsPhysicalCardOpen] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth >= 768 : true
-  );
+  const [isPhysicalCardOpen, setIsPhysicalCardOpen] = useState<boolean>(false);
 
-  // Auto-select primary target when photo or selectableTargets change
-  // Default: closed (false) on mobile phones (< 768px), open (true) on desktop computers (>= 768px)
+  // Auto-select primary target when photo or selectableTargets change,
+  // but keep the detail popover closed by default until the user clicks to open it
   useEffect(() => {
     if (selectableTargets.length > 0) {
       setSelectedTarget(selectableTargets[0]);
-      setIsPhysicalCardOpen(typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
     } else {
       setSelectedTarget(null);
     }
+    setIsPhysicalCardOpen(false);
   }, [data.jobId, selectableTargets]);
 
   const selectedPhysicalSummary = React.useMemo(() => {
@@ -890,8 +895,8 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
                           x2={line.x2}
                           y2={line.y2}
                           stroke={currentColorConfig.halo}
-                          strokeWidth="5.5"
-                          strokeOpacity="0.45"
+                          strokeWidth={5.5 * fontScale}
+                          strokeOpacity="0.42"
                           strokeLinecap="round"
                         />
                         {/* Core sharp line */}
@@ -901,9 +906,28 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
                           x2={line.x2}
                           y2={line.y2}
                           stroke={currentColorConfig.primary}
-                          strokeWidth="2.2"
-                          strokeDasharray="4 2"
+                          strokeWidth={2.4 * fontScale}
+                          strokeDasharray={`${7 * fontScale} ${4 * fontScale}`}
                           strokeLinecap="round"
+                        />
+                        {/* Endpoint node rings so connected stars are clearly highlighted */}
+                        <circle
+                          cx={line.x1}
+                          cy={line.y1}
+                          r={4.2 * fontScale}
+                          fill="none"
+                          stroke={currentColorConfig.primary}
+                          strokeWidth={1.6 * fontScale}
+                          strokeOpacity="0.85"
+                        />
+                        <circle
+                          cx={line.x2}
+                          cy={line.y2}
+                          r={4.2 * fontScale}
+                          fill="none"
+                          stroke={currentColorConfig.primary}
+                          strokeWidth={1.6 * fontScale}
+                          strokeOpacity="0.85"
                         />
                       </g>
                     ))}

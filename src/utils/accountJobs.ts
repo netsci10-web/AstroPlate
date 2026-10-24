@@ -96,11 +96,12 @@ export function rememberAccountJob(
   const existing = existingIdx >= 0 ? current[existingIdx] : null;
 
   const updated: RememberedAccountJob = {
+    ...(existing || {}),
     jobId,
     filename: filename || existing?.filename || `Astrometry Job #${jobId}`,
     status: status || existing?.status || 'success',
     objects: objects && objects.length > 0 ? objects : existing?.objects || [],
-    dateAdded: existing?.dateAdded || Date.now(),
+    dateAdded: Date.now(),
     calibration: calibration || existing?.calibration || null,
   };
 

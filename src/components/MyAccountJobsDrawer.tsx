@@ -183,12 +183,15 @@ export const MyAccountJobsDrawer: React.FC<MyAccountJobsDrawerProps> = ({
                         </span>
                       </div>
 
-                      <p className="text-xs text-slate-300 font-medium truncate mt-1">
-                        {formatTitleWithCatalogPriority(
-                          item.title || `Astrometry Job #${item.jobId}`,
-                          item.objects || item.solvedData?.info?.objects_in_field || []
+                      {item.solvedData?.info?.original_filename &&
+                        item.solvedData.info.original_filename.trim() !== constellationTitle.trim() && (
+                          <p className="text-[11px] text-slate-400 font-medium truncate mt-1">
+                            {formatTitleWithCatalogPriority(
+                              item.solvedData.info.original_filename,
+                              item.objects || item.solvedData?.info?.objects_in_field || []
+                            )}
+                          </p>
                         )}
-                      </p>
 
                       <div className="text-[11px] text-slate-400 font-mono mt-1 space-y-0.5">
                         <p>RA: {degToRA_HMS(item.raDeg ?? 0)} ({raText})</p>
