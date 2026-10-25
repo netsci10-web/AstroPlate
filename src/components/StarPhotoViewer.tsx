@@ -162,7 +162,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
   const [showStarLabels, setShowStarLabels] = useState(false);
   const [showDSO, setShowDSO] = useState(true);
   const [showGrid, setShowGrid] = useState(true);
-  const [showCenterFov, setShowCenterFov] = useState(true);
+  const [showCenterFov, setShowCenterFov] = useState(false);
   const [showDetectedCircles, setShowDetectedCircles] = useState(false);
   const [overlayOpacity, setOverlayOpacity] = useState(0.85);
 
@@ -488,16 +488,16 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
     <div
       ref={containerRef}
       className={`relative bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden flex flex-col ${
-        isFullscreen ? 'h-screen w-screen rounded-none' : 'h-[620px]'
+        isFullscreen ? 'h-screen w-screen rounded-none' : 'h-[680px]'
       }`}
     >
-      {/* Top Controls Overlay Header */}
-      <div className="absolute top-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+      {/* Top Controls Header Bar (Placed cleanly above the astrophoto) */}
+      <div className="bg-slate-900/95 border-b border-slate-800 px-3.5 py-2.5 z-20 flex flex-wrap items-center justify-between gap-2 shrink-0">
         {/* Left: View Mode Tabs */}
-        <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl p-1 flex items-center space-x-1 shadow-lg pointer-events-auto">
+        <div className="bg-slate-950/90 border border-slate-700/80 rounded-xl p-1 flex items-center space-x-1 shadow-sm">
           <button
             onClick={() => setViewMode('vector')}
-            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all flex items-center space-x-1.5 ${
+            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all flex items-center space-x-1.5 cursor-pointer ${
               viewMode === 'vector'
                 ? 'bg-sky-500 text-white shadow-sm'
                 : 'text-slate-300 hover:text-white hover:bg-slate-800'
@@ -509,7 +509,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
           {!isLocalJob && (
             <button
               onClick={() => setViewMode('annotated')}
-              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
+              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
                 viewMode === 'annotated'
                   ? 'bg-sky-500 text-white shadow-sm'
                   : 'text-slate-300 hover:text-white hover:bg-slate-800'
@@ -521,7 +521,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
           )}
           <button
             onClick={() => setViewMode('red_green')}
-            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
+            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
               viewMode === 'red_green'
                 ? 'bg-sky-500 text-white shadow-sm'
                 : 'text-slate-300 hover:text-white hover:bg-slate-800'
@@ -532,7 +532,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
           </button>
           <button
             onClick={() => setViewMode('raw')}
-            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
+            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
               viewMode === 'raw'
                 ? 'bg-sky-500 text-white shadow-sm'
                 : 'text-slate-300 hover:text-white hover:bg-slate-800'
@@ -545,7 +545,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
 
         {/* Center / Action: 천체사진 다시 분석 (Re-analyze Astrophoto) */}
         {onReAnalyze && (
-          <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl p-1 flex items-center space-x-1 shadow-lg pointer-events-auto">
+          <div className="bg-slate-950/90 border border-slate-700/80 rounded-xl p-1 flex items-center space-x-1 shadow-sm">
             <button
               type="button"
               onClick={onReAnalyze}
@@ -571,45 +571,45 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
         )}
 
         {/* Right: Physical Summary Popover Toggle + Quick Action Controls (+/- Zoom, Reset, Fullscreen) */}
-        <div className="flex items-center gap-2 pointer-events-auto">
+        <div className="flex items-center gap-2">
           {selectedPhysicalSummary && (
             <button
               type="button"
               onClick={() => setIsPhysicalCardOpen((prev) => !prev)}
-              className={`text-xs px-3 py-1.5 rounded-xl font-bold transition-all flex items-center space-x-1.5 border shadow-lg cursor-pointer ${
+              className={`text-xs px-3 py-1.5 rounded-xl font-bold transition-all flex items-center space-x-1.5 border shadow-sm cursor-pointer ${
                 isPhysicalCardOpen
                   ? 'bg-sky-500/25 text-sky-200 border-sky-400/70 ring-1 ring-sky-400/40'
-                  : 'bg-slate-900/90 text-slate-300 hover:text-white border-slate-700/80 hover:bg-slate-800'
+                  : 'bg-slate-950/90 text-slate-300 hover:text-white border-slate-700/80 hover:bg-slate-800'
               }`}
               title="선택된 주요천체의 상세 정보(겉보기 등급, 크기, 거리) 팝오버 열기/닫기"
             >
               <Info className="w-3.5 h-3.5 text-sky-400" />
               <span>주요천체 상세</span>
-              <span className="text-[11px] font-mono px-1.5 py-0.2 rounded bg-slate-950/80 text-sky-300 border border-sky-800/60 max-w-[130px] truncate">
+              <span className="text-[11px] font-mono px-1.5 py-0.2 rounded bg-slate-900 text-sky-300 border border-sky-800/60 max-w-[130px] truncate">
                 {selectedPhysicalSummary.displayName}
               </span>
             </button>
           )}
 
-          <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl p-1 flex items-center space-x-1 shadow-lg">
+          <div className="bg-slate-950/90 border border-slate-700/80 rounded-xl p-1 flex items-center space-x-1 shadow-sm">
             <button
               onClick={() => handleZoom(0.25)}
               title="확대 (Zoom In) - 버튼 클릭으로만 조절"
-              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
             >
               <ZoomIn className="w-4 h-4" />
             </button>
             <button
               onClick={() => handleZoom(-0.25)}
               title="축소 (Zoom Out) - 버튼 클릭으로만 조절"
-              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
             >
               <ZoomOut className="w-4 h-4" />
             </button>
             <button
               onClick={resetView}
               title="화면 맞춤 (Reset)"
-              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
@@ -617,7 +617,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
             <button
               onClick={toggleFullscreen}
               title={isFullscreen ? '전체화면 종료' : '전체화면 (Fullscreen)'}
-              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+              className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
             >
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
@@ -629,7 +629,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
       {selectedPhysicalSummary && isPhysicalCardOpen && (
         <div
           onMouseDown={(e) => e.stopPropagation()}
-          className="absolute top-14 right-3 z-30 w-[calc(100%-1.5rem)] sm:w-[430px] bg-slate-900/95 backdrop-blur-xl border border-sky-500/40 rounded-2xl p-3.5 shadow-2xl shadow-black/80 pointer-events-auto animate-in fade-in slide-in-from-top-2 duration-150"
+          className="absolute top-16 right-3 z-30 w-[calc(100%-1.5rem)] sm:w-[430px] bg-slate-900/95 backdrop-blur-xl border border-sky-500/40 rounded-2xl p-3.5 shadow-2xl shadow-black/80 pointer-events-auto animate-in fade-in slide-in-from-top-2 duration-150"
         >
           {/* Popover Header: Target Title & Category Badge */}
           <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-800/90">

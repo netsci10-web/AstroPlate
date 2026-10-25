@@ -94,34 +94,39 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setLocalTargetHint('');
+      setErrorMessage(null);
+      setIsProcessing(false);
       if (initialFile) {
         setSelectedFile(initialFile);
         setPreviewUrl(URL.createObjectURL(initialFile));
         setReAnalyzeTargetJobId(null);
         setActiveTab('upload');
       } else if (initialUrl) {
+        setSelectedFile(null);
+        setPreviewUrl(null);
         setImageUrl(initialUrl);
         setReAnalyzeTargetJobId(initialJobId || null);
         setActiveTab('url');
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
       } else if (initialJobId) {
+        setSelectedFile(null);
+        setPreviewUrl(null);
         setJobIdInput(initialJobId);
         setReAnalyzeTargetJobId(null);
         setActiveTab('jobId');
-      } else if (initialTab) {
-        setActiveTab(initialTab);
-        setReAnalyzeTargetJobId(null);
-        if (initialTab !== 'upload') {
-          setSelectedFile(null);
-          setPreviewUrl(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
         }
       } else {
-        // Reset state so user can immediately accept and analyze a new photo
+        // Always reset to a clean empty dropzone when opening for a new upload
         setSelectedFile(null);
         setPreviewUrl(null);
+        setImageUrl('');
+        setJobIdInput('');
         setReAnalyzeTargetJobId(null);
-        setErrorMessage(null);
-        setIsProcessing(false);
-        setActiveTab('upload');
+        setActiveTab(initialTab || 'upload');
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
@@ -461,6 +466,11 @@ export const UploadPlateSolveModal: React.FC<UploadPlateSolveModalProps> = ({
         });
 
         setIsProcessing(false);
+        setSelectedFile(null);
+        setPreviewUrl(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
         if (onLocalSolveSuccess) {
           onLocalSolveSuccess(solvedResult);
         } else {

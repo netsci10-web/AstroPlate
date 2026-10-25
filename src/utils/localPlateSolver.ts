@@ -151,6 +151,7 @@ export const LOCAL_DSO_CATALOG: DsoCatalogEntry[] = [
   { id: 'M20 (NGC 6514)', names: ['M20 (NGC 6514)', 'M 20', 'NGC 6514', 'Trifid Nebula (삼열 성운)'], nameKo: '삼열 성운 M20 (NGC 6514)', type: 'messier', constellation: 'Sgr', raDeg: 270.66, decDeg: -23.03, radiusArcmin: 14.0, vmag: 6.3 },
   { id: 'M16 (NGC 6611)', names: ['M16 (NGC 6611)', 'M 16', 'NGC 6611', 'Eagle Nebula (독수리 성운)'], nameKo: '독수리 성운 M16 (NGC 6611)', type: 'messier', constellation: 'Ser', raDeg: 274.70, decDeg: -13.81, radiusArcmin: 15.0, vmag: 6.0 },
   { id: 'M17 (NGC 6618)', names: ['M17 (NGC 6618)', 'M 17', 'NGC 6618', 'Omega Nebula (오메가 성운 / 백조 성운)'], nameKo: '오메가 성운 M17 (NGC 6618)', type: 'messier', constellation: 'Sgr', raDeg: 275.20, decDeg: -16.18, radiusArcmin: 18.0, vmag: 6.0 },
+  { id: 'C50 (NGC 2244)', names: ['C50 (NGC 2244)', 'NGC 2244', 'NGC 2239', 'Caldwell 50 (Rosette Cluster / 장미 성단)'], nameKo: '장미 성단 C50 (NGC 2244)', type: 'ngc', constellation: 'Mon', raDeg: 97.9813, decDeg: 4.9429, radiusArcmin: 12.0, vmag: 4.8 },
   { id: 'C49 (NGC 2237)', names: ['C49 (NGC 2237)', 'NGC 2237', 'Rosette Nebula (장미 성운)'], nameKo: '장미 성운 C49 (NGC 2237)', type: 'ngc', constellation: 'Mon', raDeg: 97.98, decDeg: 4.95, radiusArcmin: 40.0, vmag: 6.0 },
   { id: 'M44 (NGC 2632)', names: ['M44 (NGC 2632)', 'M 44', 'NGC 2632', 'Beehive Cluster (프레세페 성단 / 벌집 성단)'], nameKo: '프레세페 성단 M44 (NGC 2632)', type: 'messier', constellation: 'Cnc', raDeg: 130.10, decDeg: 19.67, radiusArcmin: 47.0, vmag: 3.7 },
   { id: 'M36 (NGC 1960)', names: ['M36 (NGC 1960)', 'M 36', 'NGC 1960', 'Pinwheel Cluster (마차부자리 M36 산개성단)'], nameKo: 'M36 산개성단 (NGC 1960)', type: 'messier', constellation: 'Aur', raDeg: 84.0842, decDeg: 34.1350, radiusArcmin: 10.0, vmag: 6.0 },
@@ -174,6 +175,64 @@ export const LOCAL_DSO_CATALOG: DsoCatalogEntry[] = [
   { id: 'NGC 595', names: ['NGC 595', 'M33 HII 발광성운 (NGC 595)'], nameKo: 'NGC 595 발광성운 (M33)', type: 'ngc', constellation: 'Tri', raDeg: 23.3888, decDeg: 30.6922, radiusArcmin: 1.5, vmag: 13.1 },
   { id: 'NGC 592', names: ['NGC 592'], nameKo: 'NGC 592 성운 (M33)', type: 'ngc', constellation: 'Tri', raDeg: 23.3100, decDeg: 30.6461, radiusArcmin: 0.9, vmag: 13.0 },
   { id: 'NGC 588', names: ['NGC 588'], nameKo: 'NGC 588 성운 (M33)', type: 'ngc', constellation: 'Tri', raDeg: 23.1942, decDeg: 30.6494, radiusArcmin: 0.9, vmag: 13.5 },
+  { id: 'M39 (NGC 7092)', names: ['M39 (NGC 7092)', 'NGC 7092', 'M 39', '백조자리 M39 산개성단'], nameKo: 'M39 산개성단 (NGC 7092)', type: 'messier', constellation: 'Cyg', raDeg: 322.9583, decDeg: 48.4333, radiusArcmin: 15.5, vmag: 4.6 },
+  { id: 'C19 (IC 5146)', names: ['C19 (IC 5146)', 'IC 5146', 'Cocoon Nebula (고치 성운)'], nameKo: '고치 성운 C19 (IC 5146)', type: 'ic', constellation: 'Cyg', raDeg: 328.3708, decDeg: 47.2667, radiusArcmin: 6.0, vmag: 7.2 },
+  { id: 'M29 (NGC 6913)', names: ['M29 (NGC 6913)', 'NGC 6913', 'M 29', 'Cooling Tower Cluster'], nameKo: 'M29 산개성단 (NGC 6913)', type: 'messier', constellation: 'Cyg', raDeg: 305.9833, decDeg: 38.5167, radiusArcmin: 3.5, vmag: 6.6 },
+  { id: 'M2 (NGC 7089)', names: ['M2 (NGC 7089)', 'NGC 7089', 'M 2'], nameKo: 'M2 구상성단 (NGC 7089)', type: 'messier', constellation: 'Aqr', raDeg: 323.3625, decDeg: -0.8233, radiusArcmin: 8.0, vmag: 6.3 },
+  { id: 'M5 (NGC 5904)', names: ['M5 (NGC 5904)', 'NGC 5904', 'M 5'], nameKo: 'M5 구상성단 (NGC 5904)', type: 'messier', constellation: 'Ser', raDeg: 229.6384, decDeg: 2.0810, radiusArcmin: 11.5, vmag: 5.7 },
+  { id: 'M6 (NGC 6405)', names: ['M6 (NGC 6405)', 'NGC 6405', 'M 6', 'Butterfly Cluster (나비 성단)'], nameKo: '나비 성단 M6 (NGC 6405)', type: 'messier', constellation: 'Sco', raDeg: 265.0833, decDeg: -32.2167, radiusArcmin: 12.5, vmag: 4.2 },
+  { id: 'M7 (NGC 6475)', names: ['M7 (NGC 6475)', 'NGC 6475', 'M 7', 'Ptolemy Cluster (프톨레마이오스 성단)'], nameKo: '프톨레마이오스 성단 M7 (NGC 6475)', type: 'messier', constellation: 'Sco', raDeg: 268.4625, decDeg: -34.7933, radiusArcmin: 40.0, vmag: 3.3 },
+  { id: 'M9 (NGC 6333)', names: ['M9 (NGC 6333)', 'NGC 6333', 'M 9'], nameKo: 'M9 구상성단 (NGC 6333)', type: 'messier', constellation: 'Oph', raDeg: 259.7991, decDeg: -18.5163, radiusArcmin: 6.0, vmag: 7.7 },
+  { id: 'M10 (NGC 6254)', names: ['M10 (NGC 6254)', 'NGC 6254', 'M 10'], nameKo: 'M10 구상성단 (NGC 6254)', type: 'messier', constellation: 'Oph', raDeg: 254.2877, decDeg: -4.1003, radiusArcmin: 10.0, vmag: 6.6 },
+  { id: 'M12 (NGC 6218)', names: ['M12 (NGC 6218)', 'NGC 6218', 'M 12'], nameKo: 'M12 구상성단 (NGC 6218)', type: 'messier', constellation: 'Oph', raDeg: 251.8091, decDeg: -1.9485, radiusArcmin: 8.0, vmag: 6.7 },
+  { id: 'M14 (NGC 6402)', names: ['M14 (NGC 6402)', 'NGC 6402', 'M 14'], nameKo: 'M14 구상성단 (NGC 6402)', type: 'messier', constellation: 'Oph', raDeg: 264.4004, decDeg: -3.2459, radiusArcmin: 5.5, vmag: 7.6 },
+  { id: 'M15 (NGC 7078)', names: ['M15 (NGC 7078)', 'NGC 7078', 'M 15', 'Great Pegasus Cluster'], nameKo: '페가수스 대성단 M15 (NGC 7078)', type: 'messier', constellation: 'Peg', raDeg: 322.4930, decDeg: 12.1670, radiusArcmin: 9.0, vmag: 6.2 },
+  { id: 'M18 (NGC 6613)', names: ['M18 (NGC 6613)', 'NGC 6613', 'M 18'], nameKo: 'M18 산개성단 (NGC 6613)', type: 'messier', constellation: 'Sgr', raDeg: 274.9875, decDeg: -17.1317, radiusArcmin: 4.5, vmag: 6.9 },
+  { id: 'M19 (NGC 6273)', names: ['M19 (NGC 6273)', 'NGC 6273', 'M 19'], nameKo: 'M19 구상성단 (NGC 6273)', type: 'messier', constellation: 'Oph', raDeg: 255.6570, decDeg: -26.2679, radiusArcmin: 8.5, vmag: 6.8 },
+  { id: 'M21 (NGC 6531)', names: ['M21 (NGC 6531)', 'NGC 6531', 'M 21'], nameKo: 'M21 산개성단 (NGC 6531)', type: 'messier', constellation: 'Sgr', raDeg: 271.1583, decDeg: -22.5000, radiusArcmin: 6.5, vmag: 5.9 },
+  { id: 'M22 (NGC 6656)', names: ['M22 (NGC 6656)', 'NGC 6656', 'M 22', 'Sagittarius Cluster'], nameKo: '궁수자리 대성단 M22 (NGC 6656)', type: 'messier', constellation: 'Sgr', raDeg: 279.0998, decDeg: -23.9047, radiusArcmin: 16.0, vmag: 5.1 },
+  { id: 'M23 (NGC 6494)', names: ['M23 (NGC 6494)', 'NGC 6494', 'M 23'], nameKo: 'M23 산개성단 (NGC 6494)', type: 'messier', constellation: 'Sgr', raDeg: 269.2667, decDeg: -18.9850, radiusArcmin: 13.5, vmag: 5.5 },
+  { id: 'M24 (IC 4715)', names: ['M24 (IC 4715)', 'IC 4715', 'M 24', 'Sagittarius Star Cloud'], nameKo: '궁수자리 항성구름 M24 (IC 4715)', type: 'messier', constellation: 'Sgr', raDeg: 274.2250, decDeg: -18.5500, radiusArcmin: 45.0, vmag: 4.6 },
+  { id: 'M25 (IC 4725)', names: ['M25 (IC 4725)', 'IC 4725', 'M 25'], nameKo: 'M25 산개성단 (IC 4725)', type: 'messier', constellation: 'Sgr', raDeg: 277.9250, decDeg: -19.1167, radiusArcmin: 16.0, vmag: 4.6 },
+  { id: 'M26 (NGC 6694)', names: ['M26 (NGC 6694)', 'NGC 6694', 'M 26'], nameKo: 'M26 산개성단 (NGC 6694)', type: 'messier', constellation: 'Sct', raDeg: 281.3208, decDeg: -9.3833, radiusArcmin: 7.5, vmag: 8.0 },
+  { id: 'M28 (NGC 6626)', names: ['M28 (NGC 6626)', 'NGC 6626', 'M 28'], nameKo: 'M28 구상성단 (NGC 6626)', type: 'messier', constellation: 'Sgr', raDeg: 276.1367, decDeg: -24.8698, radiusArcmin: 5.6, vmag: 6.8 },
+  { id: 'M30 (NGC 7099)', names: ['M30 (NGC 7099)', 'NGC 7099', 'M 30'], nameKo: 'M30 구상성단 (NGC 7099)', type: 'messier', constellation: 'Cap', raDeg: 325.0922, decDeg: -23.1799, radiusArcmin: 6.0, vmag: 7.2 },
+  { id: 'M41 (NGC 2287)', names: ['M41 (NGC 2287)', 'NGC 2287', 'M 41'], nameKo: 'M41 산개성단 (NGC 2287)', type: 'messier', constellation: 'CMa', raDeg: 101.5042, decDeg: -20.7617, radiusArcmin: 19.0, vmag: 4.5 },
+  { id: 'M46 (NGC 2437)', names: ['M46 (NGC 2437)', 'NGC 2437', 'M 46'], nameKo: 'M46 산개성단 (NGC 2437)', type: 'messier', constellation: 'Pup', raDeg: 115.4417, decDeg: -14.8100, radiusArcmin: 13.5, vmag: 6.1 },
+  { id: 'M47 (NGC 2422)', names: ['M47 (NGC 2422)', 'NGC 2422', 'M 47'], nameKo: 'M47 산개성단 (NGC 2422)', type: 'messier', constellation: 'Pup', raDeg: 114.1458, decDeg: -14.4833, radiusArcmin: 15.0, vmag: 4.2 },
+  { id: 'M48 (NGC 2548)', names: ['M48 (NGC 2548)', 'NGC 2548', 'M 48'], nameKo: 'M48 산개성단 (NGC 2548)', type: 'messier', constellation: 'Hya', raDeg: 123.4292, decDeg: -5.7500, radiusArcmin: 27.0, vmag: 5.8 },
+  { id: 'M49 (NGC 4472)', names: ['M49 (NGC 4472)', 'NGC 4472', 'M 49'], nameKo: 'M49 타원은하 (NGC 4472)', type: 'messier', constellation: 'Vir', raDeg: 187.4450, decDeg: 8.0004, radiusArcmin: 5.1, vmag: 8.4 },
+  { id: 'M50 (NGC 2323)', names: ['M50 (NGC 2323)', 'NGC 2323', 'M 50', 'Heart-Shaped Cluster'], nameKo: 'M50 산개성단 (NGC 2323)', type: 'messier', constellation: 'Mon', raDeg: 105.6958, decDeg: -8.3378, radiusArcmin: 8.0, vmag: 5.9 },
+  { id: 'M53 (NGC 5024)', names: ['M53 (NGC 5024)', 'NGC 5024', 'M 53'], nameKo: 'M53 구상성단 (NGC 5024)', type: 'messier', constellation: 'Com', raDeg: 198.2302, decDeg: 18.1682, radiusArcmin: 6.5, vmag: 7.6 },
+  { id: 'M56 (NGC 6779)', names: ['M56 (NGC 6779)', 'NGC 6779', 'M 56'], nameKo: 'M56 구상성단 (NGC 6779)', type: 'messier', constellation: 'Lyr', raDeg: 289.1482, decDeg: 30.1835, radiusArcmin: 4.4, vmag: 8.3 },
+  { id: 'M63 (NGC 5055)', names: ['M63 (NGC 5055)', 'NGC 5055', 'M 63', 'Sunflower Galaxy (해바라기 은하)'], nameKo: '해바라기 은하 M63 (NGC 5055)', type: 'messier', constellation: 'CVn', raDeg: 198.9555, decDeg: 42.0293, radiusArcmin: 6.3, vmag: 8.6 },
+  { id: 'M64 (NGC 4826)', names: ['M64 (NGC 4826)', 'NGC 4826', 'M 64', 'Black Eye Galaxy (검은눈 은하)'], nameKo: '검은눈 은하 M64 (NGC 4826)', type: 'messier', constellation: 'Com', raDeg: 194.1821, decDeg: 21.6827, radiusArcmin: 5.0, vmag: 8.5 },
+  { id: 'M67 (NGC 2682)', names: ['M67 (NGC 2682)', 'NGC 2682', 'M 67', 'King Cobra Cluster'], nameKo: 'M67 산개성단 (NGC 2682)', type: 'messier', constellation: 'Cnc', raDeg: 132.8250, decDeg: 11.8000, radiusArcmin: 15.0, vmag: 6.1 },
+  { id: 'M71 (NGC 6838)', names: ['M71 (NGC 6838)', 'NGC 6838', 'M 71'], nameKo: 'M71 구상성단 (NGC 6838)', type: 'messier', constellation: 'Sge', raDeg: 298.4437, decDeg: 18.7792, radiusArcmin: 3.6, vmag: 8.2 },
+  { id: 'M76 (NGC 650)', names: ['M76 (NGC 650)', 'NGC 650', 'NGC 651', 'M 76', 'Little Dumbbell Nebula (작은 아령 성운)'], nameKo: '작은 아령 성운 M76 (NGC 650)', type: 'messier', constellation: 'Per', raDeg: 25.5819, decDeg: 51.5754, radiusArcmin: 2.3, vmag: 10.1 },
+  { id: 'M77 (NGC 1068)', names: ['M77 (NGC 1068)', 'NGC 1068', 'M 77', 'Cetus A'], nameKo: 'M77 나선은하 (NGC 1068)', type: 'messier', constellation: 'Cet', raDeg: 40.6696, decDeg: -0.0133, radiusArcmin: 3.5, vmag: 8.9 },
+  { id: 'M79 (NGC 1904)', names: ['M79 (NGC 1904)', 'NGC 1904', 'M 79'], nameKo: 'M79 구상성단 (NGC 1904)', type: 'messier', constellation: 'Lep', raDeg: 81.0441, decDeg: -24.5242, radiusArcmin: 4.8, vmag: 7.7 },
+  { id: 'M83 (NGC 5236)', names: ['M83 (NGC 5236)', 'NGC 5236', 'M 83', 'Southern Pinwheel Galaxy (남쪽 바람개비 은하)'], nameKo: '남쪽 바람개비 은하 M83 (NGC 5236)', type: 'messier', constellation: 'Hya', raDeg: 204.2538, decDeg: -29.8658, radiusArcmin: 6.5, vmag: 7.5 },
+  { id: 'M84 (NGC 4374)', names: ['M84 (NGC 4374)', 'NGC 4374', 'M 84'], nameKo: 'M84 렌즈상은하 (NGC 4374)', type: 'messier', constellation: 'Vir', raDeg: 186.2656, decDeg: 12.8870, radiusArcmin: 3.2, vmag: 9.1 },
+  { id: 'M86 (NGC 4406)', names: ['M86 (NGC 4406)', 'NGC 4406', 'M 86'], nameKo: 'M86 렌즈상은하 (NGC 4406)', type: 'messier', constellation: 'Vir', raDeg: 186.5492, decDeg: 12.9460, radiusArcmin: 4.5, vmag: 8.9 },
+  { id: 'M87 (NGC 4486)', names: ['M87 (NGC 4486)', 'NGC 4486', 'M 87', 'Virgo A (처녀자리 A 은하)'], nameKo: '처녀자리 A 은하 M87 (NGC 4486)', type: 'messier', constellation: 'Vir', raDeg: 187.7059, decDeg: 12.3911, radiusArcmin: 4.2, vmag: 8.6 },
+  { id: 'M92 (NGC 6341)', names: ['M92 (NGC 6341)', 'NGC 6341', 'M 92'], nameKo: 'M92 구상성단 (NGC 6341)', type: 'messier', constellation: 'Her', raDeg: 259.2808, decDeg: 43.1359, radiusArcmin: 7.0, vmag: 6.4 },
+  { id: 'M93 (NGC 2447)', names: ['M93 (NGC 2447)', 'NGC 2447', 'M 93'], nameKo: 'M93 산개성단 (NGC 2447)', type: 'messier', constellation: 'Pup', raDeg: 116.1417, decDeg: -23.8567, radiusArcmin: 11.0, vmag: 6.0 },
+  { id: 'M94 (NGC 4736)', names: ['M94 (NGC 4736)', 'NGC 4736', 'M 94', 'Cat\'s Eye Galaxy (고양이 눈 은하)'], nameKo: '고양이 눈 은하 M94 (NGC 4736)', type: 'messier', constellation: 'CVn', raDeg: 192.7211, decDeg: 41.1202, radiusArcmin: 5.6, vmag: 8.2 },
+  { id: 'M95 (NGC 3351)', names: ['M95 (NGC 3351)', 'NGC 3351', 'M 95'], nameKo: 'M95 막대나선은하 (NGC 3351)', type: 'messier', constellation: 'Leo', raDeg: 160.9905, decDeg: 11.7037, radiusArcmin: 3.7, vmag: 9.7 },
+  { id: 'M96 (NGC 3368)', names: ['M96 (NGC 3368)', 'NGC 3368', 'M 96'], nameKo: 'M96 나선은하 (NGC 3368)', type: 'messier', constellation: 'Leo', raDeg: 161.6906, decDeg: 11.8199, radiusArcmin: 3.8, vmag: 9.2 },
+  { id: 'M97 (NGC 3587)', names: ['M97 (NGC 3587)', 'NGC 3587', 'M 97', 'Owl Nebula (부엉이 성운)'], nameKo: '부엉이 성운 M97 (NGC 3587)', type: 'messier', constellation: 'UMa', raDeg: 168.6988, decDeg: 55.0190, radiusArcmin: 1.7, vmag: 9.9 },
+  { id: 'M105 (NGC 3379)', names: ['M105 (NGC 3379)', 'NGC 3379', 'M 105'], nameKo: 'M105 타원은하 (NGC 3379)', type: 'messier', constellation: 'Leo', raDeg: 161.9567, decDeg: 12.5816, radiusArcmin: 2.7, vmag: 9.3 },
+  { id: 'M106 (NGC 4258)', names: ['M106 (NGC 4258)', 'NGC 4258', 'M 106'], nameKo: 'M106 나선은하 (NGC 4258)', type: 'messier', constellation: 'CVn', raDeg: 184.7396, decDeg: 47.3037, radiusArcmin: 9.3, vmag: 8.4 },
+  { id: 'M108 (NGC 3556)', names: ['M108 (NGC 3556)', 'NGC 3556', 'M 108', 'Surfboard Galaxy'], nameKo: '서프보드 은하 M108 (NGC 3556)', type: 'messier', constellation: 'UMa', raDeg: 167.8790, decDeg: 55.6741, radiusArcmin: 4.3, vmag: 10.0 },
+  { id: 'M109 (NGC 3992)', names: ['M109 (NGC 3992)', 'NGC 3992', 'M 109'], nameKo: 'M109 막대나선은하 (NGC 3992)', type: 'messier', constellation: 'UMa', raDeg: 179.4000, decDeg: 53.3745, radiusArcmin: 3.8, vmag: 9.8 },
+  { id: 'NGC 3628', names: ['NGC 3628', 'Hamburger Galaxy (햄버거 은하)'], nameKo: '햄버거 은하 (NGC 3628)', type: 'ngc', constellation: 'Leo', raDeg: 170.0709, decDeg: 13.5895, radiusArcmin: 7.4, vmag: 9.5 },
+  { id: 'C32 (NGC 4631)', names: ['C32 (NGC 4631)', 'NGC 4631', 'Whale Galaxy (고래 은하)'], nameKo: '고래 은하 C32 (NGC 4631)', type: 'ngc', constellation: 'CVn', raDeg: 190.5334, decDeg: 32.5415, radiusArcmin: 7.7, vmag: 9.2 },
+  { id: 'C38 (NGC 4565)', names: ['C38 (NGC 4565)', 'NGC 4565', 'Needle Galaxy (바늘 은하)'], nameKo: '바늘 은하 C38 (NGC 4565)', type: 'ngc', constellation: 'Com', raDeg: 189.0866, decDeg: 25.9877, radiusArcmin: 7.9, vmag: 9.6 },
+  { id: 'C63 (NGC 7293)', names: ['C63 (NGC 7293)', 'NGC 7293', 'Helix Nebula (나선 성운)'], nameKo: '나선 성운 C63 (NGC 7293)', type: 'ngc', constellation: 'Aqr', raDeg: 337.4106, decDeg: -20.8371, radiusArcmin: 12.5, vmag: 7.6 },
+  { id: 'C65 (NGC 253)', names: ['C65 (NGC 253)', 'NGC 253', 'Sculptor Galaxy (조각가자리 은하)'], nameKo: '조각가자리 은하 C65 (NGC 253)', type: 'ngc', constellation: 'Scl', raDeg: 11.8880, decDeg: -25.2882, radiusArcmin: 13.8, vmag: 7.2 },
+  { id: 'C77 (NGC 5128)', names: ['C77 (NGC 5128)', 'NGC 5128', 'Centaurus A (센타우루스 A 은하)'], nameKo: '센타우루스 A 은하 C77 (NGC 5128)', type: 'ngc', constellation: 'Cen', raDeg: 201.3651, decDeg: -43.0191, radiusArcmin: 12.8, vmag: 6.8 },
+  { id: 'C80 (NGC 5139)', names: ['C80 (NGC 5139)', 'NGC 5139', 'Omega Centauri (오메가 센타우리)'], nameKo: '오메가 센타우리 C80 (NGC 5139)', type: 'ngc', constellation: 'Cen', raDeg: 201.6970, decDeg: -47.4795, radiusArcmin: 18.0, vmag: 3.9 },
 ];
 
 /**
@@ -1185,6 +1244,134 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
       { id: 'tri_m33_s22', nameKo: 'TYC 2293-1324-1', nameEn: 'TYC 2293-1324-1', bayer: 'TYC 2293-1324-1 (Tri)', constellation: 'Tri', raDeg: 23.2378, decDeg: 30.2714, mag: 10.23 },
       { id: 'tri_m33_s23', nameKo: 'TYC 2293-1236-1', nameEn: 'TYC 2293-1236-1', bayer: 'TYC 2293-1236-1 (Tri)', constellation: 'Tri', raDeg: 24.1037, decDeg: 30.6634, mag: 10.33 },
       { id: 'tri_m33_s24', nameKo: 'TYC 2293-1271-1', nameEn: 'TYC 2293-1271-1', bayer: 'TYC 2293-1271-1 (Tri)', constellation: 'Tri', raDeg: 23.8201, decDeg: 30.4206, mag: 10.37 },
+    ],
+  },
+  {
+    id: 'mon_ngc2244',
+    nameKo: '외뿔소자리 장미 성단 C50 (NGC 2244)',
+    nameEn: 'Monoceros Rosette Cluster C50 (NGC 2244)',
+    constellation: 'Mon',
+    centerRaDeg: 98.0363,
+    centerDecDeg: 4.9911,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'C50 (NGC 2244)',
+    keywords: [
+      'c50',
+      'c 50',
+      'caldwell 50',
+      'ngc2244',
+      'ngc 2244',
+      'ngc2239',
+      'ngc 2239',
+      'c49',
+      'c 49',
+      'caldwell 49',
+      'ngc2237',
+      'ngc 2237',
+      'ngc2238',
+      'ngc 2238',
+      'ngc2246',
+      'ngc 2246',
+      'rosette',
+      '장미성단',
+      '장미 성단',
+      '장미성운',
+      '장미 성운',
+      '12 mon',
+    ],
+    stars: [
+      { id: '12_mon', nameKo: '12 Mon', nameEn: '12 Monocerotis', bayer: '12 Mon', constellation: 'Mon', raDeg: 98.0801, decDeg: 4.8560, mag: 5.88 },
+      { id: 'hd_46150', nameKo: 'HD 46150', nameEn: 'HD 46150', bayer: 'HD 46150 (Mon)', constellation: 'Mon', raDeg: 97.9813, decDeg: 4.9429, mag: 6.73 },
+      { id: 'hd_45995', nameKo: 'HD 45995', nameEn: 'HD 45995', bayer: 'HD 45995 (Mon)', constellation: 'Mon', raDeg: 97.6217, decDeg: 4.3325, mag: 7.20 },
+      { id: 'hd_46223', nameKo: 'HD 46223', nameEn: 'HD 46223', bayer: 'HD 46223 (Mon)', constellation: 'Mon', raDeg: 98.0388, decDeg: 4.8235, mag: 7.28 },
+      { id: 'hd_45789', nameKo: 'HD 45789', nameEn: 'HD 45789', bayer: 'HD 45789 (Mon)', constellation: 'Mon', raDeg: 97.3604, decDeg: 4.2533, mag: 7.58 },
+      { id: 'hd_46149', nameKo: 'HD 46149', nameEn: 'HD 46149', bayer: 'HD 46149 (Mon)', constellation: 'Mon', raDeg: 97.9689, decDeg: 5.0331, mag: 7.61 },
+      { id: 'hd_46106', nameKo: 'HD 46106', nameEn: 'HD 46106', bayer: 'HD 46106 (Mon)', constellation: 'Mon', raDeg: 97.9100, decDeg: 5.0268, mag: 7.92 },
+      { id: 'hd_46485', nameKo: 'HD 46485', nameEn: 'HD 46485', bayer: 'HD 46485 (Mon)', constellation: 'Mon', raDeg: 98.4767, decDeg: 4.6624, mag: 8.07 },
+      { id: 'hd_46202', nameKo: 'HD 46202', nameEn: 'HD 46202', bayer: 'HD 46202 (Mon)', constellation: 'Mon', raDeg: 98.0436, decDeg: 4.9666, mag: 8.18 },
+      { id: 'hd_46056', nameKo: 'HD 46056', nameEn: 'HD 46056', bayer: 'HD 46056 (Mon)', constellation: 'Mon', raDeg: 97.9089, decDeg: 4.8344, mag: 8.19 },
+      { id: 'hd_46573', nameKo: 'HD 46573', nameEn: 'HD 46573', bayer: 'HD 46573 (Mon)', constellation: 'Mon', raDeg: 98.6484, decDeg: 4.9680, mag: 8.80 },
+      { id: 'hd_46300', nameKo: 'HD 46300', nameEn: 'HD 46300', bayer: 'HD 46300 (Mon)', constellation: 'Mon', raDeg: 98.3023, decDeg: 5.4631, mag: 9.02 },
+      { id: 'hd_46375', nameKo: 'HD 46375', nameEn: 'HD 46375', bayer: 'HD 46375 (Mon)', constellation: 'Mon', raDeg: 98.4004, decDeg: 5.6612, mag: 9.11 },
+      { id: 'hd_259105', nameKo: 'HD 259105', nameEn: 'HD 259105', bayer: 'HD 259105 (Mon)', constellation: 'Mon', raDeg: 97.7585, decDeg: 4.5083, mag: 9.18 },
+      { id: 'tyc_156_1887_1', nameKo: 'TYC 156-1887-1', nameEn: 'TYC 156-1887-1', bayer: 'TYC 156-1887-1 (Mon)', constellation: 'Mon', raDeg: 98.8700, decDeg: 5.5126, mag: 10.15 },
+    ],
+  },
+  {
+    id: 'cnc_m44',
+    nameKo: '게자리 프레세페 성단 M44 (NGC 2632)',
+    nameEn: 'Cancer Beehive Cluster M44 (NGC 2632)',
+    constellation: 'Cnc',
+    centerRaDeg: 130.10,
+    centerDecDeg: 19.67,
+    defaultRadiusDeg: 1.25,
+    primaryObjectLabel: 'M44 (NGC 2632)',
+    keywords: ['m44', 'm 44', 'ngc2632', 'ngc 2632', 'beehive', 'praesepe', '프레세페', '벌집성단', '벌집 성단'],
+    stars: [
+      { id: 'eps_cnc', nameKo: 'ε Cnc', nameEn: 'Epsilon Cancri', bayer: 'ε Cnc', constellation: 'Cnc', raDeg: 130.1123, decDeg: 19.5415, mag: 6.29 },
+      { id: '39_cnc', nameKo: '39 Cnc', nameEn: '39 Cancri', bayer: '39 Cnc', constellation: 'Cnc', raDeg: 130.0110, decDeg: 20.0046, mag: 6.39 },
+      { id: '40_cnc', nameKo: '40 Cnc', nameEn: '40 Cancri', bayer: '40 Cnc', constellation: 'Cnc', raDeg: 130.0250, decDeg: 19.9835, mag: 6.61 },
+      { id: '42_cnc', nameKo: '42 Cnc', nameEn: '42 Cancri', bayer: '42 Cnc', constellation: 'Cnc', raDeg: 130.1717, decDeg: 19.7209, mag: 6.84 },
+      { id: 'hd_73710', nameKo: 'HD 73710', nameEn: 'HD 73710', bayer: 'HD 73710 (Cnc)', constellation: 'Cnc', raDeg: 130.1818, decDeg: 19.6700, mag: 6.39 },
+      { id: 'hd_73598', nameKo: 'HD 73598', nameEn: 'HD 73598', bayer: 'HD 73598 (Cnc)', constellation: 'Cnc', raDeg: 130.0077, decDeg: 19.6373, mag: 6.59 },
+      { id: 'hd_73666', nameKo: 'HD 73666', nameEn: 'HD 73666', bayer: 'HD 73666 (Cnc)', constellation: 'Cnc', raDeg: 130.1066, decDeg: 19.9719, mag: 6.61 },
+      { id: 'hd_73974', nameKo: 'HD 73974', nameEn: 'HD 73974', bayer: 'HD 73974 (Cnc)', constellation: 'Cnc', raDeg: 130.5831, decDeg: 19.8698, mag: 6.92 },
+    ],
+  },
+  {
+    id: 'sgr_m8',
+    nameKo: '궁수자리 석호 성운 M8 (NGC 6523)',
+    nameEn: 'Sagittarius Lagoon Nebula M8 (NGC 6523)',
+    constellation: 'Sgr',
+    centerRaDeg: 270.92,
+    centerDecDeg: -24.38,
+    defaultRadiusDeg: 1.3,
+    primaryObjectLabel: 'M8 (NGC 6523)',
+    keywords: ['m8', 'm 8', 'ngc6523', 'ngc 6523', 'lagoon nebula', '석호성운', '석호 성운', 'm20', 'ngc6514', '삼열성운'],
+    stars: [
+      { id: '9_sgr', nameKo: '9 Sgr', nameEn: '9 Sagittarii', bayer: '9 Sgr', constellation: 'Sgr', raDeg: 270.9685, decDeg: -24.3607, mag: 5.97 },
+      { id: '7_sgr', nameKo: '7 Sgr', nameEn: '7 Sagittarii', bayer: '7 Sgr', constellation: 'Sgr', raDeg: 270.7129, decDeg: -24.2825, mag: 5.37 },
+      { id: 'hd_165052', nameKo: 'HD 165052', nameEn: 'HD 165052', bayer: 'HD 165052 (Sgr)', constellation: 'Sgr', raDeg: 271.2940, decDeg: -24.3986, mag: 6.87 },
+      { id: 'hd_164816', nameKo: 'HD 164816', nameEn: 'HD 164816', bayer: 'HD 164816 (Sgr)', constellation: 'Sgr', raDeg: 270.9869, decDeg: -24.3126, mag: 7.09 },
+      { id: 'hd_164906', nameKo: 'HD 164906', nameEn: 'HD 164906', bayer: 'HD 164906 (Sgr)', constellation: 'Sgr', raDeg: 271.1053, decDeg: -24.3879, mag: 7.42 },
+      { id: 'hd_164536', nameKo: 'HD 164536', nameEn: 'HD 164536', bayer: 'HD 164536 (Sgr)', constellation: 'Sgr', raDeg: 270.6609, decDeg: -24.2554, mag: 7.12 },
+    ],
+  },
+  {
+    id: 'cyg_m39',
+    nameKo: '백조자리 M39 산개성단 (NGC 7092)',
+    nameEn: 'Cygnus M39 Open Cluster (NGC 7092)',
+    constellation: 'Cyg',
+    centerRaDeg: 322.9656,
+    centerDecDeg: 48.4198,
+    defaultRadiusDeg: 1.23,
+    primaryObjectLabel: 'M39 (NGC 7092)',
+    keywords: ['m39', 'm 39', 'ngc7092', 'ngc 7092', '백조자리 m39', 'm39 산개성단'],
+    stars: [
+      { id: 'hd_205116', nameKo: 'HD 205116 (M39 주성)', nameEn: 'HD 205116', bayer: 'HD 205116 (Cyg)', constellation: 'Cyg', raDeg: 323.071150, decDeg: 48.443872, mag: 6.56 },
+      { id: 'hd_205073', nameKo: 'HD 205073 (M39 중심성)', nameEn: 'HD 205073', bayer: 'HD 205073 (Cyg)', constellation: 'Cyg', raDeg: 322.926626, decDeg: 48.584665, mag: 6.79 },
+      { id: 'hd_205198', nameKo: 'HD 205198', nameEn: 'HD 205198', bayer: 'HD 205198 (Cyg)', constellation: 'Cyg', raDeg: 323.292153, decDeg: 48.303454, mag: 6.81 },
+      { id: 'hd_204917', nameKo: 'HD 204917', nameEn: 'HD 204917', bayer: 'HD 204917 (Cyg)', constellation: 'Cyg', raDeg: 322.578928, decDeg: 48.390891, mag: 7.32 },
+      { id: 'hd_204625', nameKo: 'HD 204625', nameEn: 'HD 204625', bayer: 'HD 204625 (Cyg)', constellation: 'Cyg', raDeg: 322.101840, decDeg: 48.434359, mag: 7.61 },
+      { id: 'hd_205085', nameKo: 'HD 205085', nameEn: 'HD 205085', bayer: 'HD 205085 (Cyg)', constellation: 'Cyg', raDeg: 322.936068, decDeg: 48.484398, mag: 7.66 },
+      { id: 'bd_47_3452', nameKo: 'BD+47 3452', nameEn: 'BD+47 3452', bayer: 'BD+47 3452 (Cyg)', constellation: 'Cyg', raDeg: 322.846587, decDeg: 48.356538, mag: 7.87 },
+      { id: 'bd_47_3453', nameKo: 'BD+47 3453', nameEn: 'BD+47 3453', bayer: 'BD+47 3453 (Cyg)', constellation: 'Cyg', raDeg: 322.877216, decDeg: 48.278222, mag: 8.04 },
+      { id: 'bd_47_3458', nameKo: 'BD+47 3458', nameEn: 'BD+47 3458', bayer: 'BD+47 3458 (Cyg)', constellation: 'Cyg', raDeg: 323.019032, decDeg: 48.567109, mag: 8.10 },
+      { id: 'bd_48_3408', nameKo: 'BD+48 3408', nameEn: 'BD+48 3408', bayer: 'BD+48 3408 (Cyg)', constellation: 'Cyg', raDeg: 323.061094, decDeg: 48.639548, mag: 8.30 },
+      { id: 'bd_47_3472', nameKo: 'BD+47 3472', nameEn: 'BD+47 3472', bayer: 'BD+47 3472 (Cyg)', constellation: 'Cyg', raDeg: 323.297049, decDeg: 47.790382, mag: 8.40 },
+      { id: 'bd_48_3406', nameKo: 'BD+48 3406', nameEn: 'BD+48 3406', bayer: 'BD+48 3406 (Cyg)', constellation: 'Cyg', raDeg: 323.028111, decDeg: 48.716489, mag: 8.54 },
+      { id: 'bd_47_3440', nameKo: 'BD+47 3440', nameEn: 'BD+47 3440', bayer: 'BD+47 3440 (Cyg)', constellation: 'Cyg', raDeg: 322.692461, decDeg: 47.862185, mag: 8.66 },
+      { id: 'bd_47_3462', nameKo: 'BD+47 3462', nameEn: 'BD+47 3462', bayer: 'BD+47 3462 (Cyg)', constellation: 'Cyg', raDeg: 323.077084, decDeg: 48.342331, mag: 8.69 },
+      { id: 'bd_47_3479', nameKo: 'BD+47 3479', nameEn: 'BD+47 3479', bayer: 'BD+47 3479 (Cyg)', constellation: 'Cyg', raDeg: 323.871443, decDeg: 48.493705, mag: 8.74 },
+      { id: 'bd_47_3468', nameKo: 'BD+47 3468', nameEn: 'BD+47 3468', bayer: 'BD+47 3468 (Cyg)', constellation: 'Cyg', raDeg: 323.277528, decDeg: 48.045070, mag: 8.92 },
+      { id: 'bd_48_3419', nameKo: 'BD+48 3419', nameEn: 'BD+48 3419', bayer: 'BD+48 3419 (Cyg)', constellation: 'Cyg', raDeg: 323.488064, decDeg: 49.412415, mag: 8.94 },
+      { id: 'bd_47_3448', nameKo: 'BD+47 3448', nameEn: 'BD+47 3448', bayer: 'BD+47 3448 (Cyg)', constellation: 'Cyg', raDeg: 322.810476, decDeg: 47.588788, mag: 9.00 },
+      { id: 'bd_47_3460', nameKo: 'BD+47 3460', nameEn: 'BD+47 3460', bayer: 'BD+47 3460 (Cyg)', constellation: 'Cyg', raDeg: 323.013795, decDeg: 48.334297, mag: 9.03 },
+      { id: 'bd_48_3411', nameKo: 'BD+48 3411', nameEn: 'BD+48 3411', bayer: 'BD+48 3411 (Cyg)', constellation: 'Cyg', raDeg: 323.179840, decDeg: 48.483218, mag: 9.09 },
+      { id: 'bd_47_3439', nameKo: 'BD+47 3439', nameEn: 'BD+47 3439', bayer: 'BD+47 3439 (Cyg)', constellation: 'Cyg', raDeg: 322.638831, decDeg: 48.296833, mag: 9.21 },
+      { id: 'bd_48_3418', nameKo: 'BD+48 3418', nameEn: 'BD+48 3418', bayer: 'BD+48 3418 (Cyg)', constellation: 'Cyg', raDeg: 323.463926, decDeg: 49.140000, mag: 9.22 },
+      { id: 'bd_47_3441', nameKo: 'BD+47 3441', nameEn: 'BD+47 3441', bayer: 'BD+47 3441 (Cyg)', constellation: 'Cyg', raDeg: 322.683574, decDeg: 48.331955, mag: 9.31 },
+      { id: 'bd_47_3435', nameKo: 'BD+47 3435', nameEn: 'BD+47 3435', bayer: 'BD+47 3435 (Cyg)', constellation: 'Cyg', raDeg: 322.416064, decDeg: 47.533234, mag: 9.32 },
     ],
   },
 ];
@@ -2492,12 +2679,12 @@ export function verifyAndFitFieldRansac(
 
   const diagPx = Math.hypot(imageWidth, imageHeight);
   // Tightened verification tolerance to reject accidental background star matches while retaining true TAN/SIP inliers
-  const tolPx = Math.max(6.5, Math.min(13.0, diagPx * 0.0055));
-  const refinedTolPx = Math.max(5.5, Math.min(11.0, diagPx * 0.0045));
+  const tolPx = Math.max(4.8, Math.min(9.5, diagPx * 0.0044));
+  const refinedTolPx = Math.max(3.8, Math.min(6.8, diagPx * 0.0032));
   const imageArea = Math.max(1000, imageWidth * imageHeight);
 
   // Expand verification pool to allow matching 30~85+ reference stars across the field
-  const maxVerifyImg = Math.min(detectedStars.length, Math.max(96, fieldStars.length * 2 + 24));
+  const maxVerifyImg = Math.min(detectedStars.length, Math.max(95, fieldStars.length * 2 + 16));
   const verifyPool = detectedStars.slice(0, maxVerifyImg).map((s, idx) => ({
     idx,
     x: s.x,
@@ -2507,7 +2694,38 @@ export function verifyAndFitFieldRansac(
     ly: imageHeight / 2 - s.y,
   }));
 
-  const topImg = verifyPool.slice(0, Math.min(28, verifyPool.length));
+  // Spatially-Stratified Top Image Star Selection for Galaxies, Nebulae & Star Clusters:
+  // In dense open/globular clusters (e.g. C50/NGC 2244, M34, M3, M4) or bright spiral galaxies (e.g. M33, M101),
+  // the brightest 15-20 detections can be crowded inside the central DSO core while surrounding astrometric
+  // reference stars rank at indices 15..75. We combine the global top 16 stars with the brightest 2 stars
+  // from each cell of a 4x3 spatial grid across the frame so surrounding field stars are ALWAYS in topImg.
+  const topImg: typeof verifyPool = [];
+  const usedTopImgIdx = new Set<number>();
+  for (let i = 0; i < Math.min(16, verifyPool.length); i++) {
+    topImg.push(verifyPool[i]);
+    usedTopImgIdx.add(verifyPool[i].idx);
+  }
+  const gridCols = 4;
+  const gridRows = 3;
+  const cellCounts = new Int32Array(gridCols * gridRows);
+  for (let i = 0; i < verifyPool.length && topImg.length < 36; i++) {
+    const p = verifyPool[i];
+    if (usedTopImgIdx.has(p.idx)) continue;
+    const gx = Math.min(gridCols - 1, Math.max(0, Math.floor((p.x / Math.max(1, imageWidth)) * gridCols)));
+    const gy = Math.min(gridRows - 1, Math.max(0, Math.floor((p.y / Math.max(1, imageHeight)) * gridRows)));
+    const cellIdx = gy * gridCols + gx;
+    if (cellCounts[cellIdx] < 2) {
+      cellCounts[cellIdx]++;
+      usedTopImgIdx.add(p.idx);
+      topImg.push(p);
+    }
+  }
+  for (let i = 0; i < verifyPool.length && topImg.length < 32; i++) {
+    if (!usedTopImgIdx.has(verifyPool[i].idx)) {
+      usedTopImgIdx.add(verifyPool[i].idx);
+      topImg.push(verifyPool[i]);
+    }
+  }
 
   // Project ALL catalog stars in the loosened pool (up to 90 stars) onto tangent plane (xi, eta in degrees)
   const catProjected: {
@@ -2522,6 +2740,18 @@ export function verifyAndFitFieldRansac(
     }
   }
   if (catProjected.length < 2) return null;
+
+  // Physically valid scale range:
+  // Note that trueScaleDegPerPx = (2 * radiusDeg) / diagPx.
+  // For deep-sky fields (expectedRadiusDeg <= 3.0), disallow shrinking a 1.3° field into a tiny 0.4° cluster core!
+  const minScaleDegPerPx =
+    expectedRadiusDeg <= 3.0
+      ? (expectedRadiusDeg * 0.85) / diagPx
+      : (expectedRadiusDeg * 0.18) / diagPx;
+  const maxScaleDegPerPx =
+    expectedRadiusDeg <= 3.0
+      ? (expectedRadiusDeg * 2.95) / diagPx
+      : (expectedRadiusDeg * 3.8) / diagPx;
 
   const candidateSeeds: {
     i0: number;
@@ -2544,15 +2774,19 @@ export function verifyAndFitFieldRansac(
     const imgPtsUp = topImg.map((p) => ({ x: p.lx, y: p.ly }));
     const catPtsTp = catProjected.map((p) => ({ x: p.xi, y: p.eta }));
 
-    const imgQuads: QuadHash[] = [];
+    const NUM_QUAD_BINS = 40;
+    const imgQuadBuckets: QuadHash[][] = Array.from({ length: NUM_QUAD_BINS }, () => []);
+    const getQuadBin = (xC: number) =>
+      Math.max(0, Math.min(NUM_QUAD_BINS - 1, Math.floor((xC + 0.5) * 20)));
+
     const nImgQ = Math.min(16, topImg.length);
     for (let i = 0; i < nImgQ; i++) {
       for (let j = i + 1; j < nImgQ; j++) {
         for (let k = j + 1; k < nImgQ; k++) {
           for (let l = k + 1; l < nImgQ; l++) {
             const q = computeQuadFrom4Points(imgPtsUp, [i, j, k, l]);
-            if (q && q.scale > diagPx * 0.08) {
-              imgQuads.push(q);
+            if (q && q.scale > diagPx * 0.10) {
+              imgQuadBuckets[getQuadBin(q.xC)].push(q);
             }
           }
         }
@@ -2565,47 +2799,57 @@ export function verifyAndFitFieldRansac(
         for (let c = b + 1; c < nCatQ; c++) {
           for (let d = c + 1; d < nCatQ; d++) {
             const cq = computeQuadFrom4Points(catPtsTp, [a, b, c, d]);
-            if (!cq || cq.scale < expectedRadiusDeg * 0.07) continue;
+            if (!cq || cq.scale < expectedRadiusDeg * 0.12) continue;
 
-            for (let qIdx = 0; qIdx < imgQuads.length; qIdx++) {
-              const iq = imgQuads[qIdx];
-              const dxC = Math.abs(cq.xC - iq.xC);
-              if (dxC > 0.056) continue;
-              const dxD = Math.abs(cq.xD - iq.xD);
-              if (dxD > 0.056) continue;
+            const centerBin = getQuadBin(cq.xC);
+            const minBin = Math.max(0, centerBin - 2);
+            const maxBin = Math.min(NUM_QUAD_BINS - 1, centerBin + 2);
 
-              // Parity +1 match
-              const dyCPos = Math.abs(cq.yC - iq.yC);
-              const dyDPos = Math.abs(cq.yD - iq.yD);
-              if (
-                dyCPos < 0.056 &&
-                dyDPos < 0.056 &&
-                dxC * dxC + dyCPos * dyCPos + dxD * dxD + dyDPos * dyDPos < 0.0032
-              ) {
-                addCandidateSeed(
-                  iq.starIndices[0],
-                  iq.starIndices[1],
-                  cq.starIndices[0],
-                  cq.starIndices[1],
-                  1
-                );
-              }
+            for (let bIdx = minBin; bIdx <= maxBin; bIdx++) {
+              const bucket = imgQuadBuckets[bIdx];
+              for (let qIdx = 0; qIdx < bucket.length; qIdx++) {
+                const iq = bucket[qIdx];
+                const impliedScale = cq.scale / iq.scale;
+                if (impliedScale < minScaleDegPerPx || impliedScale > maxScaleDegPerPx) continue;
 
-              // Parity -1 match (reflected across backbone A-B)
-              const dyCNeg = Math.abs(cq.yC + iq.yC);
-              const dyDNeg = Math.abs(cq.yD + iq.yD);
-              if (
-                dyCNeg < 0.056 &&
-                dyDNeg < 0.056 &&
-                dxC * dxC + dyCNeg * dyCNeg + dxD * dxD + dyDNeg * dyDNeg < 0.0032
-              ) {
-                addCandidateSeed(
-                  iq.starIndices[0],
-                  iq.starIndices[1],
-                  cq.starIndices[0],
-                  cq.starIndices[1],
-                  -1
-                );
+                const dxC = Math.abs(cq.xC - iq.xC);
+                if (dxC > 0.048) continue;
+                const dxD = Math.abs(cq.xD - iq.xD);
+                if (dxD > 0.048) continue;
+
+                // Parity +1 match
+                const dyCPos = Math.abs(cq.yC - iq.yC);
+                const dyDPos = Math.abs(cq.yD - iq.yD);
+                if (
+                  dyCPos < 0.048 &&
+                  dyDPos < 0.048 &&
+                  dxC * dxC + dyCPos * dyCPos + dxD * dxD + dyDPos * dyDPos < 0.0024
+                ) {
+                  addCandidateSeed(
+                    iq.starIndices[0],
+                    iq.starIndices[1],
+                    cq.starIndices[0],
+                    cq.starIndices[1],
+                    1
+                  );
+                }
+
+                // Parity -1 match (reflected across backbone A-B)
+                const dyCNeg = Math.abs(cq.yC + iq.yC);
+                const dyDNeg = Math.abs(cq.yD + iq.yD);
+                if (
+                  dyCNeg < 0.048 &&
+                  dyDNeg < 0.048 &&
+                  dxC * dxC + dyCNeg * dyCNeg + dxD * dxD + dyDNeg * dyDNeg < 0.0024
+                ) {
+                  addCandidateSeed(
+                    iq.starIndices[0],
+                    iq.starIndices[1],
+                    cq.starIndices[0],
+                    cq.starIndices[1],
+                    -1
+                  );
+                }
               }
             }
           }
@@ -2614,15 +2858,27 @@ export function verifyAndFitFieldRansac(
     }
   }
 
-  // 2. Also include brightest 2-star backbone seeds among top stars (adaptive limit to avoid redundant combinations)
-  const pairLimit = candidateSeeds.length >= 25 ? 8 : 10;
-  const maxPairImg = Math.min(pairLimit, topImg.length);
-  const maxPairCat = Math.min(pairLimit, catProjected.length);
-  for (let i0 = 0; i0 < maxPairImg; i0++) {
-    for (let i1 = i0 + 1; i1 < maxPairImg; i1++) {
-      for (let c0 = 0; c0 < maxPairCat; c0++) {
-        for (let c1 = 0; c1 < maxPairCat; c1++) {
+  // 2. Spatially-Distributed Surrounding Star 2-Star Backbone Seeds (pre-filtered by physical scale consistency)
+  const maxPairImg = Math.min(14, topImg.length);
+  const maxPairCat = Math.min(14, catProjected.length);
+  const minBackbonePx = diagPx * 0.14;
+  for (let i0 = 0; i0 < maxPairImg && candidateSeeds.length < 160; i0++) {
+    for (let i1 = i0 + 1; i1 < maxPairImg && candidateSeeds.length < 160; i1++) {
+      const distImg = Math.hypot(
+        topImg[i1].lx - topImg[i0].lx,
+        topImg[i1].ly - topImg[i0].ly
+      );
+      if (distImg < minBackbonePx) continue;
+
+      for (let c0 = 0; c0 < maxPairCat && candidateSeeds.length < 160; c0++) {
+        for (let c1 = 0; c1 < maxPairCat && candidateSeeds.length < 160; c1++) {
           if (c0 === c1) continue;
+          const distCat = Math.hypot(
+            catProjected[c1].xi - catProjected[c0].xi,
+            catProjected[c1].eta - catProjected[c0].eta
+          );
+          const scaleEst = distCat / distImg;
+          if (scaleEst < minScaleDegPerPx || scaleEst > maxScaleDegPerPx) continue;
           addCandidateSeed(i0, i1, c0, c1, 1);
           addCandidateSeed(i0, i1, c0, c1, -1);
         }
@@ -2631,12 +2887,11 @@ export function verifyAndFitFieldRansac(
   }
 
   // 3. Stage 2 (Bayesian Log-Odds Verification): Evaluate each seed hypothesis against the loosened catalog pool
-  const minScaleDegPerPx = (expectedRadiusDeg * 0.14) / diagPx;
-  const maxScaleDegPerPx = (expectedRadiusDeg * 4.8) / diagPx;
-  const sigmaPos = Math.max(2.2, tolPx * 0.34);
-  const seedEvalCount = Math.min(45, catProjected.length);
+  const sigmaPos = Math.max(1.8, tolPx * 0.32);
+  const seedEvalCount = Math.min(48, catProjected.length);
 
   let bestInliers: { imgIdx: number; catStar: CatalogStar }[] = [];
+  let bestBrightMatches = 0;
   let bestScore = -Infinity;
   let bestParity = 1;
 
@@ -2673,17 +2928,16 @@ export function verifyAndFitFieldRansac(
     const ty = pC0.eta - scaleDegPerPx * (ux0 * sinR + uy0 * cosR);
 
     // Image center (0,0) must lie near field center
-    if (Math.hypot(tx, ty) > expectedRadiusDeg * 1.85) continue;
+    if (Math.hypot(tx, ty) > expectedRadiusDeg * 1.35) continue;
 
     const matched: { imgIdx: number; catIdx: number; catStar: CatalogStar; errPx: number }[] = [];
     const usedImg = new Set<number>();
     let logOdds = 0;
     let missedBrightCat = 0;
+    let brightCatMatches = 0;
 
     for (let cIdx = 0; cIdx < seedEvalCount; cIdx++) {
-      // Early pruning: if > 3 bright catalog stars missed or < 2 matches after top 14 stars, abort this seed
-      if (missedBrightCat > 3) break;
-      if (cIdx >= 14 && matched.length < 2) break;
+      if (cIdx >= 18 && matched.length < 2) break;
 
       const cs = catProjected[cIdx];
       const rx = (cs.xi - tx) / scaleDegPerPx;
@@ -2694,7 +2948,7 @@ export function verifyAndFitFieldRansac(
       const predLy = uy;
 
       // Check if inside image bounds
-      if (Math.abs(predLx) > imageWidth * 0.54 || Math.abs(predLy) > imageHeight * 0.54) {
+      if (Math.abs(predLx) > imageWidth * 0.52 || Math.abs(predLy) > imageHeight * 0.52) {
         continue;
       }
 
@@ -2721,6 +2975,9 @@ export function verifyAndFitFieldRansac(
           catStar: cs.star,
           errPx: bestDist,
         });
+        if (cIdx < 14 && bestImgIdx < 40) {
+          brightCatMatches++;
+        }
 
         // Bayesian Log-Odds: ln(P_fg / P_bg)
         const pFg =
@@ -2729,28 +2986,51 @@ export function verifyAndFitFieldRansac(
         const nEff = Math.max(5, bestImgIdx + 1) * (1 + cIdx * 0.12);
         const pBg = nEff / imageArea;
         const starLogOdds = Math.max(1.5, Math.log(Math.max(1.1, pFg / pBg)));
-        const brightRankBonus = cIdx < 3 && bestImgIdx < 5 ? 10.0 : cIdx < 8 && bestImgIdx < 12 ? 5.0 : 0;
+        const brightRankBonus =
+          cIdx < 4 && bestImgIdx < 8 ? 10.0 : cIdx < 12 && bestImgIdx < 24 ? 5.0 : 0;
         logOdds += starLogOdds + brightRankBonus;
       } else if (
-        cIdx < 2 &&
-        Math.abs(predLx) < imageWidth * 0.4 &&
-        Math.abs(predLy) < imageHeight * 0.4
+        cIdx < 8 &&
+        Math.abs(predLx) < imageWidth * 0.40 &&
+        Math.abs(predLy) < imageHeight * 0.40
       ) {
         missedBrightCat++;
-        logOdds -= 8.0;
+        logOdds -= cIdx < 3 ? 4.5 : 2.5;
       }
     }
 
-    if (matched.length >= 3 && missedBrightCat <= 3) {
+    if (matched.length >= 3) {
+      // Enforce spatial spread across the frame so a dense star cluster core cannot match a shrunken random field
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      for (const m of matched) {
+        const ds = detectedStars[m.imgIdx];
+        if (ds.x < minX) minX = ds.x;
+        if (ds.x > maxX) maxX = ds.x;
+        if (ds.y < minY) minY = ds.y;
+        if (ds.y > maxY) maxY = ds.y;
+      }
+      const bboxSpanPx = Math.hypot(maxX - minX, maxY - minY);
+      if (matched.length < 7 && bboxSpanPx < diagPx * 0.22) {
+        continue;
+      }
+
       if (logOdds > bestScore) {
         bestScore = logOdds;
         bestParity = seed.parity;
+        bestBrightMatches = brightCatMatches;
         bestInliers = matched.map((m) => ({ imgIdx: m.imgIdx, catStar: m.catStar }));
+        // Early exit if we already locked onto >= 12 verified stars in this field
+        if (bestInliers.length >= 12) break;
       }
     }
   }
 
-  if (bestInliers.length < 3 || bestScore < 12) return null;
+  if (bestInliers.length < 3 || bestScore < 18) return null;
+  if (bestInliers.length === 3 && bestScore < 32 && expectedRadiusDeg <= 3.0) return null;
+  if (fieldStars.length >= 20 && bestInliers.length < 4 && bestBrightMatches < 2) return null;
 
   // 4. Perform Iterative Least-Squares WCS Fit on verified inliers
   const fitInput = bestInliers.map((m) => ({
@@ -2767,7 +3047,16 @@ export function verifyAndFitFieldRansac(
     fieldCenterRa,
     fieldCenterDec
   );
-  if (!fitted || fitted.rmsPx > Math.max(5.5, diagPx * 0.006)) return null;
+  if (!fitted || fitted.rmsPx > Math.max(3.8, diagPx * 0.0028)) return null;
+
+  // Verify that fitted calibration radius is physically consistent with expectedRadiusDeg
+  if (
+    expectedRadiusDeg <= 3.0 &&
+    (fitted.calibration.radius < expectedRadiusDeg * 0.45 ||
+      fitted.calibration.radius > expectedRadiusDeg * 1.48)
+  ) {
+    return null;
+  }
 
   // 5. Second pass: re-collect inliers from ALL fieldStars (up to 90 stars) within refinedTolPx using least-squares WCS
   const refinedInliers: { imgIdx: number; catIdx: number; catStar: CatalogStar; errPx: number }[] = [];
@@ -2778,7 +3067,7 @@ export function verifyAndFitFieldRansac(
     const cs = fieldStars[cIdx];
     const proj = skyCoordsToPixel(cs.raDeg, cs.decDeg, imageWidth, imageHeight, fitted.calibration);
     if (!proj) continue;
-    if (proj.x < -12 || proj.x > imageWidth + 12 || proj.y < -12 || proj.y > imageHeight + 12) {
+    if (proj.x < -10 || proj.x > imageWidth + 10 || proj.y < -10 || proj.y > imageHeight + 10) {
       continue;
     }
 
@@ -2807,7 +3096,7 @@ export function verifyAndFitFieldRansac(
       const nEff = Math.max(5, bestPoolIdx + 1) * (1 + cIdx * 0.1);
       const pBg = nEff / imageArea;
       refinedLogOdds += Math.max(2.0, Math.log(Math.max(1.1, pFg / pBg)));
-      if (cIdx < 3 && bestPoolIdx < 5) refinedLogOdds += 12.0;
+      if (cIdx < 4 && bestPoolIdx < 8) refinedLogOdds += 12.0;
     }
   }
 
@@ -2827,7 +3116,7 @@ export function verifyAndFitFieldRansac(
         ) || fitted
       : fitted;
 
-  if (finalFit.rmsPx > Math.max(5.0, diagPx * 0.0055)) return null;
+  if (finalFit.rmsPx > Math.max(3.4, diagPx * 0.0024)) return null;
 
   const finalPairs =
     refinedInliers.length >= 3
@@ -2838,14 +3127,34 @@ export function verifyAndFitFieldRansac(
     return null;
   }
 
+  // Final spatial spread validation
+  if (finalPairs.length < 8 && expectedRadiusDeg <= 3.0) {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const m of finalPairs) {
+      const ds = detectedStars[m.imgIdx];
+      if (ds.x < minX) minX = ds.x;
+      if (ds.x > maxX) maxX = ds.x;
+      if (ds.y < minY) minY = ds.y;
+      if (ds.y > maxY) maxY = ds.y;
+    }
+    if (Math.hypot(maxX - minX, maxY - minY) < diagPx * 0.22) {
+      return null;
+    }
+  }
+
   const top0Bonus = finalPairs.some((m) => m.imgIdx === 0) ? 25 : 0;
   const top1Bonus = finalPairs.some((m) => m.imgIdx === 1) ? 20 : 0;
   const finalScore =
-    Math.max(bestScore, refinedLogOdds) * 4 +
-    finalPairs.length * 35 +
+    bestScore * 6 +
+    bestInliers.length * 75 +
+    Math.max(bestScore, refinedLogOdds) * 2.5 +
+    finalPairs.length * 28 +
     top0Bonus +
     top1Bonus -
-    Math.min(50, finalFit.rmsPx * 4);
+    Math.min(60, finalFit.rmsPx * 8);
 
   return {
     calibration: {
@@ -2857,6 +3166,57 @@ export function verifyAndFitFieldRansac(
     matchedPairs: finalPairs,
     score: finalScore,
   };
+}
+
+let cachedDsoSurroundingFields: TelescopicReferenceField[] | null = null;
+const cachedEnrichedFieldStarsMap = new Map<string, CatalogStar[]>();
+
+/**
+ * Build Messier / Caldwell / NGC Deep-Sky Object Surrounding Star Reference Fields
+ * Ensures every DSO in LOCAL_DSO_CATALOG (galaxies, nebulae, clusters) has a dedicated reference field
+ * indexing the surrounding stars within 1.25° for relative star position matching.
+ */
+export function getAllDsoSurroundingReferenceFields(): TelescopicReferenceField[] {
+  if (cachedDsoSurroundingFields) return cachedDsoSurroundingFields;
+  const fields: TelescopicReferenceField[] = [...TELESCOPIC_REFERENCE_FIELDS];
+
+  for (const dso of LOCAL_DSO_CATALOG) {
+    // Check if an existing telescopic field already covers this DSO center within 0.45°
+    const alreadyCovered = fields.some(
+      (f) => angularSeparation(f.centerRaDeg, f.centerDecDeg, dso.raDeg, dso.decDeg) <= 0.45
+    );
+    if (alreadyCovered) continue;
+
+    // Gather surrounding bright & Tycho-2 stars within 1.35° of the DSO
+    const surroundingTycho = queryLocalTycho2Cone(dso.raDeg, dso.decDeg, 1.35, 30);
+    if (surroundingTycho.length < 4) continue;
+    const surroundingStars: CatalogStar[] = surroundingTycho.map((ts) => ({
+      id: ts.id,
+      nameKo: ts.hipId ? `${ts.tycId} (${ts.hipId})` : ts.tycId,
+      nameEn: ts.tycId,
+      bayer: `${ts.tycId} (${dso.constellation})`,
+      constellation: dso.constellation,
+      raDeg: ts.raDeg,
+      decDeg: ts.decDeg,
+      mag: ts.vtMag,
+    }));
+
+    fields.push({
+      id: `dso_${dso.id.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+      nameKo: dso.nameKo,
+      nameEn: dso.names[0] || dso.id,
+      constellation: dso.constellation,
+      centerRaDeg: dso.raDeg,
+      centerDecDeg: dso.decDeg,
+      defaultRadiusDeg: Math.max(1.2, Math.min(1.6, (dso.radiusArcmin * 2.5) / 60)),
+      primaryObjectLabel: dso.id,
+      keywords: [dso.id.toLowerCase(), dso.nameKo.toLowerCase(), ...dso.names.map((n) => n.toLowerCase())],
+      stars: surroundingStars,
+    });
+  }
+
+  cachedDsoSurroundingFields = fields;
+  return fields;
 }
 
 /**
@@ -2884,9 +3244,10 @@ function resolveSkyRegionFromHint(
 
   const norm = cleaned.toLowerCase();
   const compact = norm.replace(/[\s_-]+/g, '');
+  const allReferenceFields = getAllDsoSurroundingReferenceFields();
 
-  // 1a. Exact catalog designation match on Telescopic Reference Fields first (e.g. M31, NGC 752, C28, HD 716)
-  for (const field of TELESCOPIC_REFERENCE_FIELDS) {
+  // 1a. Exact catalog designation match on Telescopic & DSO Reference Fields first (e.g. M31, NGC 752, C28, C50, M33)
+  for (const field of allReferenceFields) {
     for (const kw of field.keywords) {
       const kwLower = kw.toLowerCase();
       if (/^(?:m|c|ngc|ic|hd|caldwell)\s*\d+/i.test(kwLower)) {
@@ -2905,8 +3266,8 @@ function resolveSkyRegionFromHint(
     }
   }
 
-  // 1b. General keyword match on Telescopic Reference Fields
-  for (const field of TELESCOPIC_REFERENCE_FIELDS) {
+  // 1b. General keyword match on Telescopic & DSO Reference Fields
+  for (const field of allReferenceFields) {
     for (const kw of field.keywords) {
       const kwCompact = kw.toLowerCase().replace(/[\s_-]+/g, '');
       if (norm.includes(kw.toLowerCase()) || (kwCompact.length >= 4 && compact.includes(kwCompact))) {
@@ -2964,22 +3325,68 @@ function resolveSkyRegionFromHint(
 }
 
 /**
- * Build Gaia DR3 (5200-series Deep-Sky Index) enriched star list for a telescopic field
- * Merges named HD/BD/Bayer stars with locally downloaded Gaia DR3 (I/355/gaiadr3) source catalog
- * Loosened index cut: retains up to 90 reference stars (G <= 17.5 mag) per field.
+ * Build Gaia DR3 (5200-series Deep-Sky Index) + Surrounding Star Index for a Messier/Caldwell/NGC field.
+ * Merges named HD/BD/Bayer stars with surrounding Tycho-2 (0.3°~1.5° outer ring) and Gaia DR3 (inner core) stars,
+ * partitioned across 8 azimuthal sectors around the DSO so surrounding star geometry is always preserved.
  */
 export function getGaiaDr3EnrichedFieldStars(field: TelescopicReferenceField): CatalogStar[] {
+  const cached = cachedEnrichedFieldStarsMap.get(field.id);
+  if (cached) return cached;
+
+  // Strip non-stellar DSO core pseudo-entries (e.g. m_31_n, m_13_n, m_51_n, m_81_n, m_82_n) from point-star matching
+  const primaryStars: CatalogStar[] = field.stars
+    .filter((s) => !s.id.endsWith('_n') && !/^(?:M|NGC|IC)\s*\d+$/i.test(s.nameEn.trim()))
+    .map((s) => ({ ...s }));
+
   const gaiaStars = queryLocalGaiaDr3Field(
     field.id,
     field.centerRaDeg,
     field.centerDecDeg,
     field.defaultRadiusDeg * 1.35
   );
-  const primaryStars: CatalogStar[] = field.stars.map((s) => ({ ...s }));
-  const extraGaiaStars: CatalogStar[] = [];
+
+  // Also query surrounding Tycho-2 stars in the 0.35° ~ 1.45° ring around the DSO
+  const tychoSurroundingStars = queryLocalTycho2Cone(
+    field.centerRaDeg,
+    field.centerDecDeg,
+    Math.max(1.35, field.defaultRadiusDeg * 1.25),
+    45
+  );
+
+  const outerRingCandidates: CatalogStar[] = [];
+  const innerCoreCandidates: CatalogStar[] = [];
+
+  for (const ts of tychoSurroundingStars) {
+    const alreadyInPrimary = primaryStars.some(
+      (ex) => angularSeparation(ts.raDeg, ts.decDeg, ex.raDeg, ex.decDeg) < 0.012
+    );
+    if (alreadyInPrimary) continue;
+    const distFromCenter = angularSeparation(
+      field.centerRaDeg,
+      field.centerDecDeg,
+      ts.raDeg,
+      ts.decDeg
+    );
+    const label = ts.hipId ? `${ts.tycId} (${ts.hipId})` : ts.tycId;
+    const catStar: CatalogStar = {
+      id: ts.id,
+      nameKo: label,
+      nameEn: ts.tycId,
+      bayer: `${ts.tycId} (${field.constellation})`,
+      constellation: field.constellation,
+      raDeg: ts.raDeg,
+      decDeg: ts.decDeg,
+      mag: ts.vtMag,
+    };
+    if (distFromCenter >= 0.32) {
+      outerRingCandidates.push(catStar);
+    } else {
+      innerCoreCandidates.push(catStar);
+    }
+  }
 
   for (const gs of gaiaStars) {
-    // Check if this Gaia DR3 source corresponds to an existing HD/BD/Bayer star within ~20 arcsec (0.0056 deg)
+    // Check if this Gaia DR3 source corresponds to an existing HD/BD/Bayer star within ~23 arcsec (0.0065 deg)
     let matchedExisting: CatalogStar | undefined;
     let minSep = 0.0065;
     for (const ex of primaryStars) {
@@ -2998,7 +3405,22 @@ export function getGaiaDr3EnrichedFieldStars(field: TelescopicReferenceField): C
         matchedExisting.bayer = `${matchedExisting.bayer} · ${gs.gaiaDesignation}`;
       }
     } else {
-      extraGaiaStars.push({
+      const alsoInTycho =
+        outerRingCandidates.some(
+          (ex) => angularSeparation(gs.raDeg, gs.decDeg, ex.raDeg, ex.decDeg) < 0.008
+        ) ||
+        innerCoreCandidates.some(
+          (ex) => angularSeparation(gs.raDeg, gs.decDeg, ex.raDeg, ex.decDeg) < 0.008
+        );
+      if (alsoInTycho) continue;
+
+      const distFromCenter = angularSeparation(
+        field.centerRaDeg,
+        field.centerDecDeg,
+        gs.raDeg,
+        gs.decDeg
+      );
+      const catStar: CatalogStar = {
         id: `gaia_${gs.sourceId}`,
         nameKo: gs.gaiaDesignation,
         nameEn: gs.gaiaDesignation,
@@ -3007,13 +3429,53 @@ export function getGaiaDr3EnrichedFieldStars(field: TelescopicReferenceField): C
         raDeg: gs.raDeg,
         decDeg: gs.decDeg,
         mag: gs.gMag,
-      });
+      };
+      if (distFromCenter >= 0.32) {
+        outerRingCandidates.push(catStar);
+      } else {
+        innerCoreCandidates.push(catStar);
+      }
     }
   }
 
-  extraGaiaStars.sort((a, b) => a.mag - b.mag);
-  return [...primaryStars, ...extraGaiaStars].slice(0, 90);
+  // Partition extra stars into 8 azimuthal sectors around the DSO center so surrounding stars in all directions are represented
+  const selectAzimuthallyBalanced = (list: CatalogStar[], maxCount: number): CatalogStar[] => {
+    if (list.length <= maxCount) return list.sort((a, b) => a.mag - b.mag);
+    const sectors: CatalogStar[][] = Array.from({ length: 8 }, () => []);
+    for (const s of list) {
+      const tp = skyToTangentPlane(s.raDeg, s.decDeg, field.centerRaDeg, field.centerDecDeg);
+      const angle = tp ? Math.atan2(tp.eta, tp.xi) : 0;
+      const sec = Math.min(7, Math.max(0, Math.floor(((angle + Math.PI) / (2 * Math.PI)) * 8)));
+      sectors[sec].push(s);
+    }
+    for (const sec of sectors) {
+      sec.sort((a, b) => a.mag - b.mag);
+    }
+    const picked: CatalogStar[] = [];
+    let round = 0;
+    while (picked.length < maxCount) {
+      let addedInRound = false;
+      for (let sec = 0; sec < 8 && picked.length < maxCount; sec++) {
+        if (round < sectors[sec].length) {
+          picked.push(sectors[sec][round]);
+          addedInRound = true;
+        }
+      }
+      if (!addedInRound) break;
+      round++;
+    }
+    return picked;
+  };
+
+  const balancedOuter = selectAzimuthallyBalanced(outerRingCandidates, 32);
+  const balancedInner = selectAzimuthallyBalanced(innerCoreCandidates, 45);
+
+  const result = [...primaryStars, ...balancedOuter, ...balancedInner].slice(0, 90);
+  cachedEnrichedFieldStarsMap.set(field.id, result);
+  return result;
 }
+
+const cachedWideFieldStarsMap = new Map<string, CatalogStar[]>();
 
 /**
  * Build Tycho-2 (4100-series Wide-Field Index) enriched star list for a wide-field constellation region
@@ -3026,6 +3488,10 @@ export function getTycho2EnrichedWideStars(
   radiusDeg: number,
   constCode: string
 ): CatalogStar[] {
+  const cacheKey = `${constCode}_${centerRaDeg.toFixed(2)}_${centerDecDeg.toFixed(2)}_${radiusDeg.toFixed(1)}`;
+  const cached = cachedWideFieldStarsMap.get(cacheKey);
+  if (cached) return cached;
+
   const baseBright = UNIFIED_SOLVER_STARS.filter(
     (s) =>
       !s.id.startsWith('hd_') &&
@@ -3067,7 +3533,7 @@ export function getTycho2EnrichedWideStars(
     }
   }
 
-  return baseBright
+  const result = baseBright
     .sort((a, b) => {
       const aOwn = a.constellation === constCode ? 0 : 1;
       const bOwn = b.constellation === constCode ? 0 : 1;
@@ -3075,6 +3541,8 @@ export function getTycho2EnrichedWideStars(
       return a.mag - b.mag;
     })
     .slice(0, 85);
+  cachedWideFieldStarsMap.set(cacheKey, result);
+  return result;
 }
 
 /**
@@ -3404,7 +3872,7 @@ export async function runBlindGeometricQuadSolveAsync(
     })),
   }));
 
-  const allDeepSkyFields = [...TELESCOPIC_REFERENCE_FIELDS, ...customGaiaFields];
+  const allDeepSkyFields = [...getAllDsoSurroundingReferenceFields(), ...customGaiaFields];
 
   // INDEX ENGINE A: Gaia DR3 5200-Series Deep-Sky Astrometric Index (< 2.0° FOV)
   for (const field of allDeepSkyFields) {
@@ -3423,8 +3891,13 @@ export async function runBlindGeometricQuadSolveAsync(
       field.defaultRadiusDeg
     );
 
-    if (verified) {
-      const fieldScore = verified.score + (verified.inliersCount >= 5 ? 80 : 0);
+    const minRequiredBlindInliers = gaiaEnrichedStars.length >= 20 ? 6 : 4;
+    if (
+      verified &&
+      verified.inliersCount >= minRequiredBlindInliers &&
+      verified.rmsPx <= 3.2
+    ) {
+      const fieldScore = verified.score + (verified.inliersCount >= 6 ? 80 : 0);
       if (!bestGaiaResult || fieldScore > bestGaiaResult.score) {
         bestGaiaResult = {
           calibration: verified.calibration,
@@ -3436,47 +3909,56 @@ export async function runBlindGeometricQuadSolveAsync(
           rmsPx: verified.rmsPx,
           poolCount: gaiaEnrichedStars.length,
         };
+        if (verified.inliersCount >= 22 && fieldScore >= 2500) break;
       }
     }
   }
 
   // INDEX ENGINE B: Tycho-2 4100-Series Wide-Field Astrometric Index (2° ~ 28° FOV)
-  for (const fig of CONSTELLATION_FIGURES) {
-    if (preferredConstellationCode && fig.code !== preferredConstellationCode) {
-      continue;
-    }
-    await yieldToBrowserIfNeeded(8);
+  if (!bestGaiaResult || bestGaiaResult.verifiedPairs.length < 6) {
+    for (const fig of CONSTELLATION_FIGURES) {
+      if (preferredConstellationCode && fig.code !== preferredConstellationCode) {
+        continue;
+      }
+      await yieldToBrowserIfNeeded(8);
 
-    const tychoEnrichedStars = getTycho2EnrichedWideStars(
-      fig.centerRaDeg,
-      fig.centerDecDeg,
-      22.0,
-      fig.code
-    );
+      const tychoEnrichedStars = getTycho2EnrichedWideStars(
+        fig.centerRaDeg,
+        fig.centerDecDeg,
+        22.0,
+        fig.code
+      );
 
-    if (tychoEnrichedStars.length < 4) continue;
+      if (tychoEnrichedStars.length < 4) continue;
 
-    const verified = verifyAndFitFieldRansac(
-      detectedStars,
-      imageWidth,
-      imageHeight,
-      fig.centerRaDeg,
-      fig.centerDecDeg,
-      tychoEnrichedStars,
-      14.0
-    );
+      const verified = verifyAndFitFieldRansac(
+        detectedStars,
+        imageWidth,
+        imageHeight,
+        fig.centerRaDeg,
+        fig.centerDecDeg,
+        tychoEnrichedStars,
+        14.0
+      );
 
-    if (verified && verified.inliersCount >= 3) {
-      if (!bestTychoResult || verified.score > bestTychoResult.score) {
-        bestTychoResult = {
-          calibration: verified.calibration,
-          matchedQuads: Math.max(6, verified.inliersCount * 2),
-          constellationCode: fig.code,
-          verifiedPairs: verified.matchedPairs,
-          score: verified.score,
-          rmsPx: verified.rmsPx,
-          poolCount: tychoEnrichedStars.length,
-        };
+      if (
+        verified &&
+        verified.inliersCount >= 6 &&
+        verified.rmsPx <= 2.6 &&
+        verified.score >= 220 &&
+        verified.calibration.radius >= 3.5
+      ) {
+        if (!bestTychoResult || verified.score > bestTychoResult.score) {
+          bestTychoResult = {
+            calibration: verified.calibration,
+            matchedQuads: Math.max(6, verified.inliersCount * 2),
+            constellationCode: fig.code,
+            verifiedPairs: verified.matchedPairs,
+            score: verified.score,
+            rmsPx: verified.rmsPx,
+            poolCount: tychoEnrichedStars.length,
+          };
+        }
       }
     }
   }
@@ -3492,9 +3974,9 @@ export async function runBlindGeometricQuadSolveAsync(
 
   if (
     bestResult &&
-    bestResult.verifiedPairs.length >= 3 &&
-    bestResult.score >= 16.0 &&
-    bestResult.rmsPx <= (bestResult.verifiedPairs.length >= 6 ? 7.5 : 4.8)
+    bestResult.verifiedPairs.length >= 5 &&
+    bestResult.score >= 140.0 &&
+    bestResult.rmsPx <= 3.4
   ) {
     const isGaiaWinner = bestResult === bestGaiaResult;
 
@@ -3593,7 +4075,7 @@ export function runBlindGeometricQuadSolve(
     poolCount: number;
   } | null = null;
 
-  for (const field of TELESCOPIC_REFERENCE_FIELDS) {
+  for (const field of getAllDsoSurroundingReferenceFields()) {
     if (preferredConstellationCode && field.constellation !== preferredConstellationCode) continue;
     const gaiaEnrichedStars = getGaiaDr3EnrichedFieldStars(field);
     const verified = verifyAndFitFieldRansac(
@@ -3605,8 +4087,9 @@ export function runBlindGeometricQuadSolve(
       gaiaEnrichedStars,
       field.defaultRadiusDeg
     );
-    if (verified) {
-      const fieldScore = verified.score + (verified.inliersCount >= 5 ? 80 : 0);
+    const minRequired = gaiaEnrichedStars.length >= 20 ? 6 : 4;
+    if (verified && verified.inliersCount >= minRequired && verified.rmsPx <= 3.2) {
+      const fieldScore = verified.score + (verified.inliersCount >= 6 ? 80 : 0);
       if (!bestGaiaResult || fieldScore > bestGaiaResult.score) {
         bestGaiaResult = {
           calibration: verified.calibration,
@@ -3839,7 +4322,7 @@ export async function solvePlateLocallyInBrowser(
   ) {
     let bestField: TelescopicReferenceField | undefined;
     let bestSep = Math.max(1.8, (calibrationHint.radius || 1.2) * 1.4);
-    for (const tf of TELESCOPIC_REFERENCE_FIELDS) {
+    for (const tf of getAllDsoSurroundingReferenceFields()) {
       const sep = angularSeparation(calibrationHint.ra, calibrationHint.dec, tf.centerRaDeg, tf.centerDecDeg);
       if (sep < bestSep) {
         bestSep = sep;
@@ -3925,8 +4408,10 @@ export async function solvePlateLocallyInBrowser(
 
     if (
       blindCandidate &&
-      blindCandidate.verifiedPairs.length >= 10 &&
-      (!verified || blindCandidate.verifiedPairs.length > verified.inliersCount + 4)
+      blindCandidate.verifiedPairs.length >= 12 &&
+      (!verified || blindCandidate.verifiedPairs.length > verified.inliersCount + 6) &&
+      (!calibrationHint ||
+        angularSeparation(blindCandidate.calibration.ra, blindCandidate.calibration.dec, calibrationHint.ra, calibrationHint.dec) <= 3.0)
     ) {
       calibration = blindCandidate.calibration;
       matchedQuadsCount = blindCandidate.matchedQuads;
@@ -3994,7 +4479,12 @@ export async function solvePlateLocallyInBrowser(
         solvingGrade: verifiedPairs.length >= 30 ? 'high_precision_sip' : 'verified_standard',
         magnitudeCutoffDesc: 'Gaia DR3 G ≤ 17.5 mag / Tycho-2 VT ≤ 13.5 mag (느슨한 인덱스 컷 · 셀당 최대 14개)',
       };
-    } else if (blindCandidate && blindCandidate.verifiedPairs.length >= 3) {
+    } else if (
+      blindCandidate &&
+      blindCandidate.verifiedPairs.length >= 6 &&
+      (!calibrationHint ||
+        angularSeparation(blindCandidate.calibration.ra, blindCandidate.calibration.dec, calibrationHint.ra, calibrationHint.dec) <= 3.0)
+    ) {
       calibration = blindCandidate.calibration;
       matchedQuadsCount = blindCandidate.matchedQuads;
       matchedField = blindCandidate.matchedField;
@@ -4093,15 +4583,19 @@ export async function solvePlateLocallyInBrowser(
         height,
         hintedRegion.constellationCode
       );
-      if (blindInConst && blindInConst.verifiedPairs.length >= 3) {
+      if (
+        blindInConst &&
+        blindInConst.verifiedPairs.length >= 6 &&
+        angularSeparation(blindInConst.calibration.ra, blindInConst.calibration.dec, hintedRegion.raDeg, hintedRegion.decDeg) <= 3.0
+      ) {
         calibration = blindInConst.calibration;
         matchedQuadsCount = blindInConst.matchedQuads;
         matchedField = blindInConst.matchedField;
         verifiedPairs = blindInConst.verifiedPairs;
         dualIndexTelemetry = blindInConst.dualIndexTelemetry;
-      } else {
+      } else if (!calibrationHint) {
         const blindAll = await runBlindGeometricQuadSolveAsync(detectedStars, width, height);
-        if (blindAll && blindAll.verifiedPairs.length >= 3) {
+        if (blindAll && blindAll.verifiedPairs.length >= 10) {
           calibration = blindAll.calibration;
           matchedQuadsCount = blindAll.matchedQuads;
           matchedField = blindAll.matchedField;
@@ -4159,11 +4653,21 @@ export async function solvePlateLocallyInBrowser(
           if (Array.isArray(assistData.objectsInField)) {
             assistedExtraObjects = assistData.objectsInField;
           }
+          const resolvedAssistConst =
+            assistData.constellation && assistData.constellation !== 'Tri'
+              ? assistData.constellation
+              : identifyConstellations(
+                  assistData.objectsInField || [],
+                  assistData.objectsInField || [],
+                  assistData.calibration.ra,
+                  assistData.calibration.dec,
+                  assistData.annotations || []
+                )[0]?.code || 'Mon';
           const refField: TelescopicReferenceField = {
             id: assistData.fieldId || 'assisted_field',
             nameKo: assistData.nameKo || assistData.primaryObjectLabel || '심우주 천체 영역',
             nameEn: assistData.nameEn || assistData.primaryObjectLabel || 'Deep Sky Field',
-            constellation: assistData.constellation || 'Tri',
+            constellation: resolvedAssistConst,
             centerRaDeg: assistData.calibration.ra,
             centerDecDeg: assistData.calibration.dec,
             defaultRadiusDeg: assistData.calibration.radius || 1.23,
@@ -4407,37 +4911,41 @@ export async function solvePlateLocallyInBrowser(
     );
   }
 
-  // 3b. Project Deep Sky Objects within FOV (only when calibration was verified by >= 4 star pairs)
+  // 3b. Project Deep Sky Objects within FOV sorted by angular distance from field center ascending
   if (verifiedPairs.length >= 4) {
-    for (const dso of LOCAL_DSO_CATALOG) {
-      const sep = angularSeparation(calibration.ra, calibration.dec, dso.raDeg, dso.decDeg);
-      if (sep <= calibration.radius * 1.15) {
-        const pt = skyCoordsToPixel(dso.raDeg, dso.decDeg, width, height, calibration);
-        if (
-          pt &&
-          pt.x >= -width * 0.03 &&
-          pt.x <= width * 1.03 &&
-          pt.y >= -height * 0.03 &&
-          pt.y <= height * 1.03
-        ) {
-          const clampedX = Math.max(width * 0.03, Math.min(width * 0.97, pt.x));
-          const clampedY = Math.max(height * 0.03, Math.min(height * 0.97, pt.y));
-          const dsoRadiusPx = Math.max(
-            14,
-            Math.min(width * 0.2, (dso.radiusArcmin * 60) / Math.max(0.5, calibration.pixscale))
-          );
+    const dsoCandidatesWithSep = LOCAL_DSO_CATALOG.map((dso) => ({
+      dso,
+      sep: angularSeparation(calibration.ra, calibration.dec, dso.raDeg, dso.decDeg),
+    }))
+      .filter((item) => item.sep <= calibration.radius * 1.15)
+      .sort((a, b) => a.sep - b.sep);
 
-          annotations.push({
-            type: dso.type,
-            names: dso.names,
-            pixelx: Number(clampedX.toFixed(1)),
-            pixely: Number(clampedY.toFixed(1)),
-            radius: Number(dsoRadiusPx.toFixed(1)),
-            vmag: dso.vmag,
-          });
-          if (!objectsInField.includes(dso.id)) {
-            objectsInField.push(dso.id);
-          }
+    for (const { dso } of dsoCandidatesWithSep) {
+      const pt = skyCoordsToPixel(dso.raDeg, dso.decDeg, width, height, calibration);
+      if (
+        pt &&
+        pt.x >= -width * 0.03 &&
+        pt.x <= width * 1.03 &&
+        pt.y >= -height * 0.03 &&
+        pt.y <= height * 1.03
+      ) {
+        const clampedX = Math.max(width * 0.03, Math.min(width * 0.97, pt.x));
+        const clampedY = Math.max(height * 0.03, Math.min(height * 0.97, pt.y));
+        const dsoRadiusPx = Math.max(
+          14,
+          Math.min(width * 0.2, (dso.radiusArcmin * 60) / Math.max(0.5, calibration.pixscale))
+        );
+
+        annotations.push({
+          type: dso.type,
+          names: dso.names,
+          pixelx: Number(clampedX.toFixed(1)),
+          pixely: Number(clampedY.toFixed(1)),
+          radius: Number(dsoRadiusPx.toFixed(1)),
+          vmag: dso.vmag,
+        });
+        if (!objectsInField.includes(dso.id)) {
+          objectsInField.push(dso.id);
         }
       }
     }
@@ -4534,13 +5042,29 @@ export async function solvePlateLocallyInBrowser(
   }
 
   // Step 4: Identify matching IAU Constellations
+  const constTags = [...objectsInField];
+  if (matchedField?.constellation && IAU_CONSTELLATIONS[matchedField.constellation]) {
+    const info = IAU_CONSTELLATIONS[matchedField.constellation];
+    constTags.unshift(`The constellation ${info.nameEn} (${matchedField.constellation})`);
+  }
   const matchedConstellations = identifyConstellations(
-    objectsInField,
+    constTags,
     objectsInField,
     calibration.ra,
     calibration.dec,
     annotations
   );
+  if (matchedField?.constellation && IAU_CONSTELLATIONS[matchedField.constellation]) {
+    const targetCode = matchedField.constellation;
+    const existingIdx = matchedConstellations.findIndex((c) => c.code === targetCode);
+    if (existingIdx > 0) {
+      const [item] = matchedConstellations.splice(existingIdx, 1);
+      matchedConstellations.unshift(item);
+      matchedConstellations.forEach((c, idx) => {
+        c.isPrimary = idx === 0;
+      });
+    }
+  }
 
   onProgress?.({
     step: 'catalog_match',

@@ -851,20 +851,28 @@ export default function App() {
                 </button>
               </nav>
 
-              {/* Target Quick Info Chip */}
-              <div className="hidden lg:flex items-center space-x-2.5 text-xs text-slate-400 px-3.5 py-2 rounded-xl bg-slate-950/70 border border-slate-800 shrink-0">
-                <span className="font-mono text-sky-400 font-bold px-1.5 py-0.5 rounded bg-sky-950/80 border border-sky-800/80">
-                  Job #{solvedData.jobId}
+              {/* Solve Status Badges (Replaced Target Quick Info Chip next to 실시간 전천성도) */}
+              <div className="flex items-center flex-wrap gap-2 px-3 py-1.5 rounded-xl bg-slate-950/70 border border-slate-800 shrink-0">
+                <span className="text-xs uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800">
+                  실시간 솔빙 완료 (Solved)
                 </span>
-                <span className="text-white font-medium truncate max-w-xs">
-                  {formatTitleWithCatalogPriority(
-                    solvedData.title,
-                    solvedData.info?.objects_in_field || solvedData.info?.tags || []
-                  )}
+                {!String(solvedData.jobId).startsWith('local_') ? (
+                  <span className="text-xs px-2 py-0.5 rounded bg-indigo-950/90 text-indigo-300 border border-indigo-500/60 flex items-center gap-1 font-semibold">
+                    <Globe className="w-3 h-3 text-indigo-400" />
+                    Astrometry.net 분석
+                  </span>
+                ) : (
+                  <span className="text-xs px-2 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-500/60 flex items-center gap-1 font-semibold">
+                    <Cpu className="w-3 h-3 text-emerald-400" />
+                    브라우저 자체 계산
+                  </span>
+                )}
+                <span className="text-xs font-mono text-slate-400">
+                  Job ID: #{solvedData.jobId}
                 </span>
-                <span>•</span>
-                <span className="text-indigo-300 font-medium">
-                  {solvedData.matchedConstellations[0]?.nameKo || '천구 별자리'}
+                <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1">
+                  <Database className="w-3 h-3 text-sky-400" />
+                  작업 히스토리에 저장됨
                 </span>
               </div>
             </div>
@@ -929,40 +937,16 @@ export default function App() {
 
         {/* Target Header Banner (When photo is solved) */}
         {!loading && solvedData && (
-          <div className="bg-slate-900/80 rounded-2xl border border-slate-800 p-5 shadow-xl flex flex-wrap items-center justify-between gap-4">
+          <div className="bg-slate-900/80 rounded-2xl border border-slate-800 px-5 py-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
             <div>
-              <div className="flex items-center flex-wrap gap-2">
-                <span className="text-xs uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800">
-                  실시간 솔빙 완료 (Solved)
-                </span>
-                {!String(solvedData.jobId).startsWith('local_') ? (
-                  <span className="text-xs px-2 py-0.5 rounded bg-indigo-950/90 text-indigo-300 border border-indigo-500/60 flex items-center gap-1 font-semibold">
-                    <Globe className="w-3 h-3 text-indigo-400" />
-                    Astrometry.net 분석
-                  </span>
-                ) : (
-                  <span className="text-xs px-2 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-500/60 flex items-center gap-1 font-semibold">
-                    <Cpu className="w-3 h-3 text-emerald-400" />
-                    브라우저 자체 계산
-                  </span>
-                )}
-                <span className="text-xs font-mono text-slate-400">
-                  Job ID: #{solvedData.jobId}
-                </span>
-                <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1">
-                  <Database className="w-3 h-3 text-sky-400" />
-                  작업 히스토리에 저장됨
-                </span>
-              </div>
-
-              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-1">
+              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
                 {formatTitleWithCatalogPriority(
                   solvedData.title || `천체 관측 사진 #${solvedData.jobId}`,
                   solvedData.info?.objects_in_field || solvedData.info?.tags || []
                 )}
               </h1>
 
-              <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-slate-300">
+              <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-slate-300">
                 <span className="flex items-center gap-1 text-sky-300 font-medium">
                   <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                   주요 별자리:{' '}
@@ -988,27 +972,6 @@ export default function App() {
                   </strong>
                 </span>
               </div>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <button
-                type="button"
-                onClick={handleReAnalyzeCurrentPhoto}
-                disabled={isReAnalyzing}
-                className="text-xs px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold border border-sky-400/40 flex items-center space-x-1.5 transition-all shadow-md shadow-sky-500/25 cursor-pointer disabled:opacity-60 hover:scale-[1.02] active:scale-[0.98]"
-                title="현재 천체사진으로 플레이트 솔빙 분석 다시 실행"
-              >
-                <RotateCcw className={`w-3.5 h-3.5 ${isReAnalyzing ? 'animate-spin' : ''}`} />
-                <span>{isReAnalyzing ? '분석 중...' : '천체사진 다시 분석'}</span>
-              </button>
-              <button
-                onClick={() => setIsAccountJobsDrawerOpen(true)}
-                className="text-xs px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center space-x-1.5 transition-colors shadow-sm cursor-pointer"
-                title="Astrometry.net 및 로컬 솔빙 작업 히스토리 열기"
-              >
-                <Database className="w-3.5 h-3.5 text-sky-400" />
-                <span>작업 히스토리 ({accountJobs.length})</span>
-              </button>
             </div>
           </div>
         )}

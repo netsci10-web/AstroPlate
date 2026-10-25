@@ -382,21 +382,28 @@ app.post('/api/astrometry/assist-local-solve', async (req: Request, res: Respons
       if (!info?.calibration) return null;
 
       let annotations: any[] = [];
+      let annNames: string[] = [];
       if (annRes && annRes.ok) {
         const annJson = await annRes.json().catch(() => null);
         if (Array.isArray(annJson?.annotations)) {
           annotations = annJson.annotations;
+          annNames = annotations.flatMap((a: any) => (Array.isArray(a.names) ? a.names : []));
         }
       }
 
-      const objs: string[] = info.objects_in_field || info.machine_tags || [];
+      const rawObjs: string[] = [
+        ...(Array.isArray(info.objects_in_field) ? info.objects_in_field : []),
+        ...(Array.isArray(info.machine_tags) ? info.machine_tags : []),
+        ...annNames,
+      ];
+      const objs = Array.from(new Set(rawObjs.filter(Boolean)));
       const primaryObj = objs[0] || `Job #${jid}`;
       return {
         fieldId: `assist_${jid}`,
         nameKo: primaryObj,
         nameEn: primaryObj,
         primaryObjectLabel: primaryObj,
-        constellation: 'Tri',
+        constellation: '',
         calibration: info.calibration,
         objectsInField: objs,
         annotations,
@@ -405,7 +412,7 @@ app.post('/api/astrometry/assist-local-solve', async (req: Request, res: Respons
           nameKo: `TYC-${jid}-${idx + 1}`,
           nameEn: `TYC-${jid}-${idx + 1}`,
           bayer: `TYC-${jid}-${idx + 1}`,
-          constellation: 'Tri',
+          constellation: '',
           raDeg: Number(cs.ira.toFixed(4)),
           decDeg: Number(cs.idec.toFixed(4)),
           mag: Number(Math.max(4.0, Math.min(13.5, cs.mag)).toFixed(2)),
@@ -1754,16 +1761,29 @@ app.get('/api/astro/simbad', async (req: Request, res: Response) => {
 // Vite or Static file serving
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: {
-        middlewareMode: true,
-        hmr: false,
-        watch: null,
-      },
-      appType: 'spa',
+    let viteMiddleware: any = null;
+    const viteReadyPromise = (async () => {
+      const { createServer: createViteServer } = await import('vite');
+      const vite = await createViteServer({
+        server: {
+          middlewareMode: true,
+          hmr: false,
+          watch: null,
+        },
+        appType: 'spa',
+      });
+      viteMiddleware = vite.middlewares;
+      return viteMiddleware;
+    })();
+
+    app.use(async (req, res, next) => {
+      try {
+        const mw = viteMiddleware || (await viteReadyPromise);
+        return mw(req, res, next);
+      } catch (err) {
+        return next(err);
+      }
     });
-    app.use(vite.middlewares);
   } else {
     app.use(express.static(path.resolve(__dirname, 'dist')));
     app.get('*', (_req: Request, res: Response) => {
@@ -1780,3 +1800,4 @@ startServer().catch((err) => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });
+

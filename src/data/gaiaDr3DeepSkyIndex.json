@@ -2,8 +2,8 @@
   "catalog": "Gaia DR3 (ESA / CDS VizieR I/355/gaiadr3)",
   "series": "5200-series Deep-Sky Astrometric Index (< 2.0° FOV)",
   "downloadedAt": "2026-10-21T09:16:42.942Z",
-  "totalFields": 35,
-  "totalStars": 3200,
+  "totalFields": 44,
+  "totalStars": 3307,
   "fields": [
     {
       "fieldId": "aur_m36",
@@ -29276,6 +29276,1013 @@
           "gMag": 11.471,
           "bpMag": 11.991,
           "rpMag": 10.793
+        }
+      ]
+    },
+    {
+      "fieldId": "cyg_m39",
+      "nameKo": "백조자리 M39 산개성단 (NGC 7092)",
+      "nameEn": "Cygnus M39 Open Cluster (NGC 7092)",
+      "constellation": "Cyg",
+      "centerRaDeg": 322.9656,
+      "centerDecDeg": 48.4198,
+      "radiusDeg": 1.23,
+      "stars": [
+        {
+          "sourceId": "2166830711138443800",
+          "gaiaDesignation": "Gaia DR3 2166830711138443800",
+          "raDeg": 323.07115,
+          "decDeg": 48.443872,
+          "gMag": 6.558,
+          "bpMag": 6.808,
+          "rpMag": 6.308
+        },
+        {
+          "sourceId": "2166821018138434301",
+          "gaiaDesignation": "Gaia DR3 2166821018138434301",
+          "raDeg": 322.10184,
+          "decDeg": 48.434359,
+          "gMag": 7.61,
+          "bpMag": 7.86,
+          "rpMag": 7.36
+        },
+        {
+          "sourceId": "2166832921138303402",
+          "gaiaDesignation": "Gaia DR3 2166832921138303402",
+          "raDeg": 323.292153,
+          "decDeg": 48.303454,
+          "gMag": 6.813,
+          "bpMag": 7.063,
+          "rpMag": 6.563
+        },
+        {
+          "sourceId": "2166820541138854103",
+          "gaiaDesignation": "Gaia DR3 2166820541138854103",
+          "raDeg": 322.054116,
+          "decDeg": 48.854171,
+          "gMag": 10.506,
+          "bpMag": 10.756,
+          "rpMag": 10.256
+        },
+        {
+          "sourceId": "2166826957137669904",
+          "gaiaDesignation": "Gaia DR3 2166826957137669904",
+          "raDeg": 322.695739,
+          "decDeg": 47.669915,
+          "gMag": 10.141,
+          "bpMag": 10.391,
+          "rpMag": 9.891
+        },
+        {
+          "sourceId": "2166828465138356505",
+          "gaiaDesignation": "Gaia DR3 2166828465138356505",
+          "raDeg": 322.846587,
+          "decDeg": 48.356538,
+          "gMag": 7.87,
+          "bpMag": 8.12,
+          "rpMag": 7.62
+        },
+        {
+          "sourceId": "2166832970137790306",
+          "gaiaDesignation": "Gaia DR3 2166832970137790306",
+          "raDeg": 323.297049,
+          "decDeg": 47.790382,
+          "gMag": 8.401,
+          "bpMag": 8.651,
+          "rpMag": 8.151
+        },
+        {
+          "sourceId": "2166834880139412407",
+          "gaiaDesignation": "Gaia DR3 2166834880139412407",
+          "raDeg": 323.488064,
+          "decDeg": 49.412415,
+          "gMag": 8.938,
+          "bpMag": 9.188,
+          "rpMag": 8.688
+        },
+        {
+          "sourceId": "2166829266138584608",
+          "gaiaDesignation": "Gaia DR3 2166829266138584608",
+          "raDeg": 322.926626,
+          "decDeg": 48.584665,
+          "gMag": 6.786,
+          "bpMag": 7.036,
+          "rpMag": 6.536
+        },
+        {
+          "sourceId": "2166825789138390809",
+          "gaiaDesignation": "Gaia DR3 2166825789138390809",
+          "raDeg": 322.578928,
+          "decDeg": 48.390891,
+          "gMag": 7.321,
+          "bpMag": 7.571,
+          "rpMag": 7.071
+        },
+        {
+          "sourceId": "2166828772138278210",
+          "gaiaDesignation": "Gaia DR3 2166828772138278210",
+          "raDeg": 322.877216,
+          "decDeg": 48.278222,
+          "gMag": 8.036,
+          "bpMag": 8.286,
+          "rpMag": 7.786
+        },
+        {
+          "sourceId": "2166828104137588711",
+          "gaiaDesignation": "Gaia DR3 2166828104137588711",
+          "raDeg": 322.810476,
+          "decDeg": 47.588788,
+          "gMag": 9.002,
+          "bpMag": 9.252,
+          "rpMag": 8.752
+        },
+        {
+          "sourceId": "2166820579138972512",
+          "gaiaDesignation": "Gaia DR3 2166820579138972512",
+          "raDeg": 322.057906,
+          "decDeg": 48.972586,
+          "gMag": 9.633,
+          "bpMag": 9.883,
+          "rpMag": 9.383
+        },
+        {
+          "sourceId": "2166832775138045013",
+          "gaiaDesignation": "Gaia DR3 2166832775138045013",
+          "raDeg": 323.277528,
+          "decDeg": 48.04507,
+          "gMag": 8.924,
+          "bpMag": 9.174,
+          "rpMag": 8.674
+        },
+        {
+          "sourceId": "2166831150139009214",
+          "gaiaDesignation": "Gaia DR3 2166831150139009214",
+          "raDeg": 323.115041,
+          "decDeg": 49.009269,
+          "gMag": 9.433,
+          "bpMag": 9.683,
+          "rpMag": 9.183
+        },
+        {
+          "sourceId": "2166839652137911815",
+          "gaiaDesignation": "Gaia DR3 2166839652137911815",
+          "raDeg": 323.965245,
+          "decDeg": 47.911882,
+          "gMag": 9.876,
+          "bpMag": 10.126,
+          "rpMag": 9.626
+        },
+        {
+          "sourceId": "2166829360138484316",
+          "gaiaDesignation": "Gaia DR3 2166829360138484316",
+          "raDeg": 322.936068,
+          "decDeg": 48.484398,
+          "gMag": 7.659,
+          "bpMag": 7.909,
+          "rpMag": 7.409
+        },
+        {
+          "sourceId": "2166830190138567117",
+          "gaiaDesignation": "Gaia DR3 2166830190138567117",
+          "raDeg": 323.019032,
+          "decDeg": 48.567109,
+          "gMag": 8.101,
+          "bpMag": 8.351,
+          "rpMag": 7.851
+        },
+        {
+          "sourceId": "2166826924137862118",
+          "gaiaDesignation": "Gaia DR3 2166826924137862118",
+          "raDeg": 322.692461,
+          "decDeg": 47.862185,
+          "gMag": 8.66,
+          "bpMag": 8.91,
+          "rpMag": 8.41
+        },
+        {
+          "sourceId": "2166824160137533219",
+          "gaiaDesignation": "Gaia DR3 2166824160137533219",
+          "raDeg": 322.416064,
+          "decDeg": 47.533234,
+          "gMag": 9.323,
+          "bpMag": 9.573,
+          "rpMag": 9.073
+        },
+        {
+          "sourceId": "2166831733137958420",
+          "gaiaDesignation": "Gaia DR3 2166831733137958420",
+          "raDeg": 323.173364,
+          "decDeg": 47.958441,
+          "gMag": 9.538,
+          "bpMag": 9.788,
+          "rpMag": 9.288
+        },
+        {
+          "sourceId": "2166824122138969021",
+          "gaiaDesignation": "Gaia DR3 2166824122138969021",
+          "raDeg": 322.412268,
+          "decDeg": 48.969091,
+          "gMag": 10,
+          "bpMag": 10.25,
+          "rpMag": 9.75
+        },
+        {
+          "sourceId": "2166834639139139922",
+          "gaiaDesignation": "Gaia DR3 2166834639139139922",
+          "raDeg": 323.463926,
+          "decDeg": 49.14,
+          "gMag": 9.22,
+          "bpMag": 9.47,
+          "rpMag": 8.97
+        },
+        {
+          "sourceId": "2166839092137919423",
+          "gaiaDesignation": "Gaia DR3 2166839092137919423",
+          "raDeg": 323.909226,
+          "decDeg": 47.919479,
+          "gMag": 9.413,
+          "bpMag": 9.663,
+          "rpMag": 9.163
+        },
+        {
+          "sourceId": "2166835680138740024",
+          "gaiaDesignation": "Gaia DR3 2166835680138740024",
+          "raDeg": 323.568051,
+          "decDeg": 48.740071,
+          "gMag": 9.417,
+          "bpMag": 9.667,
+          "rpMag": 9.167
+        },
+        {
+          "sourceId": "2166826999138457325",
+          "gaiaDesignation": "Gaia DR3 2166826999138457325",
+          "raDeg": 322.699987,
+          "decDeg": 48.457391,
+          "gMag": 9.506,
+          "bpMag": 9.756,
+          "rpMag": 9.256
+        },
+        {
+          "sourceId": "2166832498137513426",
+          "gaiaDesignation": "Gaia DR3 2166832498137513426",
+          "raDeg": 323.249889,
+          "decDeg": 47.51342,
+          "gMag": 10.015,
+          "bpMag": 10.265,
+          "rpMag": 9.765
+        },
+        {
+          "sourceId": "2166826835138331927",
+          "gaiaDesignation": "Gaia DR3 2166826835138331927",
+          "raDeg": 322.683574,
+          "decDeg": 48.331955,
+          "gMag": 9.31,
+          "bpMag": 9.56,
+          "rpMag": 9.06
+        },
+        {
+          "sourceId": "2166830770138342328",
+          "gaiaDesignation": "Gaia DR3 2166830770138342328",
+          "raDeg": 323.077084,
+          "decDeg": 48.342331,
+          "gMag": 8.693,
+          "bpMag": 8.943,
+          "rpMag": 8.443
+        },
+        {
+          "sourceId": "2166822595139347029",
+          "gaiaDesignation": "Gaia DR3 2166822595139347029",
+          "raDeg": 322.259503,
+          "decDeg": 49.347059,
+          "gMag": 9.989,
+          "bpMag": 10.239,
+          "rpMag": 9.739
+        },
+        {
+          "sourceId": "2166830610138639530",
+          "gaiaDesignation": "Gaia DR3 2166830610138639530",
+          "raDeg": 323.061094,
+          "decDeg": 48.639548,
+          "gMag": 8.3,
+          "bpMag": 8.55,
+          "rpMag": 8.05
+        },
+        {
+          "sourceId": "2166829482137442931",
+          "gaiaDesignation": "Gaia DR3 2166829482137442931",
+          "raDeg": 322.948282,
+          "decDeg": 47.442925,
+          "gMag": 10.183,
+          "bpMag": 10.433,
+          "rpMag": 9.933
+        },
+        {
+          "sourceId": "2166823510137923232",
+          "gaiaDesignation": "Gaia DR3 2166823510137923232",
+          "raDeg": 322.351031,
+          "decDeg": 47.923295,
+          "gMag": 10.353,
+          "bpMag": 10.603,
+          "rpMag": 10.103
+        },
+        {
+          "sourceId": "2166830137138334233",
+          "gaiaDesignation": "Gaia DR3 2166830137138334233",
+          "raDeg": 323.013795,
+          "decDeg": 48.334297,
+          "gMag": 9.028,
+          "bpMag": 9.278,
+          "rpMag": 8.778
+        },
+        {
+          "sourceId": "2166838173137572534",
+          "gaiaDesignation": "Gaia DR3 2166838173137572534",
+          "raDeg": 323.817326,
+          "decDeg": 47.572585,
+          "gMag": 11.811,
+          "bpMag": 12.061,
+          "rpMag": 11.561
+        },
+        {
+          "sourceId": "2166830281138716435",
+          "gaiaDesignation": "Gaia DR3 2166830281138716435",
+          "raDeg": 323.028111,
+          "decDeg": 48.716489,
+          "gMag": 8.543,
+          "bpMag": 8.793,
+          "rpMag": 8.293
+        },
+        {
+          "sourceId": "2166820129138645736",
+          "gaiaDesignation": "Gaia DR3 2166820129138645736",
+          "raDeg": 322.012977,
+          "decDeg": 48.645717,
+          "gMag": 9.993,
+          "bpMag": 10.243,
+          "rpMag": 9.743
+        },
+        {
+          "sourceId": "2166831997138686937",
+          "gaiaDesignation": "Gaia DR3 2166831997138686937",
+          "raDeg": 323.199725,
+          "decDeg": 48.686913,
+          "gMag": 10.294,
+          "bpMag": 10.544,
+          "rpMag": 10.044
+        },
+        {
+          "sourceId": "2166826388138296838",
+          "gaiaDesignation": "Gaia DR3 2166826388138296838",
+          "raDeg": 322.638831,
+          "decDeg": 48.296833,
+          "gMag": 9.206,
+          "bpMag": 9.456,
+          "rpMag": 8.956
+        },
+        {
+          "sourceId": "2166834689138046339",
+          "gaiaDesignation": "Gaia DR3 2166834689138046339",
+          "raDeg": 323.468978,
+          "decDeg": 48.046317,
+          "gMag": 9.748,
+          "bpMag": 9.998,
+          "rpMag": 9.498
+        },
+        {
+          "sourceId": "2166826876138089240",
+          "gaiaDesignation": "Gaia DR3 2166826876138089240",
+          "raDeg": 322.687638,
+          "decDeg": 48.089206,
+          "gMag": 11.135,
+          "bpMag": 11.385,
+          "rpMag": 10.885
+        },
+        {
+          "sourceId": "2166835052138630541",
+          "gaiaDesignation": "Gaia DR3 2166835052138630541",
+          "raDeg": 323.505213,
+          "decDeg": 48.630524,
+          "gMag": 10.912,
+          "bpMag": 11.162,
+          "rpMag": 10.662
+        },
+        {
+          "sourceId": "2166831798138483242",
+          "gaiaDesignation": "Gaia DR3 2166831798138483242",
+          "raDeg": 323.17984,
+          "decDeg": 48.483218,
+          "gMag": 9.085,
+          "bpMag": 9.335,
+          "rpMag": 8.835
+        },
+        {
+          "sourceId": "2166832268137433743",
+          "gaiaDesignation": "Gaia DR3 2166832268137433743",
+          "raDeg": 323.226838,
+          "decDeg": 47.433719,
+          "gMag": 10.162,
+          "bpMag": 10.412,
+          "rpMag": 9.912
+        },
+        {
+          "sourceId": "2166834756138555344",
+          "gaiaDesignation": "Gaia DR3 2166834756138555344",
+          "raDeg": 323.4756,
+          "decDeg": 48.555382,
+          "gMag": 9.342,
+          "bpMag": 9.592,
+          "rpMag": 9.092
+        },
+        {
+          "sourceId": "2166838714138493745",
+          "gaiaDesignation": "Gaia DR3 2166838714138493745",
+          "raDeg": 323.871443,
+          "decDeg": 48.493705,
+          "gMag": 8.735,
+          "bpMag": 8.985,
+          "rpMag": 8.485
+        }
+      ]
+    },
+    {
+      "fieldId": "peg_ngc7331",
+      "nameKo": "페가수스자리 사슴핥기 은하 C30 (NGC 7331)",
+      "nameEn": "Pegasus Deer Lick Galaxy C30 (NGC 7331)",
+      "constellation": "Peg",
+      "centerRaDeg": 339.2751,
+      "centerDecDeg": 34.4178,
+      "radiusDeg": 1.23,
+      "stars": [
+        {
+          "sourceId": "2166990233125578200",
+          "gaiaDesignation": "Gaia DR3 2166990233125578200",
+          "raDeg": 339.0233,
+          "decDeg": 35.5782,
+          "gMag": 6.11,
+          "bpMag": 6.36,
+          "rpMag": 5.86
+        },
+        {
+          "sourceId": "2166993124124929401",
+          "gaiaDesignation": "Gaia DR3 2166993124124929401",
+          "raDeg": 339.3124,
+          "decDeg": 34.9294,
+          "gMag": 8.46,
+          "bpMag": 8.71,
+          "rpMag": 8.21
+        },
+        {
+          "sourceId": "2166992167125137302",
+          "gaiaDesignation": "Gaia DR3 2166992167125137302",
+          "raDeg": 339.2168,
+          "decDeg": 35.1373,
+          "gMag": 8.62,
+          "bpMag": 8.87,
+          "rpMag": 8.37
+        },
+        {
+          "sourceId": "2166994619125408003",
+          "gaiaDesignation": "Gaia DR3 2166994619125408003",
+          "raDeg": 339.4619,
+          "decDeg": 35.408,
+          "gMag": 8.69,
+          "bpMag": 8.94,
+          "rpMag": 8.44
+        },
+        {
+          "sourceId": "2166984095123615604",
+          "gaiaDesignation": "Gaia DR3 2166984095123615604",
+          "raDeg": 338.4095,
+          "decDeg": 33.6156,
+          "gMag": 9.08,
+          "bpMag": 9.33,
+          "rpMag": 8.83
+        },
+        {
+          "sourceId": "2166990725124656005",
+          "gaiaDesignation": "Gaia DR3 2166990725124656005",
+          "raDeg": 339.0725,
+          "decDeg": 34.656,
+          "gMag": 9.13,
+          "bpMag": 9.38,
+          "rpMag": 8.88
+        },
+        {
+          "sourceId": "2166989908125328406",
+          "gaiaDesignation": "Gaia DR3 2166989908125328406",
+          "raDeg": 338.9908,
+          "decDeg": 35.3284,
+          "gMag": 9.58,
+          "bpMag": 9.83,
+          "rpMag": 9.33
+        },
+        {
+          "sourceId": "2166990149124618807",
+          "gaiaDesignation": "Gaia DR3 2166990149124618807",
+          "raDeg": 339.0149,
+          "decDeg": 34.6188,
+          "gMag": 9.07,
+          "bpMag": 9.32,
+          "rpMag": 8.82
+        },
+        {
+          "sourceId": "2166996571123546408",
+          "gaiaDesignation": "Gaia DR3 2166996571123546408",
+          "raDeg": 339.6571,
+          "decDeg": 33.5464,
+          "gMag": 8.1,
+          "bpMag": 8.35,
+          "rpMag": 7.85
+        },
+        {
+          "sourceId": "2166988573124437509",
+          "gaiaDesignation": "Gaia DR3 2166988573124437509",
+          "raDeg": 338.8573,
+          "decDeg": 34.4375,
+          "gMag": 9.51,
+          "bpMag": 9.76,
+          "rpMag": 9.26
+        },
+        {
+          "sourceId": "2166989676125434610",
+          "gaiaDesignation": "Gaia DR3 2166989676125434610",
+          "raDeg": 338.9677,
+          "decDeg": 35.4346,
+          "gMag": 9,
+          "bpMag": 9.25,
+          "rpMag": 8.75
+        },
+        {
+          "sourceId": "2166999086125184611",
+          "gaiaDesignation": "Gaia DR3 2166999086125184611",
+          "raDeg": 339.9086,
+          "decDeg": 35.1846,
+          "gMag": 9.28,
+          "bpMag": 9.53,
+          "rpMag": 9.03
+        },
+        {
+          "sourceId": "2166995853125010912",
+          "gaiaDesignation": "Gaia DR3 2166995853125010912",
+          "raDeg": 339.5853,
+          "decDeg": 35.0109,
+          "gMag": 9.78,
+          "bpMag": 10.03,
+          "rpMag": 9.53
+        },
+        {
+          "sourceId": "2166987272124850413",
+          "gaiaDesignation": "Gaia DR3 2166987272124850413",
+          "raDeg": 338.7272,
+          "decDeg": 34.8504,
+          "gMag": 10.36,
+          "bpMag": 10.61,
+          "rpMag": 10.11
+        },
+        {
+          "sourceId": "2166990204125141814",
+          "gaiaDesignation": "Gaia DR3 2166990204125141814",
+          "raDeg": 339.0204,
+          "decDeg": 35.1418,
+          "gMag": 10.46,
+          "bpMag": 10.71,
+          "rpMag": 10.21
+        },
+        {
+          "sourceId": "2166985708123819015",
+          "gaiaDesignation": "Gaia DR3 2166985708123819015",
+          "raDeg": 338.5709,
+          "decDeg": 33.819,
+          "gMag": 10.59,
+          "bpMag": 10.84,
+          "rpMag": 10.34
+        },
+        {
+          "sourceId": "2166988053125089516",
+          "gaiaDesignation": "Gaia DR3 2166988053125089516",
+          "raDeg": 338.8053,
+          "decDeg": 35.0895,
+          "gMag": 10.62,
+          "bpMag": 10.87,
+          "rpMag": 10.37
+        },
+        {
+          "sourceId": "2166989295124841417",
+          "gaiaDesignation": "Gaia DR3 2166989295124841417",
+          "raDeg": 338.9296,
+          "decDeg": 34.8414,
+          "gMag": 10.45,
+          "bpMag": 10.7,
+          "rpMag": 10.2
+        },
+        {
+          "sourceId": "2166983127123576618",
+          "gaiaDesignation": "Gaia DR3 2166983127123576618",
+          "raDeg": 338.3128,
+          "decDeg": 33.5766,
+          "gMag": 10.41,
+          "bpMag": 10.66,
+          "rpMag": 10.16
+        },
+        {
+          "sourceId": "2166998160123889519",
+          "gaiaDesignation": "Gaia DR3 2166998160123889519",
+          "raDeg": 339.816,
+          "decDeg": 33.8895,
+          "gMag": 8.87,
+          "bpMag": 9.12,
+          "rpMag": 8.62
+        }
+      ]
+    },
+    {
+      "fieldId": "gem_pollux",
+      "nameKo": "쌍둥이자리 폴룩스 (β Gem)",
+      "nameEn": "Gemini Pollux (Beta Geminorum)",
+      "constellation": "Gem",
+      "centerRaDeg": 116.3231,
+      "centerDecDeg": 28.0292,
+      "radiusDeg": 1.23,
+      "stars": [
+        {
+          "sourceId": "2164763233118025500",
+          "gaiaDesignation": "Gaia DR3 2164763233118025500",
+          "raDeg": 116.3233,
+          "decDeg": 28.0255,
+          "gMag": 1.14,
+          "bpMag": 1.39,
+          "rpMag": 0.89
+        },
+        {
+          "sourceId": "2164758259118880201",
+          "gaiaDesignation": "Gaia DR3 2164758259118880201",
+          "raDeg": 115.8259,
+          "decDeg": 28.8802,
+          "gMag": 4.29,
+          "bpMag": 4.54,
+          "rpMag": 4.04
+        },
+        {
+          "sourceId": "2164756656118831902",
+          "gaiaDesignation": "Gaia DR3 2164756656118831902",
+          "raDeg": 115.6656,
+          "decDeg": 28.8319,
+          "gMag": 7.73,
+          "bpMag": 7.98,
+          "rpMag": 7.48
+        },
+        {
+          "sourceId": "2164761483117480003",
+          "gaiaDesignation": "Gaia DR3 2164761483117480003",
+          "raDeg": 116.1483,
+          "decDeg": 27.48,
+          "gMag": 8.36,
+          "bpMag": 8.61,
+          "rpMag": 8.11
+        },
+        {
+          "sourceId": "2164758410118335804",
+          "gaiaDesignation": "Gaia DR3 2164758410118335804",
+          "raDeg": 115.841,
+          "decDeg": 28.3358,
+          "gMag": 8.81,
+          "bpMag": 9.06,
+          "rpMag": 8.56
+        },
+        {
+          "sourceId": "2164764387118750005",
+          "gaiaDesignation": "Gaia DR3 2164764387118750005",
+          "raDeg": 116.4387,
+          "decDeg": 28.75,
+          "gMag": 9.34,
+          "bpMag": 9.59,
+          "rpMag": 9.09
+        },
+        {
+          "sourceId": "2164763606118752206",
+          "gaiaDesignation": "Gaia DR3 2164763606118752206",
+          "raDeg": 116.3606,
+          "decDeg": 28.7522,
+          "gMag": 9.19,
+          "bpMag": 9.44,
+          "rpMag": 8.94
+        },
+        {
+          "sourceId": "2164766817117781607",
+          "gaiaDesignation": "Gaia DR3 2164766817117781607",
+          "raDeg": 116.6817,
+          "decDeg": 27.7816,
+          "gMag": 9.35,
+          "bpMag": 9.6,
+          "rpMag": 9.1
+        },
+        {
+          "sourceId": "2164774731117445608",
+          "gaiaDesignation": "Gaia DR3 2164774731117445608",
+          "raDeg": 117.4731,
+          "decDeg": 27.4456,
+          "gMag": 9.36,
+          "bpMag": 9.61,
+          "rpMag": 9.11
+        },
+        {
+          "sourceId": "2164757222118238809",
+          "gaiaDesignation": "Gaia DR3 2164757222118238809",
+          "raDeg": 115.7222,
+          "decDeg": 28.2388,
+          "gMag": 9.83,
+          "bpMag": 10.08,
+          "rpMag": 9.58
+        },
+        {
+          "sourceId": "2164757766118773710",
+          "gaiaDesignation": "Gaia DR3 2164757766118773710",
+          "raDeg": 115.7766,
+          "decDeg": 28.7737,
+          "gMag": 9.62,
+          "bpMag": 9.87,
+          "rpMag": 9.37
+        },
+        {
+          "sourceId": "2164764009118543711",
+          "gaiaDesignation": "Gaia DR3 2164764009118543711",
+          "raDeg": 116.4009,
+          "decDeg": 28.5437,
+          "gMag": 9.8,
+          "bpMag": 10.05,
+          "rpMag": 9.55
+        },
+        {
+          "sourceId": "2164762706117813712",
+          "gaiaDesignation": "Gaia DR3 2164762706117813712",
+          "raDeg": 116.2706,
+          "decDeg": 27.8137,
+          "gMag": 10.16,
+          "bpMag": 10.41,
+          "rpMag": 9.91
+        },
+        {
+          "sourceId": "2164764498117526613",
+          "gaiaDesignation": "Gaia DR3 2164764498117526613",
+          "raDeg": 116.4498,
+          "decDeg": 27.5266,
+          "gMag": 9.81,
+          "bpMag": 10.06,
+          "rpMag": 9.56
+        },
+        {
+          "sourceId": "2164763842117233114",
+          "gaiaDesignation": "Gaia DR3 2164763842117233114",
+          "raDeg": 116.3842,
+          "decDeg": 27.2331,
+          "gMag": 10.11,
+          "bpMag": 10.36,
+          "rpMag": 9.86
+        },
+        {
+          "sourceId": "2164759605119029015",
+          "gaiaDesignation": "Gaia DR3 2164759605119029015",
+          "raDeg": 115.9605,
+          "decDeg": 29.029,
+          "gMag": 9.79,
+          "bpMag": 10.04,
+          "rpMag": 9.54
+        },
+        {
+          "sourceId": "2164759309118204416",
+          "gaiaDesignation": "Gaia DR3 2164759309118204416",
+          "raDeg": 115.9309,
+          "decDeg": 28.2044,
+          "gMag": 9.84,
+          "bpMag": 10.09,
+          "rpMag": 9.59
+        },
+        {
+          "sourceId": "2164759957118242317",
+          "gaiaDesignation": "Gaia DR3 2164759957118242317",
+          "raDeg": 115.9957,
+          "decDeg": 28.2423,
+          "gMag": 10.29,
+          "bpMag": 10.54,
+          "rpMag": 10.04
+        },
+        {
+          "sourceId": "2164762528118543818",
+          "gaiaDesignation": "Gaia DR3 2164762528118543818",
+          "raDeg": 116.2528,
+          "decDeg": 28.5438,
+          "gMag": 10.2,
+          "bpMag": 10.45,
+          "rpMag": 9.95
+        },
+        {
+          "sourceId": "2164767146117250019",
+          "gaiaDesignation": "Gaia DR3 2164767146117250019",
+          "raDeg": 116.7146,
+          "decDeg": 27.25,
+          "gMag": 10.04,
+          "bpMag": 10.29,
+          "rpMag": 9.79
+        }
+      ]
+    },
+    {
+      "fieldId": "sco_m4_antares",
+      "nameKo": "전갈자리 M4 구상성단 (NGC 6121)",
+      "nameEn": "Scorpius M4 Globular Cluster (NGC 6121)",
+      "constellation": "Sco",
+      "centerRaDeg": 246.4613,
+      "centerDecDeg": -26.5766,
+      "radiusDeg": 1.23,
+      "stars": [
+        {
+          "sourceId": "2166061281062850000",
+          "gaiaDesignation": "Gaia DR3 2166061281062850000",
+          "raDeg": 246.1281,
+          "decDeg": -27.15,
+          "gMag": 7.47,
+          "bpMag": 7.72,
+          "rpMag": 7.22
+        },
+        {
+          "sourceId": "2166067814063743901",
+          "gaiaDesignation": "Gaia DR3 2166067814063743901",
+          "raDeg": 246.7814,
+          "decDeg": -26.2561,
+          "gMag": 8.28,
+          "bpMag": 8.53,
+          "rpMag": 8.03
+        },
+        {
+          "sourceId": "2166064614063432302",
+          "gaiaDesignation": "Gaia DR3 2166064614063432302",
+          "raDeg": 246.4614,
+          "decDeg": -26.5677,
+          "gMag": 7.27,
+          "bpMag": 7.52,
+          "rpMag": 7.02
+        },
+        {
+          "sourceId": "2166061692063193303",
+          "gaiaDesignation": "Gaia DR3 2166061692063193303",
+          "raDeg": 246.1692,
+          "decDeg": -26.8067,
+          "gMag": 8.37,
+          "bpMag": 8.62,
+          "rpMag": 8.12
+        },
+        {
+          "sourceId": "2166059466063728604",
+          "gaiaDesignation": "Gaia DR3 2166059466063728604",
+          "raDeg": 245.9466,
+          "decDeg": -26.2714,
+          "gMag": 8.91,
+          "bpMag": 9.16,
+          "rpMag": 8.66
+        },
+        {
+          "sourceId": "2166058451063628305",
+          "gaiaDesignation": "Gaia DR3 2166058451063628305",
+          "raDeg": 245.8451,
+          "decDeg": -26.3717,
+          "gMag": 9.84,
+          "bpMag": 10.09,
+          "rpMag": 9.59
+        },
+        {
+          "sourceId": "2166057552063607106",
+          "gaiaDesignation": "Gaia DR3 2166057552063607106",
+          "raDeg": 245.7552,
+          "decDeg": -26.3929,
+          "gMag": 10.26,
+          "bpMag": 10.51,
+          "rpMag": 10.01
+        },
+        {
+          "sourceId": "2166060252063868207",
+          "gaiaDesignation": "Gaia DR3 2166060252063868207",
+          "raDeg": 246.0252,
+          "decDeg": -26.1318,
+          "gMag": 9.65,
+          "bpMag": 9.9,
+          "rpMag": 9.4
+        },
+        {
+          "sourceId": "2166063995063841108",
+          "gaiaDesignation": "Gaia DR3 2166063995063841108",
+          "raDeg": 246.3995,
+          "decDeg": -26.1589,
+          "gMag": 10.22,
+          "bpMag": 10.47,
+          "rpMag": 9.97
+        },
+        {
+          "sourceId": "2166053931063397009",
+          "gaiaDesignation": "Gaia DR3 2166053931063397009",
+          "raDeg": 245.3931,
+          "decDeg": -26.603,
+          "gMag": 10.24,
+          "bpMag": 10.49,
+          "rpMag": 9.99
+        },
+        {
+          "sourceId": "2166071324063776210",
+          "gaiaDesignation": "Gaia DR3 2166071324063776210",
+          "raDeg": 247.1324,
+          "decDeg": -26.2238,
+          "gMag": 9.53,
+          "bpMag": 9.78,
+          "rpMag": 9.28
+        },
+        {
+          "sourceId": "2166071473063320711",
+          "gaiaDesignation": "Gaia DR3 2166071473063320711",
+          "raDeg": 247.1473,
+          "decDeg": -26.6793,
+          "gMag": 9.6,
+          "bpMag": 9.85,
+          "rpMag": 9.35
+        },
+        {
+          "sourceId": "2166062324062887812",
+          "gaiaDesignation": "Gaia DR3 2166062324062887812",
+          "raDeg": 246.2324,
+          "decDeg": -27.1122,
+          "gMag": 9.9,
+          "bpMag": 10.15,
+          "rpMag": 9.65
+        },
+        {
+          "sourceId": "2166067776063876113",
+          "gaiaDesignation": "Gaia DR3 2166067776063876113",
+          "raDeg": 246.7776,
+          "decDeg": -26.1239,
+          "gMag": 10.4,
+          "bpMag": 10.65,
+          "rpMag": 10.15
+        },
+        {
+          "sourceId": "2166058380063379914",
+          "gaiaDesignation": "Gaia DR3 2166058380063379914",
+          "raDeg": 245.8381,
+          "decDeg": -26.6201,
+          "gMag": 9.97,
+          "bpMag": 10.22,
+          "rpMag": 9.72
+        },
+        {
+          "sourceId": "2166059829063215115",
+          "gaiaDesignation": "Gaia DR3 2166059829063215115",
+          "raDeg": 245.9829,
+          "decDeg": -26.7849,
+          "gMag": 10.39,
+          "bpMag": 10.64,
+          "rpMag": 10.14
+        },
+        {
+          "sourceId": "2166071025063526916",
+          "gaiaDesignation": "Gaia DR3 2166071025063526916",
+          "raDeg": 247.1026,
+          "decDeg": -26.4731,
+          "gMag": 9.15,
+          "bpMag": 9.4,
+          "rpMag": 8.9
+        },
+        {
+          "sourceId": "2166064617063856317",
+          "gaiaDesignation": "Gaia DR3 2166064617063856317",
+          "raDeg": 246.4617,
+          "decDeg": -26.1437,
+          "gMag": 10.61,
+          "bpMag": 10.86,
+          "rpMag": 10.36
+        },
+        {
+          "sourceId": "2166075589063447718",
+          "gaiaDesignation": "Gaia DR3 2166075589063447718",
+          "raDeg": 247.5589,
+          "decDeg": -26.5523,
+          "gMag": 9.17,
+          "bpMag": 9.42,
+          "rpMag": 8.92
+        },
+        {
+          "sourceId": "2166061105063091819",
+          "gaiaDesignation": "Gaia DR3 2166061105063091819",
+          "raDeg": 246.1105,
+          "decDeg": -26.9082,
+          "gMag": 10.19,
+          "bpMag": 10.44,
+          "rpMag": 9.94
+        },
+        {
+          "sourceId": "2166073519063568020",
+          "gaiaDesignation": "Gaia DR3 2166073519063568020",
+          "raDeg": 247.3519,
+          "decDeg": -26.432,
+          "gMag": 0.91,
+          "bpMag": 1.16,
+          "rpMag": 0.66
         }
       ]
     }
