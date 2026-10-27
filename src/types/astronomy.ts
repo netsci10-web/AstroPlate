@@ -81,6 +81,7 @@ export interface DualIndexComparisonTelemetry {
 
 export interface SolvedAstroData {
   jobId: number | string;
+  solverType?: 'local' | 'astrometry';
   title?: string;
   imageUrl: string;
   rawImageUrl?: string;

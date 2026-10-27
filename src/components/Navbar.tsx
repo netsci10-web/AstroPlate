@@ -27,7 +27,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const isDaylight = globalTheme === 'daylight';
 
   return (
-    <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-30 shadow-lg transition-colors duration-200">
+    <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-40 shadow-lg transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Brand Logo & Title: Clicking resets/initializes the app */}

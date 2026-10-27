@@ -98,6 +98,7 @@ export default function App() {
   const [selectedTargetForSimbad, setSelectedTargetForSimbad] = useState<string | null>(null);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
   const [isReAnalyzing, setIsReAnalyzing] = useState(false);
+  const [reAnalyzingMode, setReAnalyzingMode] = useState<'local' | 'astrometry' | null>(null);
   const [reAnalyzeStatus, setReAnalyzeStatus] = useState<string | null>(null);
 
   // Reset all state to clean initial home view when AstroPlate logo/brand is clicked
@@ -134,15 +135,16 @@ export default function App() {
     setIsUploadModalOpen(true);
   };
 
-  // Re-run astrophoto plate solve analysis on the current photo
-  const handleReAnalyzeCurrentPhoto = async () => {
+  // 1. Re-run astrophoto plate solve locally in browser (로컬 분석)
+  const handleReAnalyzeLocal = async () => {
     if (!solvedData) {
       handleOpenNewPhoto();
       return;
     }
 
     setIsReAnalyzing(true);
-    setReAnalyzeStatus('천체사진 simplexy 항성 추출 및 Equal-Density 듀얼 인덱스 정밀 재분석 중...');
+    setReAnalyzingMode('local');
+    setReAnalyzeStatus('브라우저 자체 엔진: simplexy 항성 추출 및 Equal-Density 듀얼 인덱스 정밀 재분석 중...');
 
     try {
       const imgSrc =
@@ -191,23 +193,178 @@ export default function App() {
         },
       });
 
-      setSolvedData(result);
-      setActiveJobId(result.jobId);
+      const localSolved: SolvedAstroData = {
+        ...result,
+        solverType: 'local',
+      };
+
+      setSolvedData(localSolved);
+      setActiveJobId(localSolved.jobId);
       setActiveMainTab('photo');
-      saveToAccountJobs(result, result.rawImageUrl);
+      saveToAccountJobs(localSolved, localSolved.rawImageUrl);
       setErrorNotice(null);
     } catch (err: any) {
-      console.warn('Direct re-solve fallback to modal:', err);
-      const imgSrc = solvedData.rawImageUrl || solvedData.imageUrl;
-      if (imgSrc && !imgSrc.startsWith('blob:') && !imgSrc.startsWith('data:')) {
-        setModalInitialUrl(imgSrc);
-        setModalInitialTab('url');
-      } else {
-        setModalInitialTab('upload');
-      }
-      setIsUploadModalOpen(true);
+      setErrorNotice(err?.message || '로컬 재분석 중 오류가 발생했습니다.');
     } finally {
       setIsReAnalyzing(false);
+      setReAnalyzingMode(null);
+      setReAnalyzeStatus(null);
+    }
+  };
+
+  // 2. Re-run astrophoto plate solve via nova.astrometry.net (Astrometry.net 분석)
+  const handleReAnalyzeAstrometry = async () => {
+    if (!solvedData) {
+      handleOpenNewPhoto();
+      return;
+    }
+
+    setIsReAnalyzing(true);
+    setReAnalyzingMode('astrometry');
+    setErrorNotice(null);
+    setReAnalyzeStatus('nova.astrometry.net 서버 연결 및 플레이트 솔빙 재분석 요청 중...');
+
+    try {
+      const imgSrc =
+        solvedData.rawImageUrl ||
+        solvedData.imageUrl ||
+        `/api/astrometry/image-proxy/${solvedData.jobId}/original`;
+
+      const rawOrigName = solvedData.info?.original_filename || '';
+      const trailingFileMatch = rawOrigName.match(/\(([^()]+\.(?:jpg|jpeg|png|fit|fits|tif|tiff|webp))\)\s*\)*$/i);
+      const cleanReAnalyzeFilename = trailingFileMatch
+        ? trailingFileMatch[1].trim()
+        : /\.(?:jpg|jpeg|png|fit|fits|tif|tiff|webp)$/i.test(rawOrigName.trim())
+        ? rawOrigName.trim()
+        : 'astrophoto.jpg';
+
+      // Case A: If the current photo already has a known numeric Astrometry.net Job ID,
+      // re-fetch and re-verify directly from /api/astrometry/jobs/:jobId/full
+      const proxyJobMatch = imgSrc.match(/\/api\/astrometry\/image-proxy\/(\d+)/i);
+      const numericExistingJobId = !String(solvedData.jobId).startsWith('local_') && /^\d+$/.test(String(solvedData.jobId))
+        ? String(solvedData.jobId)
+        : proxyJobMatch
+        ? proxyJobMatch[1]
+        : null;
+
+      if (numericExistingJobId) {
+        setReAnalyzeStatus(`nova.astrometry.net Job #${numericExistingJobId} 원격 WCS 보정 및 항성 카탈로그 정밀 재분석 중...`);
+        await loadJobData(
+          numericExistingJobId,
+          imgSrc.startsWith('data:') ? imgSrc : undefined,
+          true,
+          true
+        );
+        return;
+      }
+
+      // Case B: Photo is a local job (local_...) -> Submit image to /api/astrometry/solve and poll submission
+      const solveResp = await fetch('/api/astrometry/solve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageUrl: imgSrc,
+          filename: cleanReAnalyzeFilename,
+        }),
+      }).catch(() => null);
+
+      if (solveResp && solveResp.ok) {
+        const solveData = await solveResp.json().catch(() => null);
+        if (solveData?.subid) {
+          const subid = solveData.subid;
+          setReAnalyzeStatus(`Astrometry.net 작업 등록 완료 (Submission #${subid}). 서버 패턴 매칭 대기 중...`);
+
+          let solvedJobId: number | string | null = null;
+          for (let attempt = 1; attempt <= 45; attempt++) {
+            await new Promise((r) => setTimeout(r, 2500));
+            const subResp = await fetch(`/api/astrometry/submissions/${subid}`).catch(() => null);
+            if (!subResp || !subResp.ok) continue;
+            const subData = await subResp.json().catch(() => null);
+            if (!subData) continue;
+
+            if (subData.error_message) {
+              throw new Error(`Astrometry.net 분석 오류: ${subData.error_message}`);
+            }
+
+            if (Array.isArray(subData.job_calibrations) && subData.job_calibrations.length > 0) {
+              solvedJobId = subData.job_calibrations[0][0];
+              break;
+            }
+
+            const validJobs = Array.isArray(subData.jobs)
+              ? subData.jobs.filter((j: any) => j !== null && j !== undefined && !isNaN(Number(j)))
+              : [];
+
+            if (validJobs.length > 0) {
+              let done = false;
+              for (const jId of validJobs) {
+                const jobResp = await fetch(`/api/astrometry/jobs/${jId}/status`).catch(() => null);
+                if (jobResp && jobResp.ok) {
+                  const jobData = await jobResp.json().catch(() => null);
+                  if (jobData?.status === 'success') {
+                    solvedJobId = jId;
+                    done = true;
+                    break;
+                  }
+                }
+              }
+              if (done) break;
+              setReAnalyzeStatus(`Astrometry.net 패턴 매칭 진행 중 (Job #${validJobs[0]})...`);
+            } else {
+              setReAnalyzeStatus(`Astrometry.net 항성 추출 및 큐 대기 중 (Submission #${subid}, ${attempt * 2.5}초 경과)...`);
+            }
+          }
+
+          if (solvedJobId) {
+            setReAnalyzeStatus(`Astrometry.net WCS 보정 완료 (Job #${solvedJobId})! 성도 데이터 로드 중...`);
+            const oldLocalJobId = String(solvedData.jobId).startsWith('local_') ? solvedData.jobId : null;
+            await loadJobData(solvedJobId, imgSrc, true, true);
+            if (oldLocalJobId && String(oldLocalJobId) !== String(solvedJobId)) {
+              handleDeleteAccountJob(oldLocalJobId);
+            }
+            return;
+          }
+        }
+      }
+
+      // Case C: Fallback to server-assisted Astrometry index lookup (/api/astrometry/assist-local-solve)
+      setReAnalyzeStatus('Astrometry.net 인덱스 서버 대조 및 원격 Job 매칭 확인 중...');
+      const ext = await extractStarsImage2XY(imgSrc, { keepOriginalCoords: true });
+      if (ext.stars.length >= 4) {
+        const assistResp = await fetch('/api/astrometry/assist-local-solve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            detectedStars: ext.stars.slice(0, 60).map((s) => ({ x: s.x, y: s.y, flux: s.flux })),
+            width: ext.width,
+            height: ext.height,
+            calibrationHint: solvedData.calibration,
+          }),
+        }).catch(() => null);
+
+        if (assistResp && assistResp.ok) {
+          const assistData = await assistResp.json().catch(() => null);
+          const matchedJobIdMatch = String(assistData?.fieldId || '').match(/^assist_(\d+)$/);
+          if (matchedJobIdMatch) {
+            const matchedJobId = Number(matchedJobIdMatch[1]);
+            const oldLocalJobId = String(solvedData.jobId).startsWith('local_') ? solvedData.jobId : null;
+            await loadJobData(matchedJobId, imgSrc, true, true);
+            if (oldLocalJobId && String(oldLocalJobId) !== String(matchedJobId)) {
+              handleDeleteAccountJob(oldLocalJobId);
+            }
+            return;
+          }
+        }
+      }
+
+      setErrorNotice(
+        'nova.astrometry.net 원격 서버 분석 응답이 지연되거나 API 키가 설정되지 않았습니다. 잠시 후 다시 시도하거나 로컬 분석을 이용해 주세요.'
+      );
+    } catch (err: any) {
+      setErrorNotice(err?.message || 'Astrometry.net 재분석 중 오류가 발생했습니다.');
+    } finally {
+      setIsReAnalyzing(false);
+      setReAnalyzingMode(null);
       setReAnalyzeStatus(null);
     }
   };
@@ -422,9 +579,12 @@ export default function App() {
   const loadJobData = async (
     jobId: number | string,
     customImageUrl?: string,
-    shouldSaveToAccountJobs = true
+    shouldSaveToAccountJobs = true,
+    forceRemoteFetch = false
   ) => {
-    setLoading(true);
+    if (!forceRemoteFetch) {
+      setLoading(true);
+    }
     setErrorNotice(null);
     setActiveMainTab('photo');
 
@@ -445,8 +605,8 @@ export default function App() {
       } catch {}
     }
 
-    // If full solvedData is already preserved
-    if (existingJob?.solvedData && String(existingJob.solvedData.jobId) === strJobId) {
+    // If full solvedData is already preserved (and not forcing a fresh remote Astrometry.net re-analysis)
+    if (!forceRemoteFetch && existingJob?.solvedData && String(existingJob.solvedData.jobId) === strJobId) {
       const cachedData: SolvedAstroData = {
         ...existingJob.solvedData,
         annotations: Array.isArray(existingJob.solvedData.annotations)
@@ -474,8 +634,8 @@ export default function App() {
       return;
     }
 
-    // 3. Reconstruct local in-browser job if record exists in storage
-    if (existingJob && (isLocalJob || typeof existingJob.raDeg === 'number')) {
+    // 3. Reconstruct local in-browser job if record exists in storage (skip when forcing remote Astrometry fetch)
+    if (!forceRemoteFetch && existingJob && (isLocalJob || typeof existingJob.raDeg === 'number')) {
       const ra = typeof existingJob.raDeg === 'number' ? existingJob.raDeg : 0;
       const dec = typeof existingJob.decDeg === 'number' ? existingJob.decDeg : 0;
       const radius =
@@ -685,6 +845,7 @@ export default function App() {
 
       const solved: SolvedAstroData = {
         jobId,
+        solverType: 'astrometry',
         title: resolvedTitle || `Astrometry Plate Solve #${jobId}`,
         imageUrl: resolvedImageUrl,
         rawImageUrl: resolvedRawImageUrl,
@@ -791,7 +952,7 @@ export default function App() {
 
       {/* Top Sub-Navigation Tabs (Shown only when a photo is analyzed) */}
       {!loading && solvedData && (
-        <div className="bg-slate-900/95 backdrop-blur-md border-b border-slate-800 sticky top-16 z-20 shadow-xl">
+        <div className="bg-slate-900 border-b border-slate-800 sticky top-16 z-30 shadow-xl">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5">
             <div className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-3">
               {/* Segmented Island Container for High Distinction */}
@@ -856,7 +1017,9 @@ export default function App() {
                 <span className="text-xs uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800">
                   실시간 솔빙 완료 (Solved)
                 </span>
-                {!String(solvedData.jobId).startsWith('local_') ? (
+                {(solvedData.solverType
+                  ? solvedData.solverType === 'astrometry'
+                  : !String(solvedData.jobId).startsWith('local_')) ? (
                   <span className="text-xs px-2 py-0.5 rounded bg-indigo-950/90 text-indigo-300 border border-indigo-500/60 flex items-center gap-1 font-semibold">
                     <Globe className="w-3 h-3 text-indigo-400" />
                     Astrometry.net 분석
@@ -978,7 +1141,7 @@ export default function App() {
 
         {/* Tab 1: 천체사진 분석 */}
         {!loading && solvedData && activeMainTab === 'photo' && (
-          <section aria-label="천체사진 분석" className="space-y-3">
+          <section aria-label="천체사진 분석" className="relative isolate z-10 space-y-3">
             {reAnalyzeStatus && (
               <div className="p-3 bg-sky-950/80 border border-sky-700/70 rounded-2xl text-xs text-sky-200 flex items-center space-x-2 shadow-lg animate-pulse">
                 <Loader2 className="w-4 h-4 text-sky-400 animate-spin shrink-0" />
@@ -988,9 +1151,10 @@ export default function App() {
             <StarPhotoViewer
               data={solvedData}
               onSelectObject={(obj) => setSelectedTargetForSimbad(obj)}
-              onReAnalyze={handleReAnalyzeCurrentPhoto}
-              onOpenUploadModal={handleOpenNewPhoto}
+              onReAnalyzeLocal={handleReAnalyzeLocal}
+              onReAnalyzeAstrometry={handleReAnalyzeAstrometry}
               isReAnalyzing={isReAnalyzing}
+              reAnalyzingMode={reAnalyzingMode}
             />
           </section>
         )}

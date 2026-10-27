@@ -2754,3 +2754,262 @@ export function resolveSimbadIdentifiers(rawTarget: string): string[] {
   return results;
 }
 
+/**
+ * Curated dictionary of stars that have official IAU / traditional proper names (특별히 고유 이름이 있는 항성).
+ * Generic catalog stars (HD, BD, CD, TYC, Gaia DR3, HIP, HR, SAO, or unnamed Flamsteed/Bayer numbers)
+ * are excluded so the precision constellation overlay remains clean and readable.
+ */
+const SPECIAL_NAMED_STARS: { label: string; aliases: string[] }[] = [
+  // Lyra
+  { label: '베가 (α Lyr)', aliases: ['베가', '직녀성', 'vega', 'α lyr', 'alf lyr', 'alpha lyrae', '3 lyr'] },
+  { label: '더블더블 (ε¹ Lyr)', aliases: ['더블더블 ε¹ lyr', 'ε¹ lyr', 'ε1 lyr', 'eps1 lyr', 'epsilon1 lyrae', 'double double', '더블더블', '4 lyr'] },
+  { label: '더블더블 (ε² Lyr)', aliases: ['더블더블 ε² lyr', 'ε² lyr', 'ε2 lyr', 'eps2 lyr', 'epsilon2 lyrae', '5 lyr'] },
+  { label: '셰리아크 (β Lyr)', aliases: ['셰리아크', 'sheliak', 'β lyr', 'bet lyr', 'beta lyrae', '10 lyr'] },
+  { label: '술라파트 (γ Lyr)', aliases: ['술라파트', 'sulafat', 'γ lyr', 'gam lyr', 'gamma lyrae', '14 lyr'] },
+
+  // Cygnus
+  { label: '데네브 (α Cyg)', aliases: ['데네브', 'deneb', 'α cyg', 'alf cyg', 'alpha cygni', '50 cyg'] },
+  { label: '사드르 (γ Cyg)', aliases: ['사드르', 'sadr', 'γ cyg', 'gam cyg', 'gamma cygni', '37 cyg'] },
+  { label: '알비레오 A (β¹ Cyg)', aliases: ['알비레오 a', '알비레오', 'albireo a', 'albireo', 'β¹ cyg', 'β1 cyg', 'β cyg', 'bet1 cyg', 'beta1 cygni', '6 cyg a'] },
+  { label: '알비레오 B (β² Cyg)', aliases: ['알비레오 b', 'albireo b', 'β² cyg', 'β2 cyg', 'bet2 cyg', 'beta2 cygni', '6 cyg b'] },
+  { label: '파와리스 (δ Cyg)', aliases: ['파와리스', 'fawaris', 'δ cyg', 'del cyg', 'delta cygni', '18 cyg'] },
+  { label: '기에나 (ε Cyg)', aliases: ['기에나', 'gienah', 'ε cyg', 'eps cyg', 'epsilon cygni', '53 cyg'] },
+
+  // Aquila
+  { label: '알타이르 (α Aql)', aliases: ['알타이르', '견우성', 'altair', 'α aql', 'alf aql', 'alpha aquilae', '53 aql'] },
+  { label: '타라제드 (γ Aql)', aliases: ['타라제드', 'tarazed', 'γ aql', 'gam aql', 'gamma aquilae', '50 aql'] },
+  { label: '알샤인 (β Aql)', aliases: ['알샤인', 'alshain', 'β aql', 'bet aql', 'beta aquilae', '60 aql'] },
+
+  // Cepheus
+  { label: '가넷 스타 (μ Cep)', aliases: ['가넷 스타', '가넷스타', '석류석 별', '석류석별', 'garnet star', 'the garnet star', 'erakis', 'μ cep', 'mu cep', 'mu cephei'] },
+  { label: '알데라민 (α Cep)', aliases: ['알데라민', 'alderamin', 'α cep', 'alf cep', 'alpha cephei', '5 cep'] },
+  { label: '알피르크 (β Cep)', aliases: ['알피르크', 'alfirk', 'β cep', 'bet cep', 'beta cephei', '8 cep'] },
+  { label: '에라이 (γ Cep)', aliases: ['에라이', 'errai', 'γ cep', 'gam cep', 'gamma cephei', '35 cep'] },
+
+  // Cassiopeia
+  { label: '카프 (β Cas)', aliases: ['카프', 'caph', 'β cas', 'bet cas', 'beta cassiopeiae', '11 cas'] },
+  { label: '셰다르 (α Cas)', aliases: ['셰다르', 'schedar', 'α cas', 'alf cas', 'alpha cassiopeiae', '18 cas'] },
+  { label: '나비 (γ Cas)', aliases: ['나비', 'navi', 'γ cas', 'gam cas', 'gamma cassiopeiae', '27 cas'] },
+  { label: '루크바 (δ Cas)', aliases: ['루크바', 'ruchbah', 'δ cas', 'del cas', 'delta cassiopeiae', '37 cas'] },
+  { label: '세긴 (ε Cas)', aliases: ['세긴', 'segin', 'ε cas', 'eps cas', 'epsilon cassiopeiae', '45 cas'] },
+  { label: '아키르드 (η Cas)', aliases: ['아키르드', 'achird', 'η cas', 'eta cas', 'eta cassiopeiae', '24 cas'] },
+
+  // Andromeda & Pegasus
+  { label: '알페라츠 (α And)', aliases: ['알페라츠', 'alpheratz', 'sirrah', 'α and', 'alf and', 'alpha andromedae', '21 and'] },
+  { label: '미라크 (β And)', aliases: ['미라크', 'mirach', 'β and', 'bet and', 'beta andromedae', '43 and'] },
+  { label: '알마크 (γ And)', aliases: ['알마크', 'almach', 'γ and', 'gam and', 'gamma1 andromedae', '57 and'] },
+  { label: '마르카브 (α Peg)', aliases: ['마르카브', 'markab', 'α peg', 'alf peg', 'alpha pegasi', '54 peg'] },
+  { label: '셰아트 (β Peg)', aliases: ['셰아트', 'scheat', 'β peg', 'bet peg', 'beta pegasi', '53 peg'] },
+  { label: '알게니브 (γ Peg)', aliases: ['알게니브', 'algenib', 'γ peg', 'gam peg', 'gamma pegasi', '88 peg'] },
+  { label: '에니프 (ε Peg)', aliases: ['에니프', 'enif', 'ε peg', 'eps peg', 'epsilon pegasi', '8 peg'] },
+
+  // Perseus & Auriga
+  { label: '미르파크 (α Per)', aliases: ['미르파크', 'mirfak', 'α per', 'alf per', 'alpha persei', '33 per'] },
+  { label: '알골 (β Per)', aliases: ['알골', 'algol', 'β per', 'bet per', 'beta persei', '26 per'] },
+  { label: '카펠라 (α Aur)', aliases: ['카펠라', 'capella', 'α aur', 'alf aur', 'alpha aurigae', '13 aur'] },
+  { label: '멘칼리난 (β Aur)', aliases: ['멘칼리난', 'menkalinan', 'β aur', 'bet aur', 'beta aurigae', '34 aur'] },
+
+  // Taurus & Pleiades (M45)
+  { label: '알데바란 (α Tau)', aliases: ['알데바란', 'aldebaran', 'α tau', 'alf tau', 'alpha tauri', '87 tau'] },
+  { label: '엘나스 (β Tau)', aliases: ['엘나스', 'elnath', 'β tau', 'bet tau', 'beta tauri', '112 tau'] },
+  { label: '알시오네 (η Tau)', aliases: ['알시오네', 'alcyone', 'η tau', 'eta tau', 'eta tauri', '25 tau'] },
+  { label: '아틀라스 (27 Tau)', aliases: ['아틀라스', 'atlas', '27 tau', '27 tauri'] },
+  { label: '엘렉트라 (17 Tau)', aliases: ['엘렉트라', 'electra', '17 tau', '17 tauri'] },
+  { label: '마이아 (20 Tau)', aliases: ['마이아', 'maia', '20 tau', '20 tauri'] },
+  { label: '메로페 (23 Tau)', aliases: ['메로페', 'merope', '23 tau', '23 tauri'] },
+  { label: '타이게타 (19 Tau)', aliases: ['타이게타', 'taygeta', '19 tau', '19 tauri'] },
+  { label: '플레이오네 (28 Tau)', aliases: ['플레이오네', 'pleione', '28 tau', '28 tauri'] },
+  { label: '켈라에노 (16 Tau)', aliases: ['켈라에노', 'celaeno', '16 tau', '16 tauri'] },
+  { label: '아스테로페 (21 Tau)', aliases: ['아스테로페', 'asterope', 'sterope', '21 tau', '21 tauri'] },
+
+  // Orion
+  { label: '베텔게우스 (α Ori)', aliases: ['베텔게우스', 'betelgeuse', 'α ori', 'alf ori', 'alpha orionis', '58 ori'] },
+  { label: '리겔 (β Ori)', aliases: ['리겔', 'rigel', 'β ori', 'bet ori', 'beta orionis', '19 ori'] },
+  { label: '벨라트릭스 (γ Ori)', aliases: ['벨라트릭스', 'bellatrix', 'γ ori', 'gam ori', 'gamma orionis', '24 ori'] },
+  { label: '민타카 (δ Ori)', aliases: ['민타카', 'mintaka', 'δ ori', 'del ori', 'delta orionis', '34 ori'] },
+  { label: '알닐람 (ε Ori)', aliases: ['알닐람', 'alnilam', 'ε ori', 'eps ori', 'epsilon orionis', '46 ori'] },
+  { label: '알니탁 (ζ Ori)', aliases: ['알니탁', 'alnitak', 'ζ ori', 'zet ori', 'zeta orionis', '50 ori'] },
+  { label: '사이프 (κ Ori)', aliases: ['사이프', 'saiph', 'κ ori', 'kap ori', 'kappa orionis', '53 ori'] },
+  { label: '하트사 (ι Ori)', aliases: ['하트사', 'hatysa', 'na\'ir al saif', 'ι ori', 'iot ori', 'iota orionis', '44 ori'] },
+  { label: '트라페지움 (θ¹ Ori C)', aliases: ['트라페지움', 'trapezium', 'θ¹ ori c', 'θ¹ ori', 'θ1 ori c', 'θ1 ori', 'theta1 orionis c', 'theta1 orionis', '41 ori'] },
+
+  // Gemini, Canis Major, Canis Minor
+  { label: '카스토르 (α Gem)', aliases: ['카스토르', 'castor', 'α gem', 'alf gem', 'alpha geminorum', '66 gem'] },
+  { label: '폴룩스 (β Gem)', aliases: ['폴룩스', 'pollux', 'β gem', 'bet gem', 'beta geminorum', '78 gem'] },
+  { label: '알헤나 (γ Gem)', aliases: ['알헤나', 'alhena', 'γ gem', 'gam gem', 'gamma geminorum', '24 gem'] },
+  { label: '시리우스 (α CMa)', aliases: ['시리우스', '천랑성', 'sirius', 'α cma', 'alf cma', 'alpha canis majoris', '9 cma'] },
+  { label: '미르잠 (β CMa)', aliases: ['미르잠', 'mirzam', 'murzim', 'β cma', 'bet cma', 'beta canis majoris', '2 cma'] },
+  { label: '웨젠 (δ CMa)', aliases: ['웨젠', 'wezen', 'δ cma', 'del cma', 'delta canis majoris', '25 cma'] },
+  { label: '아드하라 (ε CMa)', aliases: ['아드하라', 'adhara', 'ε cma', 'eps cma', 'epsilon canis majoris', '21 cma'] },
+  { label: '프로키온 (α CMi)', aliases: ['프로키온', 'procyon', 'α cmi', 'alf cmi', 'alpha canis minoris', '10 cmi'] },
+  { label: '고메이사 (β CMi)', aliases: ['고메이사', 'gomeisa', 'β cmi', 'bet cmi', 'beta canis minoris', '3 cmi'] },
+
+  // Ursa Major, Ursa Minor, Canes Venatici, Boötes
+  { label: '두베 (α UMa)', aliases: ['두베', 'dubhe', 'α uma', 'alf uma', 'alpha ursae majoris', '50 uma'] },
+  { label: '메라크 (β UMa)', aliases: ['메라크', 'merak', 'β uma', 'bet uma', 'beta ursae majoris', '48 uma'] },
+  { label: '페크다 (γ UMa)', aliases: ['페크다', 'phecda', 'phad', 'γ uma', 'gam uma', 'gamma ursae majoris', '64 uma'] },
+  { label: '메그레즈 (δ UMa)', aliases: ['메그레즈', 'megrez', 'δ uma', 'del uma', 'delta ursae majoris', '69 uma'] },
+  { label: '알리오스 (ε UMa)', aliases: ['알리오스', 'alioth', 'ε uma', 'eps uma', 'epsilon ursae majoris', '77 uma'] },
+  { label: '미자르 (ζ UMa)', aliases: ['미자르', 'mizar', 'ζ uma', 'zet uma', 'zeta ursae majoris', '79 uma'] },
+  { label: '알코르 (80 UMa)', aliases: ['알코르', 'alcor', '80 uma', 'g uma'] },
+  { label: '알카이드 (η UMa)', aliases: ['알카이드', 'alkaid', 'benetnasch', 'η uma', 'eta uma', 'eta ursae majoris', '85 uma'] },
+  { label: '북극성 (α UMi)', aliases: ['북극성', '폴라리스', 'polaris', 'α umi', 'alf umi', 'alpha ursae minoris', '1 umi'] },
+  { label: '코카브 (β UMi)', aliases: ['코카브', 'kochab', 'β umi', 'bet umi', 'beta ursae minoris', '7 umi'] },
+  { label: '페르카드 (γ UMi)', aliases: ['페르카드', 'pherkad', 'γ umi', 'gam umi', 'gamma ursae minoris', '13 umi'] },
+  { label: '코르 카롤리 (α CVn)', aliases: ['코르 카롤리', 'cor caroli', 'α cvn', 'alf cvn', 'alpha canum venaticorum', '12 cvn'] },
+  { label: '아크투루스 (α Boo)', aliases: ['아크투루스', 'arcturus', 'α boo', 'alf boo', 'alpha bootis', '16 boo'] },
+  { label: '이자르 (ε Boo)', aliases: ['이자르', 'izar', 'pulcherrima', 'ε boo', 'eps boo', 'epsilon bootis', '36 boo'] },
+
+  // Leo, Virgo, Hydra
+  { label: '레굴루스 (α Leo)', aliases: ['레굴루스', 'regulus', 'α leo', 'alf leo', 'alpha leonis', '32 leo'] },
+  { label: '데네볼라 (β Leo)', aliases: ['데네볼라', 'denebola', 'β leo', 'bet leo', 'beta leonis', '94 leo'] },
+  { label: '알기에바 (γ Leo)', aliases: ['알기에바', 'algieba', 'γ leo', 'gam leo', 'gamma1 leonis', '41 leo'] },
+  { label: '스피카 (α Vir)', aliases: ['스피카', 'spica', 'α vir', 'alf vir', 'alpha virginis', '67 vir'] },
+  { label: '알파드 (α Hya)', aliases: ['알파드', 'alphard', 'α hya', 'alf hya', 'alpha hydrae', '30 hya'] },
+
+  // Scorpius, Sagittarius, Ophiuchus, Southern Stars
+  { label: '안타레스 (α Sco)', aliases: ['안타레스', 'antares', 'α sco', 'alf sco', 'alpha scorpii', '21 sco'] },
+  { label: '샤울라 (λ Sco)', aliases: ['샤울라', 'shaula', 'λ sco', 'lam sco', 'lambda scorpii', '35 sco'] },
+  { label: '사르가스 (θ Sco)', aliases: ['사르가스', 'sargas', 'θ sco', 'the sco', 'theta scorpii'] },
+  { label: '카오스 아우스트랄리스 (ε Sgr)', aliases: ['카오스 아우스트랄리스', 'kaus australis', 'ε sgr', 'eps sgr', 'epsilon sagittarii', '20 sgr'] },
+  { label: '눈키 (σ Sgr)', aliases: ['눈키', 'nunki', 'σ sgr', 'sig sgr', 'sigma sagittarii', '34 sgr'] },
+  { label: '라스알하게 (α Oph)', aliases: ['라스알하게', 'rasalhague', 'α oph', 'alf oph', 'alpha ophiuchi', '55 oph'] },
+  { label: '알페카 (α CrB)', aliases: ['알페카', 'alphecca', 'gemma', 'α crb', 'alf crb', 'alpha coronae borealis', '5 crb'] },
+  { label: '엘타닌 (γ Dra)', aliases: ['엘타닌', 'eltanin', 'γ dra', 'gam dra', 'gamma draconis', '33 dra'] },
+  { label: '투반 (α Dra)', aliases: ['투반', 'thuban', 'α dra', 'alf dra', 'alpha draconis', '11 dra'] },
+  { label: '포말하우트 (α PsA)', aliases: ['포말하우트', 'fomalhaut', 'α psa', 'alf psa', 'alpha piscis austrini', '24 psa'] },
+  { label: '하말 (α Ari)', aliases: ['하말', 'hamal', 'α ari', 'alf ari', 'alpha arietis', '13 ari'] },
+  { label: '미라 (ο Cet)', aliases: ['미라', 'mira', 'ο cet', 'omi cet', 'omicron ceti', '68 cet'] },
+  { label: '디프다 (β Cet)', aliases: ['디프다', '데네브 카이토스', 'diphda', 'deneb kaitos', 'β cet', 'bet cet', 'beta ceti', '16 cet'] },
+  { label: '카노푸스 (α Car)', aliases: ['카노푸스', 'canopus', 'α car', 'alf car', 'alpha carinae'] },
+  { label: '아크룩스 (α Cru)', aliases: ['아크룩스', 'acrux', 'α cru', 'alf cru', 'alpha crucis'] },
+  { label: '미모사 (β Cru)', aliases: ['미모사', 'mimosa', 'becrux', 'β cru', 'bet cru', 'beta crucis'] },
+  { label: '리길 켄타우루스 (α Cen)', aliases: ['리길 켄타우루스', 'rigil kentaurus', 'alpha centauri', 'α cen', 'alf cen'] },
+  { label: '하다르 (β Cen)', aliases: ['하다르', 'hadar', 'agena', 'β cen', 'bet cen', 'beta centauri'] },
+  { label: '아케르나르 (α Eri)', aliases: ['아케르나르', 'achernar', 'α eri', 'alf eri', 'alpha eridani'] },
+];
+
+const GREEK_TRANSLITERATION_WORDS = new Set([
+  'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta',
+  'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi', 'omicron', 'pi',
+  'rho', 'sigma', 'tau', 'upsilon', 'phi', 'chi', 'psi', 'omega',
+  '알파', '베타', '감마', '델타', '엡실론', '제타', '에타', '세타',
+  '이오타', '카파', '람다', '뮤', '뉴', '크시', '오미크론', '파이',
+  '로', '시그마', '타우', '웁실론', '피', '카이', '프시', '오메가',
+]);
+
+const LATIN_CONSTELLATION_GENITIVES = new Set([
+  'andromedae', 'antliae', 'apodis', 'aquarii', 'aquilae', 'arae', 'arietis', 'aurigae',
+  'bootis', 'boötis', 'caeli', 'camelopardalis', 'cancri', 'canum', 'venaticorum',
+  'canis', 'majoris', 'minoris', 'capricorni', 'carinae', 'cassiopeiae', 'centauri',
+  'cephei', 'ceti', 'chamaeleontis', 'circini', 'columbae', 'comae', 'berenices',
+  'coronae', 'australis', 'borealis', 'corvi', 'crateris', 'crucis', 'cygni',
+  'delphini', 'doradus', 'draconis', 'equulei', 'eridani', 'fornacis', 'geminorum',
+  'gruis', 'herculis', 'horologii', 'hydrae', 'hydri', 'indi', 'lacertae',
+  'leonis', 'leporis', 'librae', 'lupi', 'lyncis', 'lyrae', 'mensae', 'microscopii',
+  'monocerotis', 'muscae', 'normae', 'octantis', 'ophiuchi', 'orionis', 'pavonis',
+  'pegasi', 'persei', 'phoenicis', 'pictoris', 'piscium', 'piscis', 'austrini',
+  'puppis', 'pyxidis', 'reticuli', 'sagittae', 'sagittarii', 'scorpii', 'sculptoris',
+  'scuti', 'serpentis', 'sextantis', 'tauri', 'telescopii', 'trianguli', 'tucanae',
+  'ursae', 'velorum', 'virginis', 'volantis', 'vulpeculae',
+  ...Object.values(IAU_CONSTELLATIONS)
+    .map((c) => c.genitive?.toLowerCase())
+    .filter((g): g is string => Boolean(g)),
+]);
+
+/**
+ * Checks whether a star annotation represents a specially named star (특별히 이름이 있는 항성)
+ * rather than a generic catalog star (HD, BD, CD, TYC, Gaia DR3, HIP, HR, SAO, or unnamed Flamsteed/Bayer).
+ * Returns the formatted display label if it is a specially named star, or null otherwise.
+ */
+export function resolveSpecialNamedStarLabel(names?: string[]): string | null {
+  if (!Array.isArray(names) || names.length === 0) return null;
+
+  // Strip trailing telemetry/catalog suffixes like " · Gaia DR3 ..." or " · TYC ..."
+  const cleanedCandidates = names
+    .map((n) => (typeof n === 'string' ? n.split('·')[0].trim() : ''))
+    .filter((n) => n.length > 0);
+  if (cleanedCandidates.length === 0) return null;
+
+  // 1. Immediately reject if the primary name is a DSO or synthetic star entry
+  const firstLow = cleanedCandidates[0].toLowerCase();
+  if (
+    firstLow.startsWith('검출 항성') ||
+    firstLow.includes('기준성 #') ||
+    firstLow.includes('star #') ||
+    firstLow.startsWith('gaia dr3') ||
+    /^(?:m|c|ngc|ic)\s*\d+/i.test(cleanedCandidates[0])
+  ) {
+    return null;
+  }
+
+  // 2. Check against our curated SPECIAL_NAMED_STARS dictionary
+  for (const entry of SPECIAL_NAMED_STARS) {
+    for (const raw of cleanedCandidates) {
+      const norm = raw
+        .toLowerCase()
+        .replace(/[()]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      for (const alias of entry.aliases) {
+        const aliasNorm = alias.toLowerCase().trim();
+        if (norm === aliasNorm) {
+          return entry.label;
+        }
+        // Check token boundary match for multi-word strings like "알니탁 (ζ Ori)" or "Garnet Star (Mu Cephei)"
+        const escaped = aliasNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const boundaryRegex = new RegExp(`(^|[\\s/·,])${escaped}($|[\\s/·,])`, 'i');
+        if (boundaryRegex.test(norm)) {
+          return entry.label;
+        }
+      }
+    }
+  }
+
+  // 3. Check if Astrometry.net provided a genuine proper English/Korean star name not in the table
+  // (Reject catalog IDs like HD/BD/CD/TYC/HIP/HR/SAO, Flamsteed numbers like "56 And" / "39 Cancri",
+  //  Bayer letters like "ν And" / "ζ Ori B", variable star IDs like "V902 Her" / "R Scuti",
+  //  and Latin Greek+Genitive forms like "Nu Andromedae" / "Sigma Geminorum")
+  for (const raw of cleanedCandidates) {
+    // Strip trailing constellation tag like "(Cyg)" or "(And)"
+    const stripped = raw.replace(/\(\s*[A-Za-z]{3}\s*\)$/g, '').trim();
+    if (!stripped) continue;
+
+    // Reject standard catalog prefixes
+    if (/^(?:HD|BD|CD|CPD|TYC|HIP|HR|SAO|USNO|2MASS|GAIA|GJ|LHS|WDS)\b/i.test(stripped)) {
+      continue;
+    }
+    // Reject Flamsteed designations with 3-letter code or full Latin genitive ("56 And", "39 Cancri", "73 Leo (n Leo)")
+    if (/^\d{1,3}\s+[A-Za-z]+\b/i.test(stripped)) {
+      continue;
+    }
+    // Reject Bayer / letter / variable star designations ("ν And", "ω¹ Sco", "c Ori", "R Sct", "V902 Her", "BR CVn", "R Scuti")
+    if (/^(?:[α-ωΑ-Ω][¹²³123]?|[A-Za-z]{1,2}\d*)\s+[A-Za-z]{3}\b/.test(stripped)) {
+      continue;
+    }
+    const words = stripped.replace(/[()]/g, ' ').trim().split(/\s+/);
+    if (
+      words.length >= 2 &&
+      /^(?:[α-ωΑ-Ω][¹²³123]?|[A-Za-z]{1,2}\d*|\d{1,3})$/.test(words[0]) &&
+      LATIN_CONSTELLATION_GENITIVES.has(words[1].toLowerCase())
+    ) {
+      continue;
+    }
+    // Reject Greek letter transliterations like "Nu Andromedae", "Sigma Orionis", "제타 리라", "시그마 오리온"
+    const firstWord = stripped.split(/[\s(]+/)[0].replace(/[0-9¹²³]/g, '').toLowerCase();
+    if (GREEK_TRANSLITERATION_WORDS.has(firstWord)) {
+      continue;
+    }
+    // Reject strings that still contain HD/BD/TYC/Gaia inside
+    if (/\b(?:HD|BD|CD|TYC|Gaia)\s*[+-]?\d+/i.test(stripped)) {
+      continue;
+    }
+
+    // It's a genuine proper name (e.g. "Vindemiatrix", "Sheratan", "Porrima", "Rasalgethi")
+    return stripped;
+  }
+
+  return null;
+}
+
+

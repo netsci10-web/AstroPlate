@@ -26,6 +26,7 @@ import {
   formatTitleWithCatalogPriority,
   getConstellationObjectTitle,
   getConstellationLinesForImage,
+  resolveSpecialNamedStarLabel,
 } from './constellations';
 import { angularSeparation } from './coordinateMath';
 import {
@@ -1041,7 +1042,7 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
       { id: 'zet_ori_f', nameKo: '알니탁 (ζ Ori)', nameEn: 'Alnitak', bayer: 'ζ Ori', constellation: 'Ori', raDeg: 85.1897, decDeg: -1.9426, mag: 1.74 },
       { id: 'sig_ori_f', nameKo: '시그마 오리온 (σ Ori)', nameEn: 'Sigma Orionis', bayer: 'σ Ori', constellation: 'Ori', raDeg: 84.6865, decDeg: -2.6001, mag: 3.77 },
       { id: 'hd_37742', nameKo: 'ζ Ori B', nameEn: 'Zeta Orionis B', bayer: 'ζ Ori B', constellation: 'Ori', raDeg: 85.1903, decDeg: -1.9432, mag: 3.70 },
-      { id: 'hd_37903', nameKo: 'HD 37903 (NGC 2023 중심성)', nameEn: 'HD 37903', bayer: 'HD 37903 (Ori)', constellation: 'Ori', raDeg: 85.4099, decDeg: -2.2590, mag: 7.83 },
+      { id: 'hd_37903', nameKo: 'HD 37903', nameEn: 'HD 37903', bayer: 'HD 37903 (Ori)', constellation: 'Ori', raDeg: 85.4099, decDeg: -2.2590, mag: 7.83 },
       { id: 'hd_37805', nameKo: 'HD 37805', nameEn: 'HD 37805', bayer: 'HD 37805 (Ori)', constellation: 'Ori', raDeg: 85.2592, decDeg: -2.3095, mag: 7.52 },
       { id: 'hd_37674', nameKo: 'HD 37674', nameEn: 'HD 37674', bayer: 'HD 37674 (Ori)', constellation: 'Ori', raDeg: 85.0419, decDeg: -2.4578, mag: 7.67 },
     ],
@@ -1057,7 +1058,7 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
     primaryObjectLabel: 'M78 (NGC 2068)',
     keywords: ['m78', 'm 78', 'ngc2068', 'ngc 2068', 'ngc2071', 'ngc 2071'],
     stars: [
-      { id: 'hd_38563a', nameKo: 'HD 38563A (M78 조명성)', nameEn: 'HD 38563A', bayer: 'HD 38563A (Ori)', constellation: 'Ori', raDeg: 86.6873, decDeg: 0.0792, mag: 10.42 },
+      { id: 'hd_38563a', nameKo: 'HD 38563A', nameEn: 'HD 38563A', bayer: 'HD 38563A (Ori)', constellation: 'Ori', raDeg: 86.6873, decDeg: 0.0792, mag: 10.42 },
       { id: 'hd_38563b', nameKo: 'HD 38563B', nameEn: 'HD 38563B', bayer: 'HD 38563B (Ori)', constellation: 'Ori', raDeg: 86.6852, decDeg: 0.0928, mag: 10.56 },
       { id: 'hd_38672', nameKo: 'HD 38672', nameEn: 'HD 38672', bayer: 'HD 38672 (Ori)', constellation: 'Ori', raDeg: 86.8891, decDeg: 0.2981, mag: 6.72 },
       { id: 'hd_38393', nameKo: 'HD 38393', nameEn: 'HD 38393', bayer: 'HD 38393 (Ori)', constellation: 'Ori', raDeg: 86.3421, decDeg: -0.1745, mag: 7.15 },
@@ -1348,8 +1349,8 @@ export const TELESCOPIC_REFERENCE_FIELDS: TelescopicReferenceField[] = [
     primaryObjectLabel: 'M39 (NGC 7092)',
     keywords: ['m39', 'm 39', 'ngc7092', 'ngc 7092', '백조자리 m39', 'm39 산개성단'],
     stars: [
-      { id: 'hd_205116', nameKo: 'HD 205116 (M39 주성)', nameEn: 'HD 205116', bayer: 'HD 205116 (Cyg)', constellation: 'Cyg', raDeg: 323.071150, decDeg: 48.443872, mag: 6.56 },
-      { id: 'hd_205073', nameKo: 'HD 205073 (M39 중심성)', nameEn: 'HD 205073', bayer: 'HD 205073 (Cyg)', constellation: 'Cyg', raDeg: 322.926626, decDeg: 48.584665, mag: 6.79 },
+      { id: 'hd_205116', nameKo: 'HD 205116', nameEn: 'HD 205116', bayer: 'HD 205116 (Cyg)', constellation: 'Cyg', raDeg: 323.071150, decDeg: 48.443872, mag: 6.56 },
+      { id: 'hd_205073', nameKo: 'HD 205073', nameEn: 'HD 205073', bayer: 'HD 205073 (Cyg)', constellation: 'Cyg', raDeg: 322.926626, decDeg: 48.584665, mag: 6.79 },
       { id: 'hd_205198', nameKo: 'HD 205198', nameEn: 'HD 205198', bayer: 'HD 205198 (Cyg)', constellation: 'Cyg', raDeg: 323.292153, decDeg: 48.303454, mag: 6.81 },
       { id: 'hd_204917', nameKo: 'HD 204917', nameEn: 'HD 204917', bayer: 'HD 204917 (Cyg)', constellation: 'Cyg', raDeg: 322.578928, decDeg: 48.390891, mag: 7.32 },
       { id: 'hd_204625', nameKo: 'HD 204625', nameEn: 'HD 204625', bayer: 'HD 204625 (Cyg)', constellation: 'Cyg', raDeg: 322.101840, decDeg: 48.434359, mag: 7.61 },
@@ -3783,9 +3784,12 @@ export function verifyAndSnapAnnotationsToDetectedStars(
     // For star annotations: MUST match a real detected stellar centroid in the image
     const scaledAnnX = ann.pixelx * scaleX;
     const scaledAnnY = ann.pixely * scaleY;
+    const isSpecialNamed = Boolean(resolveSpecialNamedStarLabel(ann.names));
 
     let bestIdx = -1;
-    let bestDist = maxSnapDist;
+    let bestDist = isSpecialNamed
+      ? Math.max(maxSnapDist, Math.min(36.0, diagPx * 0.022))
+      : maxSnapDist;
     for (let i = 0; i < detectedStars.length; i++) {
       if (usedDetectedIndices.has(i)) continue;
       const d = Math.hypot(detectedStars[i].x - scaledAnnX, detectedStars[i].y - scaledAnnY);
@@ -3804,8 +3808,21 @@ export function verifyAndSnapAnnotationsToDetectedStars(
         pixelx: Number(ds.x.toFixed(1)),
         pixely: Number(ds.y.toFixed(1)),
       });
+    } else if (
+      isSpecialNamed &&
+      scaledAnnX >= 4 &&
+      scaledAnnX <= targetWidth - 4 &&
+      scaledAnnY >= 4 &&
+      scaledAnnY <= targetHeight - 4
+    ) {
+      // Never drop a specially named proper star (e.g. Garnet Star μ Cep) even if its saturated core was skipped
+      verifiedAnnotations.push({
+        ...ann,
+        pixelx: Number(scaledAnnX.toFixed(1)),
+        pixely: Number(scaledAnnY.toFixed(1)),
+      });
     }
-    // If no real star centroid within maxSnapDist, omit this annotation completely!
+    // If no real star centroid within maxSnapDist, omit generic catalog annotation!
   }
 
   return verifiedAnnotations;
@@ -4889,25 +4906,26 @@ export async function solvePlateLocallyInBrowser(
       cs.id.startsWith('ome') ||
       cs.id.startsWith('mu_') ||
       cs.id === '56_and';
+    const cleanBayer = cs.bayer.split('·')[0].trim();
     const displayName =
-      cs.nameKo.includes(cs.bayer)
+      cs.nameKo.includes(cleanBayer)
         ? cs.nameKo
-        : cs.bayer.startsWith(cs.nameKo)
-        ? cs.bayer
+        : cleanBayer.startsWith(cs.nameKo)
+        ? cleanBayer
         : cs.nameKo !== cs.nameEn
-        ? `${cs.nameKo} (${cs.bayer})`
+        ? `${cs.nameKo} (${cleanBayer})`
         : `${cs.nameKo} (${cs.constellation})`;
 
     annotations.push({
       type: isNamedBright ? 'bright' : 'hd',
-      names: [displayName, cs.nameEn, cs.bayer],
+      names: [displayName, cs.nameEn, cleanBayer, cs.bayer],
       pixelx: Number(ds.x.toFixed(1)),
       pixely: Number(ds.y.toFixed(1)),
       radius: cs.mag < 6.0 ? 13 : 9,
       vmag: cs.mag,
     });
     objectsInField.push(
-      cs.bayer.startsWith(cs.nameEn) ? `The star ${cs.bayer}` : `The star ${cs.nameEn} (${cs.bayer})`
+      cleanBayer.startsWith(cs.nameEn) ? `The star ${cleanBayer}` : `The star ${cs.nameEn} (${cleanBayer})`
     );
   }
 
@@ -5015,26 +5033,27 @@ export async function solvePlateLocallyInBrowser(
           usedDetectedIndices.add(bestIdx);
           seenCatIds.add(catStar.id);
 
+          const cleanCatBayer = catStar.bayer.split('·')[0].trim();
           const displayName =
-            catStar.nameKo.includes(catStar.bayer)
+            catStar.nameKo.includes(cleanCatBayer)
               ? catStar.nameKo
-              : catStar.bayer.startsWith(catStar.nameKo)
-              ? catStar.bayer
+              : cleanCatBayer.startsWith(catStar.nameKo)
+              ? cleanCatBayer
               : catStar.nameKo !== catStar.nameEn
-              ? `${catStar.nameKo} (${catStar.bayer})`
+              ? `${catStar.nameKo} (${cleanCatBayer})`
               : `${catStar.nameKo} (${catStar.constellation})`;
           annotations.push({
             type: catStar.mag <= 6.0 ? 'bright' : 'hd',
-            names: [displayName, catStar.nameEn, catStar.bayer],
+            names: [displayName, catStar.nameEn, cleanCatBayer, catStar.bayer],
             pixelx: Number(finalX.toFixed(1)),
             pixely: Number(finalY.toFixed(1)),
             radius: catStar.mag < 3.0 ? 14 : 10,
             vmag: catStar.mag,
           });
           objectsInField.push(
-            catStar.bayer.startsWith(catStar.nameEn)
-              ? `The star ${catStar.bayer}`
-              : `The star ${catStar.nameEn} (${catStar.bayer})`
+            cleanCatBayer.startsWith(catStar.nameEn)
+              ? `The star ${cleanCatBayer}`
+              : `The star ${catStar.nameEn} (${cleanCatBayer})`
           );
         }
       }

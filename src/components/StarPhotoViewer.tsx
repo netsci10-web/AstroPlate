@@ -19,15 +19,24 @@ import {
   Ruler,
   Navigation,
   Star,
+  Cpu,
+  Globe,
 } from 'lucide-react';
 import { SolvedAstroData, AstrometryAnnotationItem } from '../types/astronomy';
-import { degToRA_HMS, degToDec_DMS } from '../utils/coordinateMath';
+import { degToRA_HMS, degToDec_DMS, angularSeparation } from '../utils/coordinateMath';
+import { BRIGHT_STARS } from '../data/celestialCatalog';
 import {
   getConstellationLinesForImage,
   extractPrimaryObjectIdentifier,
   formatTitleWithCatalogPriority,
+  resolveSpecialNamedStarLabel,
 } from '../utils/constellations';
-import { extractStarsImage2XY, verifyAndSnapAnnotationsToDetectedStars } from '../utils/localPlateSolver';
+import {
+  extractStarsImage2XY,
+  verifyAndSnapAnnotationsToDetectedStars,
+  skyCoordsToPixel,
+  TELESCOPIC_REFERENCE_FIELDS,
+} from '../utils/localPlateSolver';
 import { resolveCelestialPhysicalSummary } from '../utils/celestialObjectInfo';
 
 export type OverlayColor = 'red' | 'yellow' | 'green' | 'white';
@@ -136,9 +145,10 @@ export const OVERLAY_COLORS: Record<OverlayColor, OverlayColorConfig> = {
 interface StarPhotoViewerProps {
   data: SolvedAstroData;
   onSelectObject: (objectName: string) => void;
-  onReAnalyze?: () => void;
-  onOpenUploadModal?: () => void;
+  onReAnalyzeLocal?: () => void;
+  onReAnalyzeAstrometry?: () => void;
   isReAnalyzing?: boolean;
+  reAnalyzingMode?: 'local' | 'astrometry' | null;
 }
 
 type ViewMode = 'vector' | 'annotated' | 'red_green' | 'raw';
@@ -146,9 +156,10 @@ type ViewMode = 'vector' | 'annotated' | 'red_green' | 'raw';
 export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
   data,
   onSelectObject,
-  onReAnalyze,
-  onOpenUploadModal,
+  onReAnalyzeLocal,
+  onReAnalyzeAstrometry,
   isReAnalyzing = false,
+  reAnalyzingMode = null,
 }) => {
   const [scale, setScale] = useState(1);
   const [translate, setTranslate] = useState({ x: 0, y: 0 });
@@ -159,7 +170,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
 
   // Overlay layer toggles
   const [showConstellationLines, setShowConstellationLines] = useState(true);
-  const [showStarLabels, setShowStarLabels] = useState(false);
+  const [showStarLabels, setShowStarLabels] = useState(true);
   const [showDSO, setShowDSO] = useState(true);
   const [showGrid, setShowGrid] = useState(true);
   const [showCenterFov, setShowCenterFov] = useState(false);
@@ -250,6 +261,9 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
   const [naturalSize, setNaturalSize] = useState({ width: 1920, height: 1080 });
   const [imgLoadError, setImgLoadError] = useState(false);
   const isLocalJob = String(data.jobId).startsWith('local_');
+  const isLocalSolverActive = data.solverType
+    ? data.solverType === 'local'
+    : isLocalJob;
 
   const cal = data.calibration;
   const calWidth =
@@ -401,11 +415,87 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
     );
   }, [stars, data.annotations, data.matchedConstellations, cal, calWidth, calHeight]);
 
+  // Filter only stars that have a proper/special name (e.g., 베가, 데네브, 알비레오, 안타레스, 알니탁, 가넷 스타...)
+  // Excludes generic HD/BD/TYC/Gaia catalog stars, unnamed Flamsteed/Bayer stars, and synthetic constellation stars
+  const namedStars = React.useMemo<AstrometryAnnotationItem[]>(() => {
+    const result: AstrometryAnnotationItem[] = [];
+    const seenLabels = new Set<string>();
+
+    for (const star of stars) {
+      const specialLabel = resolveSpecialNamedStarLabel(star.names);
+      if (specialLabel && !seenLabels.has(specialLabel)) {
+        seenLabels.add(specialLabel);
+        result.push({
+          ...star,
+          names: [
+            specialLabel,
+            ...(star.names || []).filter((n) => n !== specialLabel),
+          ],
+        });
+      }
+    }
+
+    // Also project any proper-named stars from BRIGHT_STARS and TELESCOPIC_REFERENCE_FIELDS within the calibrated FOV
+    // so cached or downsampled jobs (e.g. Garnet Star μ Cep) always display their proper star label
+    if (cal && typeof cal.ra === 'number' && typeof cal.dec === 'number' && cal.pixscale > 0) {
+      const fovRadius = Math.max(0.8, (cal.radius || 1.25) * 1.15);
+      const fieldNamedPool = [
+        ...BRIGHT_STARS,
+        ...TELESCOPIC_REFERENCE_FIELDS.flatMap((tf) => tf.stars),
+      ];
+      const diagPx = Math.hypot(calWidth, calHeight);
+      const snapTolPx = Math.max(16, Math.min(42, diagPx * 0.025));
+
+      for (const cs of fieldNamedPool) {
+        const cleanBayer = cs.bayer.split('·')[0].trim();
+        const specialLabel = resolveSpecialNamedStarLabel([cs.nameKo, cs.nameEn, cleanBayer]);
+        if (!specialLabel || seenLabels.has(specialLabel)) continue;
+
+        const sep = angularSeparation(cal.ra, cal.dec, cs.raDeg, cs.decDeg);
+        if (sep > fovRadius) continue;
+
+        const pt = skyCoordsToPixel(cs.raDeg, cs.decDeg, calWidth, calHeight, cal);
+        if (!pt || pt.x < 4 || pt.x > calWidth - 4 || pt.y < 4 || pt.y > calHeight - 4) {
+          continue;
+        }
+
+        let finalX = pt.x;
+        let finalY = pt.y;
+        if (effectiveDetectedStars.length > 0) {
+          let bestDist = snapTolPx;
+          let bestDet: { x: number; y: number } | null = null;
+          const searchCount = Math.min(effectiveDetectedStars.length, 60);
+          for (let i = 0; i < searchCount; i++) {
+            const ds = effectiveDetectedStars[i];
+            const d = Math.hypot(ds.x - pt.x, ds.y - pt.y);
+            if (d < bestDist) {
+              bestDist = d;
+              bestDet = ds;
+            }
+          }
+          if (bestDet) {
+            finalX = bestDet.x;
+            finalY = bestDet.y;
+          }
+        }
+
+        seenLabels.add(specialLabel);
+        result.push({
+          type: 'bright',
+          names: [specialLabel, cs.nameEn, cleanBayer],
+          pixelx: Number(finalX.toFixed(1)),
+          pixely: Number(finalY.toFixed(1)),
+          radius: cs.mag < 3.0 ? 14 : 11,
+          vmag: cs.mag,
+        });
+      }
+    }
+
+    return result;
+  }, [stars, cal, calWidth, calHeight, effectiveDetectedStars]);
+
   // Selectable targets in field (DSOs first, then named bright stars, or fallback from objects_in_field)
   const selectableTargets = React.useMemo<AstrometryAnnotationItem[]>(() => {
-    const namedStars = stars.filter(
-      (s) => s.names?.[0] && !s.names[0].startsWith('검출 항성')
-    );
     const combined = [...dsos, ...namedStars.slice(0, 8)];
     if (combined.length > 0) return combined;
 
@@ -487,8 +577,8 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`relative bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden flex flex-col ${
-        isFullscreen ? 'h-screen w-screen rounded-none' : 'h-[680px]'
+      className={`relative isolate bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden flex flex-col ${
+        isFullscreen ? 'h-screen w-screen rounded-none z-50' : 'h-[680px] z-10'
       }`}
     >
       {/* Top Controls Header Bar (Placed cleanly above the astrophoto) */}
@@ -543,28 +633,43 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
           </button>
         </div>
 
-        {/* Center / Action: 천체사진 다시 분석 (Re-analyze Astrophoto) */}
-        {onReAnalyze && (
+        {/* Center / Action: 천체사진 다시 분석 (로컬 분석 & Astrometry.net 분석) */}
+        {(onReAnalyzeLocal || onReAnalyzeAstrometry) && (
           <div className="bg-slate-950/90 border border-slate-700/80 rounded-xl p-1 flex items-center space-x-1 shadow-sm">
-            <button
-              type="button"
-              onClick={onReAnalyze}
-              disabled={isReAnalyzing}
-              className="text-xs px-3.5 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 bg-gradient-to-r from-sky-500 via-indigo-600 to-purple-600 hover:from-sky-400 hover:to-indigo-500 text-white shadow-md shadow-sky-500/30 border border-sky-400/50 cursor-pointer hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
-              title="현재 천체사진으로 플레이트 솔빙 분석을 다시 수행합니다 (항성 검출 및 성도 매칭 갱신)"
-            >
-              <RotateCcw className={`w-3.5 h-3.5 ${isReAnalyzing ? 'animate-spin text-white' : 'text-sky-200'}`} />
-              <span>{isReAnalyzing ? '천체사진 분석 중...' : '천체사진 다시 분석'}</span>
-            </button>
-            {onOpenUploadModal && (
+            <span className="text-[11px] font-semibold text-slate-400 px-2 flex items-center gap-1 whitespace-nowrap">
+              <RotateCcw className={`w-3.5 h-3.5 text-sky-400 ${isReAnalyzing ? 'animate-spin' : ''}`} />
+              <span>천체사진 다시 분석</span>
+            </span>
+            {onReAnalyzeLocal && (
               <button
                 type="button"
-                onClick={onOpenUploadModal}
-                className="text-xs px-2.5 py-1.5 rounded-lg font-medium transition-all flex items-center space-x-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 hover:border-slate-600 cursor-pointer whitespace-nowrap"
-                title="새 천체사진을 업로드하거나 분석 설정을 변경합니다"
+                onClick={onReAnalyzeLocal}
+                disabled={isReAnalyzing}
+                className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 cursor-pointer whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed ${
+                  isLocalSolverActive
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-md shadow-emerald-500/25 border border-emerald-400/50'
+                    : 'bg-slate-800/90 hover:bg-emerald-950/80 text-emerald-300 hover:text-white border border-emerald-500/40 hover:border-emerald-400'
+                }`}
+                title="현재 천체사진을 브라우저 자체 계산(로컬 분석)으로 다시 플레이트 솔빙합니다"
               >
-                <Upload className="w-3.5 h-3.5 text-slate-400" />
-                <span className="hidden sm:inline">새 사진/설정</span>
+                <Cpu className={`w-3.5 h-3.5 ${reAnalyzingMode === 'local' ? 'animate-pulse text-white' : ''}`} />
+                <span>{reAnalyzingMode === 'local' ? '로컬 분석 중...' : '로컬 분석'}</span>
+              </button>
+            )}
+            {onReAnalyzeAstrometry && (
+              <button
+                type="button"
+                onClick={onReAnalyzeAstrometry}
+                disabled={isReAnalyzing}
+                className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all flex items-center space-x-1.5 cursor-pointer whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed ${
+                  !isLocalSolverActive
+                    ? 'bg-gradient-to-r from-sky-500 via-indigo-600 to-purple-600 hover:from-sky-400 hover:to-indigo-500 text-white shadow-md shadow-sky-500/30 border border-sky-400/50'
+                    : 'bg-slate-800/90 hover:bg-indigo-950/80 text-indigo-300 hover:text-white border border-indigo-500/40 hover:border-indigo-400'
+                }`}
+                title="현재 천체사진을 nova.astrometry.net 서버로 다시 플레이트 솔빙 분석합니다"
+              >
+                <Globe className={`w-3.5 h-3.5 ${reAnalyzingMode === 'astrometry' ? 'animate-spin text-white' : ''}`} />
+                <span>{reAnalyzingMode === 'astrometry' ? 'Astrometry 분석 중...' : 'Astrometry.net 분석'}</span>
               </button>
             )}
           </div>
@@ -1067,10 +1172,10 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
                   </g>
                 )}
 
-                {/* 3. Star Labels & Target Markers */}
+                {/* 3. Star Labels & Target Markers (Proper/Special Named Stars Only) */}
                 {showStarLabels && (
                   <g className="stars">
-                    {stars.map((star, idx) => {
+                    {namedStars.map((star, idx) => {
                       const name = star.names[0] || '';
                       const isBright = star.vmag !== undefined && star.vmag < 4.0;
                       const starRadius = (isBright ? 10 : 7) * fontScale;
@@ -1323,7 +1428,7 @@ export const StarPhotoViewer: React.FC<StarPhotoViewerProps> = ({
                   : 'text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
-              <span>항성 라벨 ({stars.length})</span>
+              <span>항성 라벨 ({namedStars.length})</span>
             </button>
 
             <button
